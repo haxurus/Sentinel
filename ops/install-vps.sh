@@ -17,6 +17,15 @@ command -v openssl >/dev/null 2>&1 || die 'OpenSSL is required'
 command -v visudo >/dev/null 2>&1 || die 'sudo/visudo is required'
 docker compose version >/dev/null 2>&1 || die 'Docker Compose plugin is required'
 
+# Do not silently weaken an existing SSH AllowUsers policy. If the host already
+# restricts SSH users, the administrator must explicitly add sentinel-deploy.
+if command -v sshd >/dev/null 2>&1; then
+  allow_users=$(sshd -T 2>/dev/null | awk '$1 == "allowusers" { for (i=2; i<=NF; i++) print $i }' || true)
+  if [ -n "$allow_users" ] && ! printf '%s\n' "$allow_users" | grep -Fxq "$DEPLOY_USER"; then
+    die "sshd AllowUsers is active but does not include $DEPLOY_USER; add it to the existing AllowUsers directive, validate with 'sshd -t', reload ssh, then rerun this installer"
+  fi
+fi
+
 deploy_key=''
 if [ -n "$KEY_FILE" ]; then
   [ -f "$KEY_FILE" ] || die 'deploy public key file not found'
