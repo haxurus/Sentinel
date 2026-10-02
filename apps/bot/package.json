@@ -12,7 +12,7 @@
   "dependencies": {
     "@sentinel/db": "0.3.0",
     "@sentinel/shared": "0.3.0",
-    "bullmq": "5.58.5",
+    "bullmq": "6.3.10",
     "discord.js": "14.27.0",
     "ioredis": "5.7.0",
     "pino": "9.9.4"
