@@ -354,15 +354,15 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.RoleCreate, async (role) => {
+  client.on(Events.GuildRoleCreate, async (role) => {
     const actorId = await actorFromAudit(role.guild, AuditLogEvent.RoleCreate, role.id);
     await recordEvent({ guildId: role.guild.id, eventKey: 'role.create', actorId, targetId: role.id, summary: `Creato il ruolo ${role.name}.`, details: { name: role.name, permissions: role.permissions.bitfield.toString(), color: role.hexColor } });
   });
-  client.on(Events.RoleUpdate, async (oldRole, newRole) => {
+  client.on(Events.GuildRoleUpdate, async (oldRole, newRole) => {
     const actorId = await actorFromAudit(newRole.guild, AuditLogEvent.RoleUpdate, newRole.id);
     await recordEvent({ guildId: newRole.guild.id, eventKey: 'role.update', actorId, targetId: newRole.id, summary: `Modificato il ruolo ${newRole.name}.`, details: { oldName: oldRole.name, newName: newRole.name, oldPermissions: oldRole.permissions.bitfield.toString(), newPermissions: newRole.permissions.bitfield.toString(), oldColor: oldRole.hexColor, newColor: newRole.hexColor } });
   });
-  client.on(Events.RoleDelete, async (role) => {
+  client.on(Events.GuildRoleDelete, async (role) => {
     const actorId = await actorFromAudit(role.guild, AuditLogEvent.RoleDelete, role.id);
     await recordEvent({ guildId: role.guild.id, eventKey: 'role.delete', actorId, targetId: role.id, summary: `Eliminato il ruolo ${role.name}.`, details: { name: role.name, permissions: role.permissions.bitfield.toString(), color: role.hexColor } });
   });
@@ -393,7 +393,7 @@ export function registerHandlers(client: Client) {
       eventKey: 'channel.pins',
       channelId: channel.id,
       targetId: channel.id,
-      summary: `Sono cambiati i messaggi fissati in ${'name' in channel ? channel.name : channel.id}.`,
+      summary: `Sono cambiati i messaggi fissati in ${channel.name}.`,
       details: { lastPinAt: date?.toISOString?.() ?? null }
     });
   });
@@ -540,7 +540,7 @@ export function registerHandlers(client: Client) {
   });
   client.on(Events.AutoModerationRuleUpdate, async (oldRule, newRule) => {
     const actorId = await actorFromAudit(newRule.guild, AuditLogEvent.AutoModerationRuleUpdate, newRule.id);
-    await recordEvent({ guildId: newRule.guild.id, eventKey: 'automod.rule_update', actorId, targetId: newRule.id, summary: `Modificata la regola AutoMod ${newRule.name}.`, details: { oldName: oldRule.name, newName: newRule.name, enabled: newRule.enabled } });
+    await recordEvent({ guildId: newRule.guild.id, eventKey: 'automod.rule_update', actorId, targetId: newRule.id, summary: `Modificata la regola AutoMod ${newRule.name}.`, details: { oldName: oldRule?.name ?? null, newName: newRule.name, enabled: newRule.enabled } });
   });
   client.on(Events.AutoModerationRuleDelete, async (rule) => {
     const actorId = await actorFromAudit(rule.guild, AuditLogEvent.AutoModerationRuleDelete, rule.id);
@@ -650,9 +650,11 @@ export function registerHandlers(client: Client) {
   });
 
   client.on(Events.PresenceUpdate, async (oldPresence, newPresence) => {
-    const settings = await getGuildSettings(newPresence.guild.id);
+    const guild = newPresence.guild;
+    if (!guild) return;
+    const settings = await getGuildSettings(guild.id);
     if (!settings?.presenceLoggingEnabled || !newPresence.userId) return;
-    await recordEvent({ guildId: newPresence.guild.id, eventKey: 'presence.update', actorId: newPresence.userId, targetId: newPresence.userId, summary: `Presenza modificata per ${newPresence.user?.tag ?? newPresence.userId}.`, details: { oldStatus: oldPresence?.status ?? null, newStatus: newPresence.status, activities: newPresence.activities.map((a) => ({ name: a.name, type: a.type, state: a.state })) } });
+    await recordEvent({ guildId: guild.id, eventKey: 'presence.update', actorId: newPresence.userId, targetId: newPresence.userId, summary: `Presenza modificata per ${newPresence.user?.tag ?? newPresence.userId}.`, details: { oldStatus: oldPresence?.status ?? null, newStatus: newPresence.status, activities: newPresence.activities.map((a) => ({ name: a.name, type: a.type, state: a.state })) } });
   });
 
   client.on(Events.TypingStart, async (typing) => {
