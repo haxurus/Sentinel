@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Validate shell scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          find ops security docker -type f -name '*.sh' -print0 | xargs -0 -n1 sh -n
+          cmp docker/postgres/harden-users.sh deploy/runtime/harden-users.sh
+
+      - name: Validate production Compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p deploy/secrets
+          for name in discord_token discord_client_secret session_secret log_data_encryption_key bot_internal_api_key postgres_admin_password api_db_password bot_db_password redis_password; do
+            : > "deploy/secrets/$name"
+          done
+          SENTINEL_APP_IMAGE=ghcr.io/haxurus/sentinel@sha256:$(printf 'a%.0s' {1..64}) \
+          SENTINEL_MIGRATE_IMAGE=ghcr.io/haxurus/sentinel@sha256:$(printf 'b%.0s' {1..64}) \
+          docker compose --env-file deploy/.env.production.example -f deploy/docker-compose.prod.yml config -q
+
+      - name: Build runtime image
+        run: docker build --pull --target runtime -t sentinel-ci-runtime:${GITHUB_SHA} .
+
+      - name: Build migration image
+        run: docker build --target migrate -t sentinel-ci-migrate:${GITHUB_SHA} .
