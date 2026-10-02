@@ -30,6 +30,26 @@ Non riutilizzare la chiave SSH amministrativa personale.
 
 ## 2. Installare l'infrastruttura Sentinel sulla VPS
 
+### Preflight SSH se usi `AllowUsers`
+
+Se `sshd -T` mostra una direttiva `AllowUsers`, aggiungi esplicitamente `sentinel-deploy` alla stessa direttiva prima di eseguire l'installer. Non rimuovere la restrizione.
+
+Esempio VPS01:
+
+```text
+AllowUsers user007 sentinel-deploy
+```
+
+Poi valida e ricarica SSH senza chiudere la sessione amministrativa corrente:
+
+```bash
+sudo sshd -t
+sudo systemctl reload ssh
+sudo sshd -T | grep '^allowusers'
+```
+
+L'installer rifiuta di procedere se rileva una policy `AllowUsers` che non include `sentinel-deploy`.
+
 Clonare temporaneamente la repository e avviare l'installer come root:
 
 ```bash
