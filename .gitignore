@@ -1,0 +1,16 @@
+node_modules/
+.next/
+dist/
+.env
+*.log
+coverage/
+.DS_Store
+secrets/*
+!secrets/README.md
+
+# Production/runtime data
+backups/
+*.dump
+*.sql.gz
+sentinel_deploy
+sentinel_deploy.pub

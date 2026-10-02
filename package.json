@@ -1,0 +1,21 @@
+{
+  "name": "sentinel",
+  "private": true,
+  "version": "0.3.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @sentinel/shared && npm run build --workspace @sentinel/db && npm run build --workspace @sentinel/api && npm run build --workspace @sentinel/bot && npm run build --workspace @sentinel/web",
+    "dev:bot": "npm run dev --workspace @sentinel/bot",
+    "dev:api": "npm run dev --workspace @sentinel/api",
+    "dev:web": "npm run dev --workspace @sentinel/web",
+    "db:generate": "npm run generate --workspace @sentinel/db",
+    "db:push": "npm run db:push --workspace @sentinel/db",
+    "db:migrate": "npm run migrate:deploy --workspace @sentinel/db"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

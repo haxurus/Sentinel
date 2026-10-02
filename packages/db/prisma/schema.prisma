@@ -1,0 +1,155 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model GuildSettings {
+  guildId                 String   @id
+  guildName               String
+  iconUrl                 String?
+  defaultLogChannelId     String?
+  timezone                String   @default("Europe/Rome")
+  locale                  String   @default("it-IT")
+  defaultRetentionDays    Int      @default(30)
+  embedColor              String   @default("#3f3c54")
+  embedFooter             String   @default("Discord Audit")
+  messageSnapshotEnabled  Boolean  @default(true)
+  storeMessageContent     Boolean  @default(true)
+  rawGatewayEnabled       Boolean  @default(false)
+  presenceLoggingEnabled  Boolean  @default(false)
+  typingLoggingEnabled    Boolean  @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  routes     LogRoute[]
+  events     LogEvent[]
+  snapshots  MessageSnapshot[]
+  panelAudit PanelAudit[]
+  panelRoles PanelRoleBinding[]
+}
+
+model LogRoute {
+  id                   String   @id @default(cuid())
+  guildId              String
+  eventKey             String
+  captureEnabled       Boolean  @default(true)
+  enabled              Boolean  @default(true)
+  destinationChannelId String?
+  customTitle          String?
+  customFooter         String?
+  textPrefix           String?
+  thumbnailUrl         String?
+  embedColor           String?
+  showTimestamp        Boolean  @default(true)
+  showActor            Boolean  @default(true)
+  showTarget           Boolean  @default(true)
+  showChannel          Boolean  @default(true)
+  includeContent       Boolean  @default(true)
+  includeAttachments   Boolean  @default(true)
+  ignoreBots           Boolean  @default(false)
+  retentionDays        Int?
+  ignoredUserIds       String[] @default([])
+  ignoredRoleIds       String[] @default([])
+  ignoredChannelIds    String[] @default([])
+  mentionRoleIds       String[] @default([])
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  guild GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@unique([guildId, eventKey])
+  @@index([guildId])
+}
+
+model LogEvent {
+  id        String   @id @default(cuid())
+  guildId   String
+  eventKey  String
+  actorId   String?
+  targetId  String?
+  channelId String?
+  summary   String
+  details       Json
+  dispatchState String   @default("PENDING")
+  dispatchError String?
+  dispatchedAt  DateTime?
+  createdAt     DateTime @default(now())
+
+  guild GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([guildId, createdAt(sort: Desc)])
+  @@index([guildId, eventKey, createdAt(sort: Desc)])
+  @@index([guildId, dispatchState, createdAt(sort: Desc)])
+  @@index([actorId])
+  @@index([targetId])
+  @@index([channelId])
+}
+
+model MessageSnapshot {
+  messageId   String   @id
+  guildId     String
+  channelId   String
+  authorId    String
+  authorTag   String?
+  authorBot   Boolean  @default(false)
+  content     String?
+  attachments Json
+  embeds      Json
+  roleIds     String[] @default([])
+  createdAt   DateTime
+  updatedAt   DateTime @updatedAt
+
+  guild GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([guildId, createdAt(sort: Desc)])
+  @@index([channelId])
+  @@index([authorId])
+}
+
+model PanelAudit {
+  id        String   @id @default(cuid())
+  guildId   String
+  userId    String
+  username  String
+  action    String
+  details   Json
+  ipHash    String?
+  createdAt DateTime @default(now())
+
+  guild GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([guildId, createdAt(sort: Desc)])
+}
+
+model PanelSession {
+  id               String   @id @default(cuid())
+  sessionTokenHash String   @unique
+  userId           String
+  username         String
+  avatarUrl        String?
+  guilds           Json
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  lastSeenAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PanelRoleBinding {
+  id            String   @id @default(cuid())
+  guildId       String
+  discordRoleId String
+  accessLevel   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  guild GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@unique([guildId, discordRoleId])
+  @@index([guildId])
+}
