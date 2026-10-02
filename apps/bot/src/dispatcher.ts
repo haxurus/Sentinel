@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq';
-import IORedis from 'ioredis';
+import { Redis } from 'ioredis';
 import { prisma } from '@sentinel/db';
 import { eventDefinition } from '@sentinel/shared';
 import { EmbedBuilder, type Client } from 'discord.js';
@@ -20,7 +20,7 @@ const normalizeColor = (value?: string | null) => {
 };
 
 export function startDispatcher(client: Client) {
-  const connection = new IORedis(config.redisUrl, { maxRetriesPerRequest: null });
+  const connection = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
   const worker = new Worker('discord-log-dispatch', async (job) => {
     const event = await prisma.logEvent.findUnique({
       where: { id: String(job.data.eventId) },
