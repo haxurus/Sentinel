@@ -21,7 +21,7 @@ const app = Fastify({
   logger: {
     level: process.env.LOG_LEVEL ?? 'info',
     redact: {
-      paths: ['req.headers.authorization', 'req.headers.cookie', 'res.headers.set-cookie', 'client_secret', '*.client_secret', '*.token', '*.password', '*.secret'],
+      paths: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]', 'client_secret', '*.client_secret', '*.token', '*.password', '*.secret'],
       censor: '[REDACTED]'
     }
   }
