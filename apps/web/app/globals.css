@@ -320,3 +320,41 @@ body { overflow-x: hidden; }
   .dashboard-auth-card, .dashboard-server-panel { padding: 26px; }
   .dashboard-server-head { align-items: stretch; flex-direction: column; }
 }
+
+
+/* Logger macro categories */
+.logger-toolbar { grid-template-columns: minmax(240px, 1fr) auto auto; }
+.logger-macro-list { display: flex; flex-direction: column; gap: 12px; }
+.logger-macro { overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); transition: border-color .18s ease, background .18s ease; }
+.logger-macro.open { border-color: #424057; background: #171720; }
+.logger-macro-head { width: 100%; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 24px; align-items: center; padding: 20px 22px; border: 0; color: var(--text); background: transparent; text-align: left; }
+.logger-macro-head:hover { background: rgba(255,255,255,.018); }
+.logger-macro-copy { min-width: 0; }
+.logger-macro-kicker { display: block; margin-bottom: 6px; color: var(--accent-2); font-size: 9px; font-weight: 900; letter-spacing: .14em; }
+.logger-macro-copy > strong { display: block; font-size: 18px; letter-spacing: -.02em; }
+.logger-macro-copy p { max-width: 760px; margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.logger-macro-meta { display: flex; align-items: center; justify-content: flex-end; gap: 7px; color: var(--muted); white-space: nowrap; }
+.logger-macro-meta span { padding: 6px 9px; border: 1px solid var(--border); border-radius: 999px; background: #111118; font-size: 10px; font-weight: 750; }
+.logger-macro-meta i { width: 30px; height: 30px; display: grid; place-items: center; margin-left: 4px; border: 1px solid var(--border); border-radius: 9px; color: var(--text); background: #111118; font-size: 17px; font-style: normal; font-weight: 400; }
+.logger-macro-body { padding: 0 16px 18px; border-top: 1px solid var(--border); background: #111118; }
+.logger-subgroup { padding-top: 18px; }
+.logger-subgroup + .logger-subgroup { margin-top: 18px; border-top: 1px solid var(--border); }
+.logger-subgroup-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 4px 10px; }
+.logger-subgroup-head strong { color: #d6d4e2; font-size: 11px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.logger-subgroup-head span { min-width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 10px; }
+.logger-macro-body .route-list { gap: 7px; }
+.logger-macro-body .route-card { background: #15151d; }
+
+@media (max-width: 900px) {
+  .logger-toolbar { grid-template-columns: 1fr 1fr; }
+  .logger-toolbar input { grid-column: 1 / -1; }
+  .logger-macro-head { grid-template-columns: 1fr; gap: 14px; }
+  .logger-macro-meta { justify-content: flex-start; flex-wrap: wrap; }
+}
+@media (max-width: 600px) {
+  .logger-toolbar { grid-template-columns: 1fr; }
+  .logger-toolbar input { grid-column: auto; }
+  .logger-macro-head { padding: 18px; }
+  .logger-macro-meta span { font-size: 9px; }
+  .logger-macro-body { padding: 0 10px 12px; }
+}

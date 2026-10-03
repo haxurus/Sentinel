@@ -51,8 +51,48 @@ type Stats = { today: number; last24h: number; snapshots: number; deliveryIssues
 type PanelAudit = { id: string; username: string; userId: string; action: string; details: Record<string, unknown>; createdAt: string };
 type AccessLevel = 'VIEWER' | 'MODERATOR' | 'ADMIN' | 'OWNER';
 type AccessBinding = { id: string; discordRoleId: string; accessLevel: 'VIEWER' | 'MODERATOR' | 'ADMIN' };
+type LoggerMacro = { key: string; label: string; description: string; categories: string[] };
 
 const textChannelTypes = new Set([0, 5]);
+
+const LOGGER_MACROS: LoggerMacro[] = [
+  {
+    key: 'members',
+    label: 'Membri & moderazione',
+    description: 'Ingressi, uscite, profili, provvedimenti, Audit Log, AutoMod e presenza.',
+    categories: ['Utenti', 'Moderazione', 'Audit', 'AutoMod', 'Presenza']
+  },
+  {
+    key: 'messages',
+    label: 'Messaggi & conversazioni',
+    description: 'Messaggi, reaction, poll, thread e interazioni con il bot.',
+    categories: ['Messaggi', 'Reazioni', 'Thread', 'Interazioni']
+  },
+  {
+    key: 'server',
+    label: 'Server & struttura',
+    description: 'Canali, ruoli, inviti, webhook, integrazioni e impostazioni del server.',
+    categories: ['Server', 'Canali', 'Ruoli', 'Inviti', 'Webhook', 'Applicazioni', 'Integrazioni']
+  },
+  {
+    key: 'voice',
+    label: 'Voce & attività',
+    description: 'Canali vocali, Stage, eventi programmati e soundboard.',
+    categories: ['Vocale', 'Stage', 'Eventi', 'Soundboard']
+  },
+  {
+    key: 'content',
+    label: 'Contenuti & personalizzazione',
+    description: 'Emoji, sticker e altri elementi personalizzati del server.',
+    categories: ['Espressioni']
+  },
+  {
+    key: 'system',
+    label: 'Sistema & avanzato',
+    description: 'Stato del bot, warning, errori e diagnostica Gateway avanzata.',
+    categories: ['Sistema', 'Avanzato']
+  }
+];
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } });
@@ -73,7 +113,7 @@ export default function GuildDashboard({ params }: { params: Promise<{ guildId: 
   const [access, setAccess] = useState<AccessLevel>('VIEWER');
   const [bindings, setBindings] = useState<AccessBinding[]>([]);
   const [filter, setFilter] = useState('');
-  const [category, setCategory] = useState('Tutte');
+  const [openMacro, setOpenMacro] = useState<string | null>(null);
   const [historyEvent, setHistoryEvent] = useState('');
   const [historyText, setHistoryText] = useState('');
   const [status, setStatus] = useState('');
@@ -107,8 +147,32 @@ export default function GuildDashboard({ params }: { params: Promise<{ guildId: 
     ]).then(([audit, roleBindings]) => { setPanelLog(audit); setBindings(roleBindings); }).catch(() => setStatus('Impossibile caricare l’amministrazione.'));
   }, [tab, guildId]);
 
-  const categories = useMemo(() => ['Tutte', ...Array.from(new Set(routes.map((x) => x.event.category)))], [routes]);
-  const visibleRoutes = routes.filter(({ event }) => (category === 'Tutte' || event.category === category) && (`${event.label} ${event.key}`.toLowerCase().includes(filter.toLowerCase())));
+  const macroGroups = useMemo(() => {
+    const query = filter.trim().toLowerCase();
+    const matches = routes.filter(({ event }) =>
+      `${event.label} ${event.key} ${event.category} ${event.description}`.toLowerCase().includes(query)
+    );
+    const assigned = new Set<string>();
+    const groups: { macro: LoggerMacro; rows: RouteRow[] }[] = LOGGER_MACROS.map((macro) => {
+      const rows = matches.filter(({ event }) => macro.categories.includes(event.category));
+      rows.forEach(({ event }) => assigned.add(event.key));
+      return { macro, rows };
+    }).filter(({ rows }) => rows.length > 0);
+
+    const otherRows = matches.filter(({ event }) => !assigned.has(event.key));
+    if (otherRows.length) {
+      groups.push({
+        macro: {
+          key: 'other',
+          label: 'Altri logger',
+          description: 'Eventi non ancora assegnati a una macro-categoria.',
+          categories: Array.from(new Set(otherRows.map(({ event }) => event.category)))
+        },
+        rows: otherRows
+      });
+    }
+    return groups;
+  }, [routes, filter]);
   const textChannels = channels.filter((c) => textChannelTypes.has(c.type));
   const canAdmin = access === 'ADMIN' || access === 'OWNER';
   const canModerate = canAdmin || access === 'MODERATOR';
@@ -196,14 +260,55 @@ export default function GuildDashboard({ params }: { params: Promise<{ guildId: 
         </>}
 
         {tab === 'events' && <>
-          <div className="toolbar">
-            <input placeholder="Cerca logger…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-            <select value={category} onChange={(e) => setCategory(e.target.value)}>{categories.map((c) => <option key={c}>{c}</option>)}</select>
+          <div className="toolbar logger-toolbar">
+            <input placeholder="Cerca logger, evento o categoria…" value={filter} onChange={(e) => setFilter(e.target.value)} />
             <button disabled={!canAdmin} onClick={() => bulk(true, false)}>Invia standard</button>
             <button className="secondary" disabled={!canAdmin} onClick={() => bulk(false, true)}>Ferma invio</button>
           </div>
-          <div className="route-list">
-            {visibleRoutes.map(({ event, route }) => <RouteEditor key={event.key} event={event} route={route} channels={textChannels} roles={roles} onSave={(patch) => saveRoute(event.key, patch)} readOnly={!canAdmin} />)}
+
+          <div className="logger-macro-list">
+            {macroGroups.map(({ macro, rows }) => {
+              const expanded = Boolean(filter.trim()) || openMacro === macro.key;
+              const active = rows.filter(({ route }) => route?.enabled).length;
+              const captured = rows.filter(({ route }) => route?.captureEnabled).length;
+              const subcategories = Array.from(new Set(rows.map(({ event }) => event.category)));
+
+              return <section className={`logger-macro ${expanded ? 'open' : ''}`} key={macro.key}>
+                <button
+                  type="button"
+                  className="logger-macro-head"
+                  aria-expanded={expanded}
+                  onClick={() => setOpenMacro((current) => current === macro.key ? null : macro.key)}
+                >
+                  <div className="logger-macro-copy">
+                    <span className="logger-macro-kicker">MACRO-CATEGORIA</span>
+                    <strong>{macro.label}</strong>
+                    <p>{macro.description}</p>
+                  </div>
+                  <div className="logger-macro-meta">
+                    <span>{rows.length} logger</span>
+                    <span>{captured} acquisiti</span>
+                    <span>{active} inviati</span>
+                    <i aria-hidden="true">{expanded ? '−' : '+'}</i>
+                  </div>
+                </button>
+
+                {expanded && <div className="logger-macro-body">
+                  {subcategories.map((subCategory) => {
+                    const categoryRows = rows.filter(({ event }) => event.category === subCategory);
+                    return <section className="logger-subgroup" key={subCategory}>
+                      <div className="logger-subgroup-head">
+                        <strong>{subCategory}</strong>
+                        <span>{categoryRows.length}</span>
+                      </div>
+                      <div className="route-list">
+                        {categoryRows.map(({ event, route }) => <RouteEditor key={event.key} event={event} route={route} channels={textChannels} roles={roles} onSave={(patch) => saveRoute(event.key, patch)} readOnly={!canAdmin} />)}
+                      </div>
+                    </section>;
+                  })}
+                </div>}
+              </section>;
+            })}
           </div>
         </>}
 
