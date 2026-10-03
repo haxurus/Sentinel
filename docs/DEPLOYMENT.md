@@ -114,7 +114,7 @@ Verificare i permessi:
 sudo find /srv/docker/sentinel/secrets -maxdepth 1 -type f -printf '%m %u:%g %p\n'
 ```
 
-Devono essere root-only (`600`).
+`postgres_admin_password` resta `600 root:root`. I secret letti dai container API/bot sono `640 root:1000`: la directory `/srv/docker/sentinel/secrets` resta `700 root:root`, quindi gli utenti normali dell'host non possono attraversarla, mentre il processo non-root `node` nei container (gid 1000) può leggere i bind mount dei secret.
 
 ## 4. Configurare Nginx Proxy Manager
 
