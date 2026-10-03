@@ -91,6 +91,14 @@ app.get('/health', async (_request, reply) => {
   }
 });
 
+app.get('/bot/invite', async (_request, reply) => {
+  const url = new URL('https://discord.com/oauth2/authorize');
+  url.searchParams.set('client_id', config.clientId);
+  url.searchParams.set('scope', 'bot applications.commands');
+  url.searchParams.set('permissions', '85120');
+  return reply.redirect(url.toString());
+});
+
 app.get('/auth/discord', async (_request, reply) => {
   const state = randomToken();
   reply.setCookie(config.production ? '__Host-discord_oauth_state' : 'discord_oauth_state', state, {
