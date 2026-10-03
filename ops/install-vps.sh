@@ -74,6 +74,18 @@ for name in discord_token discord_client_secret; do
   fi
 done
 
+# Docker Compose local file secrets are bind-mounted with their host ownership
+# and mode. The runtime image intentionally runs as the non-root "node" user
+# (uid/gid 1000), so secrets consumed by API/bot must be group-readable by
+# that numeric gid. The parent state/secrets directories remain root-only.
+for name in discord_token discord_client_secret session_secret log_data_encryption_key bot_internal_api_key api_db_password bot_db_password redis_password; do
+  file="$STATE_DIR/secrets/$name"
+  chown root:1000 "$file"
+  chmod 640 "$file"
+done
+chown root:root "$STATE_DIR/secrets/postgres_admin_password"
+chmod 600 "$STATE_DIR/secrets/postgres_admin_password"
+
 home=$(getent passwd "$DEPLOY_USER" | cut -d: -f6)
 install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" -m 700 "$home/.ssh"
 if [ -n "$deploy_key" ]; then
