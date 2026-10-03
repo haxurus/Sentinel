@@ -1,6 +1,9 @@
+import fs from 'node:fs';
+
 const required = (name: string) => {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`Missing environment variable: ${name}`);
+  const file = process.env[`${name}_FILE`]?.trim();
+  const value = file ? fs.readFileSync(file, 'utf8').trim() : process.env[name]?.trim();
+  if (!value) throw new Error(`Missing secret/config: ${name} or ${name}_FILE`);
   return value;
 };
 
