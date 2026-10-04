@@ -7,7 +7,7 @@ import {
   type PartialMessage
 } from 'discord.js';
 import { prisma } from '@sentinel/db';
-import { ensureGuild, getGuildSettings, snapshotMessage } from './store.js';
+import { ensureGuild, getGuildSettings, isGuildInstallBlocked, snapshotMessage } from './store.js';
 import { recordEvent } from './recorder.js';
 import { findRecentAuditEntry, jsonSafe, redactSecrets } from './utils.js';
 import { decryptText, unprotectJson } from './security.js';
@@ -28,6 +28,10 @@ const attachmentData = (message: Message | PartialMessage) => [...message.attach
 
 export function registerHandlers(client: Client) {
   client.on(Events.GuildCreate, async (guild) => {
+    if (await isGuildInstallBlocked(guild.id)) {
+      await guild.leave().catch(() => null);
+      return;
+    }
     await ensureGuild(guild);
   });
 
@@ -494,6 +498,10 @@ export function registerHandlers(client: Client) {
   });
 
   client.on(Events.GuildAvailable, async (guild) => {
+    if (await isGuildInstallBlocked(guild.id)) {
+      await guild.leave().catch(() => null);
+      return;
+    }
     await ensureGuild(guild);
     await recordEvent({ guildId: guild.id, eventKey: 'guild.available', targetId: guild.id, summary: `Il server ${guild.name} è tornato disponibile.`, details: {} });
   });
@@ -504,6 +512,7 @@ export function registerHandlers(client: Client) {
   });
 
   client.on(Events.GuildDelete, async (guild) => {
+    if (await isGuildInstallBlocked(guild.id)) return;
     await ensureGuild(guild);
     await recordEvent({ guildId: guild.id, eventKey: 'guild.remove', targetId: guild.id, summary: `Il bot non ha più accesso al server ${guild.name}.`, details: {} });
   });

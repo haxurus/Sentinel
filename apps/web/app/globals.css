@@ -453,3 +453,62 @@ body { overflow-x: hidden; }
   .development-actions { flex-direction: column; }
   .development-actions .site-button { width: 100%; }
 }
+
+
+/* Super console */
+.dashboard-user-actions { display: flex; align-items: center; gap: 10px; }
+.super-shell { padding: 74px 0 110px; }
+.super-head { margin-bottom: 38px; }
+.super-head h1 { max-width: 980px; margin: 12px 0 18px; font-size: clamp(3.2rem,7vw,6.4rem); line-height: .91; letter-spacing: -.065em; }
+.super-head p { max-width: 760px; margin: 0; color: var(--site-muted); line-height: 1.7; }
+.super-panel { margin-top: 16px; padding: 30px; border: 1px solid var(--site-line); border-radius: var(--site-radius); background: rgba(18,20,38,.72); box-shadow: 0 24px 70px rgba(0,0,0,.18); }
+.super-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+.super-panel-head h2 { margin: 8px 0 6px; font-size: clamp(1.65rem,3vw,2.5rem); letter-spacing: -.04em; }
+.super-panel-head p { max-width: 720px; margin: 0; color: var(--site-muted); line-height: 1.6; }
+.super-panel-head > strong { min-width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid var(--site-line); border-radius: 999px; color: #d8ccff; background: rgba(139,114,255,.08); }
+.super-guild-list, .super-block-list, .super-audit-list { display: flex; flex-direction: column; gap: 9px; }
+.super-guild { display: grid; grid-template-columns: minmax(220px,1.1fr) minmax(220px,.8fr) auto; gap: 18px; align-items: center; padding: 16px; border: 1px solid var(--site-line); border-radius: 14px; background: rgba(255,255,255,.018); }
+.super-guild-identity { min-width: 0; display: flex; align-items: center; gap: 12px; }
+.super-guild-identity img, .super-guild-identity .guild-placeholder { width: 44px; height: 44px; flex: 0 0 auto; border-radius: 12px; }
+.super-guild-identity img { object-fit: cover; }
+.super-guild-identity > div:last-child { min-width: 0; }
+.super-guild-identity strong, .super-guild-identity span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.super-guild-identity span, .super-guild-meta span { margin-top: 4px; color: var(--site-muted); font-size: .75rem; }
+.super-guild-meta { display: flex; flex-direction: column; gap: 3px; }
+.super-guild-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.super-danger { color: #fff; border: 1px solid rgba(217,92,103,.48); background: rgba(217,92,103,.16); }
+.super-danger:hover { border-color: rgba(217,92,103,.78); background: rgba(217,92,103,.24); }
+.super-block-forms { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+.super-block-forms > div { display: grid; grid-template-columns: 1fr 1fr auto; gap: 9px; align-items: end; padding: 14px; border: 1px solid var(--site-line); border-radius: 14px; background: rgba(255,255,255,.018); }
+.super-block-forms label { color: var(--site-muted); font-size: .72rem; font-weight: 700; }
+.super-block-forms input { width: 100%; margin-top: 7px; padding: 11px 12px; border: 1px solid var(--site-line); border-radius: 10px; color: var(--site-text); background: rgba(8,9,19,.7); outline: none; }
+.super-block-forms input:focus { border-color: rgba(175,142,255,.55); }
+.super-block-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 12px; align-items: center; padding: 13px 15px; border: 1px solid var(--site-line); border-radius: 12px; background: rgba(255,255,255,.014); }
+.super-block-row strong, .super-block-row span { display: block; }
+.super-block-row > div > span { margin-top: 4px; color: var(--site-muted); font-size: .74rem; }
+.super-block-badge { padding: 5px 8px; border-radius: 999px; color: #ffb3ba; background: rgba(217,92,103,.12); font-size: .67rem; font-weight: 800; text-transform: uppercase; }
+.super-audit-row { display: grid; grid-template-columns: 1fr 1fr .7fr auto; gap: 14px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--site-line); font-size: .78rem; }
+.super-audit-row span, .super-audit-row time { color: var(--site-muted); }
+.super-empty { padding: 18px 0; color: var(--site-muted); }
+
+@media (max-width: 1050px) {
+  .super-guild { grid-template-columns: minmax(0,1fr) auto; }
+  .super-guild-meta { grid-column: 1; }
+  .super-guild-actions { grid-column: 2; grid-row: 1 / span 2; flex-direction: column; }
+  .super-block-forms { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .dashboard-user-actions { width: 100%; align-items: stretch; flex-direction: column-reverse; }
+  .dashboard-user-actions .site-button { width: 100%; }
+  .super-shell { padding: 54px 0 80px; }
+  .super-panel { padding: 22px; }
+  .super-panel-head { flex-direction: column; }
+  .super-guild { grid-template-columns: 1fr; }
+  .super-guild-meta, .super-guild-actions { grid-column: 1; grid-row: auto; }
+  .super-guild-actions { flex-direction: column; }
+  .super-guild-actions .site-button { width: 100%; }
+  .super-block-forms > div { grid-template-columns: 1fr; }
+  .super-block-row { grid-template-columns: 1fr auto; }
+  .super-block-row .site-button { grid-column: 1 / -1; width: 100%; }
+  .super-audit-row { grid-template-columns: 1fr; gap: 5px; }
+}

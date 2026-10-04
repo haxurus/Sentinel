@@ -62,6 +62,20 @@ export async function requireSession(request: FastifyRequest, reply: FastifyRepl
   return session;
 }
 
+export function isSuperAdminUserId(userId: string) {
+  return Boolean(config.superAdminUserId) && userId === config.superAdminUserId;
+}
+
+export async function requireSuperAdmin(request: FastifyRequest, reply: FastifyReply) {
+  const session = await requireSession(request, reply);
+  if (!session) return null;
+  if (!isSuperAdminUserId(session.userId)) {
+    reply.code(403).send({ error: 'SUPER_ADMIN_REQUIRED' });
+    return null;
+  }
+  return session;
+}
+
 async function currentGuildAccess(guildId: string, userId: string) {
   const key = `${guildId}:${userId}`;
   const cached = accessCache.get(key);

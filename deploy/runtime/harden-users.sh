@@ -20,13 +20,15 @@ GRANT USAGE ON SCHEMA public TO sentinel_api, sentinel_bot;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
   "GuildSettings", "LogRoute", "LogEvent", "MessageSnapshot",
-  "PanelAudit", "PanelSession", "PanelRoleBinding"
+  "PanelAudit", "PanelSession", "PanelRoleBinding",
+  "InstallBlock", "SuperAdminAudit"
 TO sentinel_api;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
   "GuildSettings", "LogRoute", "LogEvent", "MessageSnapshot"
 TO sentinel_bot;
-REVOKE ALL ON TABLE "PanelAudit", "PanelSession", "PanelRoleBinding" FROM sentinel_bot;
+GRANT SELECT ON TABLE "InstallBlock" TO sentinel_bot;
+REVOKE ALL ON TABLE "PanelAudit", "PanelSession", "PanelRoleBinding", "SuperAdminAudit" FROM sentinel_bot;
 ALTER ROLE sentinel_api NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION;
 ALTER ROLE sentinel_bot NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION;
 SQL

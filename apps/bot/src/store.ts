@@ -103,3 +103,12 @@ export async function runRetentionCleanup() {
     ]);
   }
 }
+
+
+export async function isGuildInstallBlocked(guildId: string) {
+  const block = await prisma.installBlock.findUnique({
+    where: { kind_subjectId: { kind: 'GUILD', subjectId: guildId } },
+    select: { id: true }
+  });
+  return Boolean(block);
+}

@@ -11,7 +11,7 @@ type Guild = {
   defaultLogChannelId: string | null;
 };
 
-type Me = { username: string; avatarUrl: string | null };
+type Me = { username: string; avatarUrl: string | null; superAdmin: boolean };
 
 const copy = {
   it: {
@@ -36,7 +36,8 @@ const copy = {
     empty: 'Nessun server gestibile con Sentinel installato. Aggiungi il bot a un server oppure verifica i tuoi permessi Discord.',
     configured: 'Logger configurato',
     setup: 'Da configurare',
-    back: 'Torna alla home'
+    back: 'Torna alla home',
+    superConsole: 'Super console'
   },
   en: {
     nav: { features: 'Features', add: 'Add Sentinel' },
@@ -60,7 +61,8 @@ const copy = {
     empty: 'No manageable server has Sentinel installed. Add the bot to a server or check your Discord permissions.',
     configured: 'Logger configured',
     setup: 'Needs configuration',
-    back: 'Back to home'
+    back: 'Back to home',
+    superConsole: 'Super console'
   }
 } as const;
 
@@ -94,6 +96,7 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
           <nav className="site-nav-links" aria-label={locale === 'it' ? 'Navigazione dashboard' : 'Dashboard navigation'}>
             <a href={home}>Home</a>
             <a href={`${home}#features`}>{c.nav.features}</a>
+            {me?.superAdmin && <a href={`/${locale}/super`}>{c.superConsole}</a>}
           </nav>
           <LanguageSwitcher locale={locale} itHref="/it/dashboard" enHref="/en/dashboard" />
           <div className="site-nav-actions">
@@ -104,6 +107,7 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
             <div>
               <a href={home}>Home</a>
               <a href={`${home}#features`}>{c.nav.features}</a>
+              {me?.superAdmin && <a href={`/${locale}/super`}>{c.superConsole}</a>}
                 <LanguageSwitcher locale={locale} itHref="/it/dashboard" enHref="/en/dashboard" mobile />
               <a className="site-button site-button-primary" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>
             </div>
@@ -115,7 +119,10 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
         <div className="site-container">
           <div className="dashboard-access-head">
             <div><span className="site-kicker">{c.kicker}</span><h1>{c.title}</h1><p>{c.intro}</p></div>
-            {me && <div className="dashboard-user">{me.avatarUrl && <img src={me.avatarUrl} alt="" />}<div><span>{c.connected}</span><strong>{me.username}</strong></div></div>}
+            {me && <div className="dashboard-user-actions">
+              {me.superAdmin && <a className="site-button site-button-secondary" href={`/${locale}/super`}>{c.superConsole}</a>}
+              <div className="dashboard-user">{me.avatarUrl && <img src={me.avatarUrl} alt="" />}<div><span>{c.connected}</span><strong>{me.username}</strong></div></div>
+            </div>}
           </div>
 
           {loading && <div className="dashboard-auth-card"><span className="site-kicker">{c.session}</span><h2>{c.checking}</h2><p>{c.checkingText}</p></div>}

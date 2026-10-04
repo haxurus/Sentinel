@@ -7,7 +7,7 @@ import {
 import pino from 'pino';
 import { prisma } from '@sentinel/db';
 import { config } from './config.js';
-import { ensureGuild, runRetentionCleanup } from './store.js';
+import { ensureGuild, isGuildInstallBlocked, runRetentionCleanup } from './store.js';
 import { registerHandlers } from './handlers.js';
 import { startDispatcher } from './dispatcher.js';
 import { recordEvent } from './recorder.js';
@@ -46,11 +46,17 @@ let internalApi: ReturnType<typeof startInternalApi> | null = null;
 client.once(Events.ClientReady, async (ready) => {
   logger.info({ user: ready.user.tag, guilds: ready.guilds.cache.size }, 'Discord bot ready');
   for (const guild of ready.guilds.cache.values()) {
+    if (await isGuildInstallBlocked(guild.id)) {
+      logger.warn({ guildId: guild.id, guildName: guild.name }, 'Leaving blocked guild');
+      await guild.leave().catch((error) => logger.error({ err: error, guildId: guild.id }, 'Unable to leave blocked guild'));
+      continue;
+    }
     await ensureGuild(guild);
   }
   worker = startDispatcher(client);
   internalApi = startInternalApi(client, config.internalApiKey, config.internalApiPort);
   for (const guild of ready.guilds.cache.values()) {
+    if (await isGuildInstallBlocked(guild.id)) continue;
     await recordEvent({ guildId: guild.id, eventKey: 'system.ready', actorId: ready.user.id, summary: `Bot connesso come ${ready.user.tag}.`, details: { guildCount: ready.guilds.cache.size, botUserId: ready.user.id, actorBot: true } });
   }
   await runRetentionCleanup().catch((error) => logger.error(error, 'Initial retention cleanup failed'));

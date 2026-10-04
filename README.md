@@ -154,6 +154,29 @@ Il pulsante di installazione richiede prima l'identificazione Discord. Gli utent
 
 Questa protezione del sito **non sostituisce** l'impostazione Discord del bot: durante lo sviluppo impostare anche **Public Bot = OFF** nel Developer Portal e **Installation > Install Link = None**, così un utente non autorizzato non può aggirare il sito costruendo manualmente un URL OAuth.
 
+## Super console
+
+L'istanza hosted include una super-console globale riservata al proprietario dell'installazione. Il controllo è effettuato server-side sulla sessione Discord.
+
+Configurazione esplicita consigliata:
+
+```env
+SUPER_ADMIN_USER_ID=123456789012345678
+```
+
+Per compatibilità con installazioni private già esistenti, se `SUPER_ADMIN_USER_ID` è vuoto e `INVITE_ALLOWED_USER_IDS` contiene **esattamente un** ID, quell'unico account viene usato come super-admin. Se l'allowlist contiene più account senza un super-admin esplicito, la super-console resta disabilitata.
+
+La super-console permette di:
+
+- vedere la lista live dei server in cui il bot è connesso;
+- far uscire il bot da un server;
+- blacklistare server, con espulsione immediata e rifiuto automatico ai successivi ingressi;
+- blacklistare Discord User ID dall'installazione hosted;
+- rimuovere elementi dalla blacklist;
+- consultare un audit separato delle azioni super-admin.
+
+Le API della super-console richiedono sempre la sessione del super-admin; nascondere il link nel frontend non è usato come controllo di sicurezza.
+
 
 ## Database e retention
 

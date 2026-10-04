@@ -27,15 +27,34 @@ export function startInternalApi(client: Client, secret: string, port = 3002) {
       res.end('{"error":"UNAUTHORIZED"}');
       return;
     }
-    if (req.method !== 'GET') {
-      res.statusCode = 405;
-      res.end('{"error":"METHOD_NOT_ALLOWED"}');
-      return;
-    }
     try {
       const url = new URL(req.url ?? '/', 'http://internal');
-      let match = url.pathname.match(/^\/guilds\/(\d{17,20})\/resources$/);
-      if (match) {
+
+      if (req.method === 'GET' && url.pathname === '/guilds') {
+        const guilds = [...client.guilds.cache.values()].map((guild) => ({
+          id: guild.id,
+          name: guild.name,
+          ownerId: guild.ownerId,
+          ownerTag: guild.members.cache.get(guild.ownerId)?.user?.tag ?? null,
+          memberCount: guild.memberCount,
+          iconUrl: guild.iconURL()
+        })).sort((a, b) => a.name.localeCompare(b.name));
+        res.end(JSON.stringify(guilds));
+        return;
+      }
+
+      let match = url.pathname.match(/^\/guilds\/(\d{17,20})\/leave$/);
+      if (req.method === 'POST' && match) {
+        const guildId = match[1]!;
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) throw new Error('GUILD_NOT_FOUND');
+        await guild.leave();
+        res.end(JSON.stringify({ ok: true, guildId }));
+        return;
+      }
+
+      match = url.pathname.match(/^\/guilds\/(\d{17,20})\/resources$/);
+      if (req.method === 'GET' && match) {
         const guildId = match[1]!;
         const guild = client.guilds.cache.get(guildId);
         if (!guild) throw new Error('GUILD_NOT_FOUND');
@@ -48,7 +67,7 @@ export function startInternalApi(client: Client, secret: string, port = 3002) {
       }
 
       match = url.pathname.match(/^\/guilds\/(\d{17,20})\/members\/(\d{17,20})\/access$/);
-      if (match) {
+      if (req.method === 'GET' && match) {
         const guildId = match[1]!;
         const userId = match[2]!;
         if (!SNOWFLAKE.test(guildId) || !SNOWFLAKE.test(userId)) throw new Error('INVALID_ID');
@@ -59,6 +78,11 @@ export function startInternalApi(client: Client, secret: string, port = 3002) {
         return;
       }
 
+      if (!['GET', 'POST'].includes(req.method ?? '')) {
+        res.statusCode = 405;
+        res.end('{"error":"METHOD_NOT_ALLOWED"}');
+        return;
+      }
       res.statusCode = 404;
       res.end('{"error":"NOT_FOUND"}');
     } catch (error) {

@@ -7,9 +7,10 @@ import { z } from 'zod';
 import { prisma } from '@sentinel/db';
 import { EVENT_CATALOG } from '@sentinel/shared';
 import { config } from './config.js';
-import { createSession, destroySession, getSession, randomToken, requireGuild, requireSession, resolveGuildAccess, type OAuthGuild } from './auth.js';
-import { getGuildResources } from './discord.js';
+import { createSession, destroySession, getSession, isSuperAdminUserId, randomToken, requireGuild, requireSession, requireSuperAdmin, resolveGuildAccess, type OAuthGuild } from './auth.js';
+import { getBotGuilds, getGuildResources, leaveBotGuild } from './discord.js';
 import { panelAudit } from './audit.js';
+import { superAdminAudit } from './super-audit.js';
 import { unprotectJson } from './security.js';
 
 const app = Fastify({
@@ -99,7 +100,13 @@ const botInstallUrl = () => {
   return url.toString();
 };
 
-const canInstallBot = (userId: string) => config.inviteAllowedUserIds.includes(userId);
+const canInstallBot = async (userId: string) => {
+  const blocked = await prisma.installBlock.findUnique({
+    where: { kind_subjectId: { kind: 'USER', subjectId: userId } },
+    select: { id: true }
+  });
+  return !blocked && config.inviteAllowedUserIds.includes(userId);
+};
 
 app.get('/bot/invite', async (request, reply) => {
   const parsed = z.object({ lang: z.enum(['it', 'en']).optional() }).safeParse(request.query);
@@ -113,7 +120,7 @@ app.get('/bot/invite', async (request, reply) => {
     return reply.redirect(loginUrl.toString());
   }
 
-  if (!canInstallBot(session.userId)) {
+  if (!(await canInstallBot(session.userId))) {
     return reply.redirect(`${config.webUrl}/${uiLanguage}/development`);
   }
 
@@ -192,7 +199,7 @@ app.get('/auth/discord/callback', async (request, reply) => {
   await createSession(reply, user, guilds);
 
   if (authIntent === 'invite') {
-    if (!canInstallBot(user.id)) {
+    if (!(await canInstallBot(user.id))) {
       return reply.redirect(`${config.webUrl}/${uiLanguage}/development`);
     }
     return reply.redirect(botInstallUrl());
@@ -209,7 +216,103 @@ app.post('/auth/logout', async (request, reply) => {
 app.get('/api/me', async (request, reply) => {
   const session = await requireSession(request, reply);
   if (!session) return;
-  return { userId: session.userId, username: session.username, avatarUrl: session.avatarUrl };
+  return {
+    userId: session.userId,
+    username: session.username,
+    avatarUrl: session.avatarUrl,
+    superAdmin: isSuperAdminUserId(session.userId)
+  };
+});
+
+app.get('/api/super/overview', async (request, reply) => {
+  const session = await requireSuperAdmin(request, reply);
+  if (!session) return;
+
+  const [guilds, blocks, audit] = await Promise.all([
+    getBotGuilds(),
+    prisma.installBlock.findMany({ orderBy: { createdAt: 'desc' } }),
+    prisma.superAdminAudit.findMany({ orderBy: { createdAt: 'desc' }, take: 200 })
+  ]);
+
+  const guildBlocks = new Set(blocks.filter((block) => block.kind === 'GUILD').map((block) => block.subjectId));
+  return {
+    guilds: guilds.map((guild) => ({ ...guild, blocked: guildBlocks.has(guild.id) })),
+    blocks,
+    audit: audit.map((row) => ({ ...row, details: unprotectJson(row.details) }))
+  };
+});
+
+app.put('/api/super/blocks/:kind/:subjectId', async (request, reply) => {
+  const session = await requireSuperAdmin(request, reply);
+  if (!session) return;
+
+  const params = z.object({
+    kind: z.enum(['USER', 'GUILD']),
+    subjectId: snowflake
+  }).safeParse(request.params);
+  const body = z.object({ reason: z.string().trim().max(500).optional() }).safeParse(request.body ?? {});
+  if (!params.success || !body.success) return reply.code(400).send({ error: 'INVALID_BLOCK_REQUEST' });
+
+  const { kind, subjectId } = params.data;
+  if (kind === 'USER' && subjectId === config.superAdminUserId) {
+    return reply.code(400).send({ error: 'CANNOT_BLOCK_SUPER_ADMIN' });
+  }
+
+  const block = await prisma.installBlock.upsert({
+    where: { kind_subjectId: { kind, subjectId } },
+    update: { reason: body.data.reason || null, createdByUserId: session.userId },
+    create: { kind, subjectId, reason: body.data.reason || null, createdByUserId: session.userId }
+  });
+
+  let left = false;
+  if (kind === 'GUILD') {
+    try {
+      await leaveBotGuild(subjectId);
+      left = true;
+    } catch (error) {
+      const status = (error as Error & { status?: number }).status;
+      if (status !== 404) request.log.warn({ err: error, guildId: subjectId }, 'Unable to immediately leave blocked guild');
+    }
+  }
+
+  await superAdminAudit(request, session, 'install_block.upsert', kind, subjectId, {
+    reason: body.data.reason || null,
+    left
+  });
+  return { ok: true, block, left };
+});
+
+app.delete('/api/super/blocks/:kind/:subjectId', async (request, reply) => {
+  const session = await requireSuperAdmin(request, reply);
+  if (!session) return;
+
+  const params = z.object({
+    kind: z.enum(['USER', 'GUILD']),
+    subjectId: snowflake
+  }).safeParse(request.params);
+  if (!params.success) return reply.code(400).send({ error: 'INVALID_BLOCK_REQUEST' });
+
+  const { kind, subjectId } = params.data;
+  await prisma.installBlock.deleteMany({ where: { kind, subjectId } });
+  await superAdminAudit(request, session, 'install_block.delete', kind, subjectId);
+  return { ok: true };
+});
+
+app.post('/api/super/guilds/:guildId/leave', async (request, reply) => {
+  const session = await requireSuperAdmin(request, reply);
+  if (!session) return;
+  const { guildId } = request.params as { guildId: string };
+
+  try {
+    await leaveBotGuild(guildId);
+  } catch (error) {
+    const status = (error as Error & { status?: number }).status;
+    if (status === 404) return reply.code(404).send({ error: 'GUILD_NOT_CONNECTED' });
+    throw error;
+  }
+
+  await superAdminAudit(request, session, 'guild.leave', 'GUILD', guildId);
+  return { ok: true };
 });
 
 app.get('/api/catalog', async (request, reply) => {
