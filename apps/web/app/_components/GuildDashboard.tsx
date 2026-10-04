@@ -256,7 +256,16 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
           <div className="two-col">
             <section className="panel">
               <div className="panel-title"><div><p className="eyebrow">{L('DESTINAZIONE', 'DESTINATION')}</p><h2>{L('Impostazioni generali', 'General settings')}</h2></div></div>
-              <label>{L('Canale log predefinito', 'Default log channel')}<select disabled={!canAdmin} value={settings.defaultLogChannelId ?? ''} onChange={(e) => saveSettings({ defaultLogChannelId: e.target.value || null })}><option value="">Nessuno</option>{textChannels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}</select></label>
+              <label>{L('Canale log predefinito', 'Default log channel')}<SearchableSelect
+                disabled={!canAdmin}
+                value={settings.defaultLogChannelId ?? ''}
+                onChange={(value) => saveSettings({ defaultLogChannelId: value || null })}
+                placeholder={L('Cerca un canale…', 'Search channels…')}
+                options={[
+                  { value: '', label: L('Nessuno', 'None') },
+                  ...textChannels.map((channel) => ({ value: channel.id, label: `#${channel.name}` }))
+                ]}
+              /></label>
               <label>{L('Retention dati', 'Data retention')}<input disabled={!canAdmin} type="number" min="1" max="3650" value={settings.defaultRetentionDays} onChange={(e) => saveSettings({ defaultRetentionDays: Number(e.target.value) })} /></label>
               <div className="inline-fields"><label>{L('Fuso orario', 'Timezone')}<input disabled={!canAdmin} value={settings.timezone} onChange={(e) => setSettings({ ...settings, timezone: e.target.value })} onBlur={() => saveSettings({ timezone: settings.timezone })} /></label><label>Locale<input disabled={!canAdmin} value={settings.locale} onChange={(e) => setSettings({ ...settings, locale: e.target.value })} onBlur={() => saveSettings({ locale: settings.locale })} /></label></div>
               <div className="inline-fields"><label>{L('Colore embed', 'Embed color')}<input disabled={!canAdmin} type="color" value={settings.embedColor} onChange={(e) => saveSettings({ embedColor: e.target.value })} /></label><label>Footer<input disabled={!canAdmin} value={settings.embedFooter} onChange={(e) => setSettings({ ...settings, embedFooter: e.target.value })} onBlur={() => saveSettings({ embedFooter: settings.embedFooter })} /></label></div>
@@ -348,6 +357,97 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
   );
 }
 
+type SearchOption = { value: string; label: string };
+
+function SearchableSelect({
+  value,
+  options,
+  onChange,
+  placeholder,
+  disabled
+}: {
+  value: string;
+  options: SearchOption[];
+  onChange: (value: string) => void;
+  placeholder: string;
+  disabled?: boolean;
+}) {
+  const selected = options.find((option) => option.value === value) ?? null;
+  const [query, setQuery] = useState(selected?.label ?? '');
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) setQuery(selected?.label ?? '');
+  }, [value, selected?.label, open]);
+
+  const normalized = query.trim().toLocaleLowerCase();
+  const filtered = normalized
+    ? options.filter((option) =>
+        option.label.toLocaleLowerCase().includes(normalized) ||
+        option.value.toLocaleLowerCase().includes(normalized) ||
+        option.label.replace(/^[@#]/, '').toLocaleLowerCase().includes(normalized.replace(/^[@#]/, ''))
+      )
+    : options;
+
+  const choose = (option: SearchOption) => {
+    onChange(option.value);
+    setQuery(option.label);
+    setOpen(false);
+  };
+
+  const reset = () => {
+    setQuery(selected?.label ?? '');
+    setOpen(false);
+  };
+
+  return <div className={`searchable-select ${open ? 'is-open' : ''}`}>
+    <input
+      type="text"
+      role="combobox"
+      aria-expanded={open}
+      aria-autocomplete="list"
+      autoComplete="off"
+      disabled={disabled}
+      value={query}
+      placeholder={placeholder}
+      onFocus={(event) => {
+        setOpen(true);
+        event.currentTarget.select();
+      }}
+      onChange={(event) => {
+        setQuery(event.target.value);
+        setOpen(true);
+      }}
+      onBlur={() => window.setTimeout(reset, 100)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && open && filtered.length) {
+          event.preventDefault();
+          choose(filtered[0]!);
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          reset();
+          event.currentTarget.blur();
+        }
+      }}
+    />
+    {open && !disabled && <div className="searchable-select-menu" role="listbox">
+      {filtered.length ? filtered.map((option) => <div
+        key={option.value || '__empty__'}
+        className={`searchable-select-option ${option.value === value ? 'is-selected' : ''}`}
+        role="option"
+        aria-selected={option.value === value}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          choose(option);
+        }}
+      >
+        <span>{option.label}</span>
+        {option.value && <small>{option.value}</small>}
+      </div>) : <div className="searchable-select-empty">—</div>}
+    </div>}
+  </div>;
+}
+
 function Toggle({ label, description, checked, onChange, danger, disabled }: { label: string; description: string; checked: boolean; onChange: (value: boolean) => void; danger?: boolean; disabled?: boolean }) {
   return <div className={`toggle-row ${danger ? 'danger-toggle' : ''}`}><div><strong>{label}</strong><span>{description}</span></div><button disabled={disabled} className={`switch ${checked ? 'on' : ''}`} onClick={() => onChange(!checked)}><i /></button></div>;
 }
@@ -362,9 +462,27 @@ function RouteEditor({ event, route, channels, roles, onSave, readOnly, locale }
   return <article className={`route-card ${route.enabled ? 'enabled' : ''}`}>
     <div className="route-head"><button disabled={readOnly} title={L('Invio Discord', 'Discord delivery')} className={`switch ${route.enabled ? 'on' : ''}`} onClick={() => onSave({ enabled: !route.enabled })}><i /></button><div className="route-name" onClick={() => setOpen(!open)}><div><strong>{displayEvent.label}</strong>{event.noisy && <span className="badge">{L('ALTO VOLUME', 'HIGH VOLUME')}</span>}{!route.captureEnabled && <span className="badge">{L('NON ACQUISITO', 'NOT COLLECTED')}</span>}</div><span>{event.key} · {displayEvent.description}</span></div><button className="chevron" onClick={() => setOpen(!open)}>{open ? '⌃' : '⌄'}</button></div>
     {open && <div className="route-config">
-      <label>{L('Canale destinazione', 'Destination channel')}<select disabled={readOnly} value={route.destinationChannelId ?? ''} onChange={(e) => onSave({ destinationChannelId: e.target.value || null })}><option value="">{L('Usa predefinito', 'Use default')}</option>{channels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}</select></label>
+      <label>{L('Canale destinazione', 'Destination channel')}<SearchableSelect
+        disabled={readOnly}
+        value={route.destinationChannelId ?? ''}
+        onChange={(value) => onSave({ destinationChannelId: value || null })}
+        placeholder={L('Cerca un canale…', 'Search channels…')}
+        options={[
+          { value: '', label: L('Usa predefinito', 'Use default') },
+          ...channels.map((channel) => ({ value: channel.id, label: `#${channel.name}` }))
+        ]}
+      /></label>
       <label>{L('Titolo personalizzato', 'Custom title')}<input disabled={readOnly} value={title} placeholder={displayEvent.label} onBlur={() => onSave({ customTitle: title || null })} onChange={(e) => setTitle(e.target.value)} /></label>
-      <div className="inline-fields"><label>{L('Colore', 'Color')}<input disabled={readOnly} type="color" value={route.embedColor ?? '#3f3c54'} onChange={(e) => onSave({ embedColor: e.target.value })} /></label><label>{L('Menziona ruolo', 'Mention role')}<select disabled={readOnly} value={route.mentionRoleIds[0] ?? ''} onChange={(e) => onSave({ mentionRoleIds: e.target.value ? [e.target.value] : [] })}><option value="">{L('Nessuno', 'None')}</option>{roles.map((r) => <option key={r.id} value={r.id}>@{r.name}</option>)}</select></label><label>{L('Retention evento', 'Event retention')}<input disabled={readOnly} type="number" min="1" max="3650" defaultValue={route.retentionDays ?? ''} placeholder="Default" onBlur={(e) => onSave({ retentionDays: e.currentTarget.value ? Number(e.currentTarget.value) : null })} /></label></div>
+      <div className="inline-fields"><label>{L('Colore', 'Color')}<input disabled={readOnly} type="color" value={route.embedColor ?? '#3f3c54'} onChange={(e) => onSave({ embedColor: e.target.value })} /></label><label>{L('Menziona ruolo', 'Mention role')}<SearchableSelect
+        disabled={readOnly}
+        value={route.mentionRoleIds[0] ?? ''}
+        onChange={(value) => onSave({ mentionRoleIds: value ? [value] : [] })}
+        placeholder={L('Cerca un ruolo…', 'Search roles…')}
+        options={[
+          { value: '', label: L('Nessuno', 'None') },
+          ...roles.map((role) => ({ value: role.id, label: `@${role.name}` }))
+        ]}
+      /></label><label>{L('Retention evento', 'Event retention')}<input disabled={readOnly} type="number" min="1" max="3650" defaultValue={route.retentionDays ?? ''} placeholder="Default" onBlur={(e) => onSave({ retentionDays: e.currentTarget.value ? Number(e.currentTarget.value) : null })} /></label></div>
       <div className="inline-fields"><label>{L('Footer personalizzato', 'Custom footer')}<input disabled={readOnly} defaultValue={route.customFooter ?? ''} placeholder={L('Usa footer globale', 'Use global footer')} onBlur={(e) => onSave({ customFooter: e.currentTarget.value || null })} /></label><label>{L("Testo prima dell'embed", 'Text before embed')}<input disabled={readOnly} defaultValue={route.textPrefix ?? ''} placeholder={L('Opzionale', 'Optional')} onBlur={(e) => onSave({ textPrefix: e.currentTarget.value || null })} /></label><label>Thumbnail URL<input disabled={readOnly} type="url" defaultValue={route.thumbnailUrl ?? ''} placeholder="https://..." onBlur={(e) => onSave({ thumbnailUrl: e.currentTarget.value || null })} /></label></div>
       <div className="mini-toggles"><label><input type="checkbox" disabled={readOnly} checked={route.captureEnabled} onChange={(e) => onSave({ captureEnabled: e.target.checked })} /> {L('Acquisisci nel database', 'Collect in database')}</label><label><input type="checkbox" disabled={readOnly} checked={route.enabled} onChange={(e) => onSave({ enabled: e.target.checked })} /> {L('Invia su Discord', 'Send to Discord')}</label><label><input type="checkbox" disabled={readOnly} checked={route.showTimestamp} onChange={(e) => onSave({ showTimestamp: e.target.checked })} /> Timestamp</label><label><input type="checkbox" disabled={readOnly} checked={route.showActor} onChange={(e) => onSave({ showActor: e.target.checked })} /> Actor</label><label><input type="checkbox" disabled={readOnly} checked={route.showTarget} onChange={(e) => onSave({ showTarget: e.target.checked })} /> Target</label><label><input type="checkbox" disabled={readOnly} checked={route.showChannel} onChange={(e) => onSave({ showChannel: e.target.checked })} /> {L('Canale', 'Channel')}</label><label><input type="checkbox" disabled={readOnly} checked={route.includeContent} onChange={(e) => onSave({ includeContent: e.target.checked })} /> {L('Contenuto nell’embed', 'Content in embed')}</label><label><input type="checkbox" disabled={readOnly} checked={route.includeAttachments} onChange={(e) => onSave({ includeAttachments: e.target.checked })} /> {L('Allegati nell’embed', 'Attachments in embed')}</label><label><input type="checkbox" disabled={readOnly} checked={route.ignoreBots} onChange={(e) => onSave({ ignoreBots: e.target.checked })} /> {L('Ignora bot', 'Ignore bots')}</label></div>
       <div className="inline-fields"><CsvField disabled={readOnly} label={L('Ignora User ID', 'Ignore User ID')} values={route.ignoredUserIds} onSave={(v) => onSave({ ignoredUserIds: v })} /><CsvField disabled={readOnly} label={L('Ignora Role ID', 'Ignore Role ID')} values={route.ignoredRoleIds} onSave={(v) => onSave({ ignoredRoleIds: v })} /><CsvField disabled={readOnly} label={L('Ignora Channel ID', 'Ignore Channel ID')} values={route.ignoredChannelIds} onSave={(v) => onSave({ ignoredChannelIds: v })} /></div>
@@ -392,7 +510,7 @@ function AccessBindings({ guildId, roles, bindings, onChange, locale }: { guildI
     await api(`/backend/api/guilds/${guildId}/access-bindings/${id}`, { method: 'DELETE' });
     onChange(bindings.filter((x) => x.discordRoleId !== id));
   };
-  return <section className="panel access-panel"><div className="panel-title"><div><p className="eyebrow">{L('PERMESSI', 'PERMISSIONS')}</p><h2>{L('Accesso tramite ruoli Discord', 'Access through Discord roles')}</h2></div></div><div className="access-add"><select value={roleId} onChange={(e) => setRoleId(e.target.value)}><option value="">{L('Seleziona ruolo…', 'Select role…')}</option>{roles.filter((r) => r.name !== '@everyone').map((r) => <option key={r.id} value={r.id}>@{r.name}</option>)}</select><select value={level} onChange={(e) => setLevel(e.target.value as 'VIEWER' | 'MODERATOR' | 'ADMIN')}><option value="VIEWER">Viewer</option><option value="MODERATOR">Moderator</option><option value="ADMIN">Admin</option></select><button onClick={save}>{L('Aggiungi', 'Add')}</button></div><div className="binding-list">{bindings.map((b) => { const role = roles.find((r) => r.id === b.discordRoleId); return <div key={b.id}><span>@{role?.name ?? b.discordRoleId}</span><strong>{b.accessLevel}</strong><button onClick={() => remove(b.discordRoleId)}>{L('Rimuovi', 'Remove')}</button></div>; })}</div></section>;
+  return <section className="panel access-panel"><div className="panel-title"><div><p className="eyebrow">{L('PERMESSI', 'PERMISSIONS')}</p><h2>{L('Accesso tramite ruoli Discord', 'Access through Discord roles')}</h2></div></div><div className="access-add"><SearchableSelect value={roleId} onChange={setRoleId} placeholder={L('Cerca un ruolo…', 'Search roles…')} options={roles.filter((role) => role.name !== '@everyone').map((role) => ({ value: role.id, label: `@${role.name}` }))} /><select value={level} onChange={(e) => setLevel(e.target.value as 'VIEWER' | 'MODERATOR' | 'ADMIN')}><option value="VIEWER">Viewer</option><option value="MODERATOR">Moderator</option><option value="ADMIN">Admin</option></select><button onClick={save}>{L('Aggiungi', 'Add')}</button></div><div className="binding-list">{bindings.map((b) => { const role = roles.find((r) => r.id === b.discordRoleId); return <div key={b.id}><span>@{role?.name ?? b.discordRoleId}</span><strong>{b.accessLevel}</strong><button onClick={() => remove(b.discordRoleId)}>{L('Rimuovi', 'Remove')}</button></div>; })}</div></section>;
 }
 
 function PrivacyDelete({ guildId, onDone, locale }: { guildId: string; onDone: () => void; locale: Locale }) {
