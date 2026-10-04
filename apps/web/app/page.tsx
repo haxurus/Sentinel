@@ -69,17 +69,15 @@ export default function Home() {
       <section className="site-hero">
         <div className="site-container site-hero-grid">
           <div className="site-hero-copy">
-            <span className="site-kicker">DISCORD AUDIT &amp; LOGGING</span>
-            <h1>Quello che succede nel server, finalmente resta chiaro.</h1>
-            <p>
-              Sentinel raccoglie gli eventi Discord, li organizza in uno storico ricercabile
-              e ti lascia decidere cosa conservare e cosa pubblicare nei canali di log.
+            <h1>Sentinel</h1>
+            <p className="site-hero-description">
+              <span>Il bot di audit e logging che tiene traccia di ciò che succede nel tuo server Discord.</span>
+              <span>Configura cosa registrare, dove inviarlo e consulta tutto dalla dashboard.</span>
             </p>
             <div className="site-hero-actions">
-              <a className="site-button site-button-primary" href="/backend/bot/invite">Aggiungi Sentinel a Discord</a>
               <a className="site-button site-button-secondary" href="/dashboard">Apri la dashboard</a>
+              <a className="site-button site-button-primary" href="/backend/bot/invite">Aggiungi Sentinel a Discord</a>
             </div>
-            <div className="site-hero-note"><span />Self-hosted · accessi controllati · nessun permesso Administrator richiesto</div>
           </div>
 
           <div className="site-console" aria-label="Anteprima di Sentinel">
@@ -109,11 +107,6 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="site-container site-stats">
-          <div><strong>75</strong><span>tipi di evento configurabili</span></div>
-          <div><strong>30 gg</strong><span>retention predefinita</span></div>
-          <div><strong>AES-256-GCM</strong><span>protezione dati sensibili</span></div>
-        </div>
       </section>
 
       <section className="site-section" id="funzioni">
@@ -206,7 +199,7 @@ export default function Home() {
             </div>
           </div>
           <div className="site-footer-bottom">
-            <span>Sentinel © 2026 · Made by Haxurus</span>
+            <span>Sentinel © 2026 · Made with 💚 by Haxurus</span>
             <span>Discord Audit &amp; Logging</span>
           </div>
         </div>
