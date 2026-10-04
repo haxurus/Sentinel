@@ -15,7 +15,7 @@ type Me = { username: string; avatarUrl: string | null };
 
 const copy = {
   it: {
-    nav: { features: 'Funzioni', security: 'Sicurezza', add: 'Aggiungi Sentinel' },
+    nav: { features: 'Funzioni', add: 'Aggiungi Sentinel' },
     kicker: 'DASHBOARD',
     title: 'Gestisci Sentinel.',
     intro: 'Accedi con Discord per configurare logger, routing, storico, retention e permessi del pannello.',
@@ -39,7 +39,7 @@ const copy = {
     back: 'Torna alla home'
   },
   en: {
-    nav: { features: 'Features', security: 'Security', add: 'Add Sentinel' },
+    nav: { features: 'Features', add: 'Add Sentinel' },
     kicker: 'DASHBOARD',
     title: 'Manage Sentinel.',
     intro: 'Sign in with Discord to configure loggers, routing, history, retention and panel permissions.',
@@ -94,7 +94,6 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
           <nav className="site-nav-links" aria-label={locale === 'it' ? 'Navigazione dashboard' : 'Dashboard navigation'}>
             <a href={home}>Home</a>
             <a href={`${home}#features`}>{c.nav.features}</a>
-            <a href={`${home}#security`}>{c.nav.security}</a>
           </nav>
           <LanguageSwitcher locale={locale} itHref="/it/dashboard" enHref="/en/dashboard" />
           <div className="site-nav-actions">
@@ -105,8 +104,7 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
             <div>
               <a href={home}>Home</a>
               <a href={`${home}#features`}>{c.nav.features}</a>
-              <a href={`${home}#security`}>{c.nav.security}</a>
-              <LanguageSwitcher locale={locale} itHref="/it/dashboard" enHref="/en/dashboard" mobile />
+                <LanguageSwitcher locale={locale} itHref="/it/dashboard" enHref="/en/dashboard" mobile />
               <a className="site-button site-button-primary" href="/backend/bot/invite">{c.nav.add}</a>
             </div>
           </details>
