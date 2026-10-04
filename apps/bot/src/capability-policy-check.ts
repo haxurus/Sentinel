@@ -76,7 +76,11 @@ const forbiddenSourcePatterns: Array<[string, RegExp]> = [
   ['message manager deletion', /\.messages\.(?:delete|bulkDelete)\s*\(/],
   ['bulk message deletion', /\.bulkDelete\s*\(/],
   ['webhook creation', /\.createWebhook\s*\(/],
-  ['AutoMod administrative mutation', /\.autoModerationRules\.(?:create|edit|delete)\s*\(/]
+  ['AutoMod administrative mutation', /\.autoModerationRules\.(?:create|edit|delete)\s*\(/],
+  ['direct outbound Gateway packet', /\.ws\.(?:send|broadcast)\s*\(/],
+  ['presence mutation', /\.setPresence\s*\(/],
+  ['activity mutation', /\.setActivity\s*\(/],
+  ['status mutation', /\.setStatus\s*\(/]
 ];
 
 for (const name of fs.readdirSync(sourceDir)) {
@@ -86,6 +90,10 @@ for (const name of fs.readdirSync(sourceDir)) {
     if (pattern.test(content)) {
       throw new Error(`Forbidden Discord capability detected in ${name}: ${label}`);
     }
+  }
+
+  if (name !== 'dispatcher.ts' && /\.send\s*\(/.test(content)) {
+    throw new Error(`Discord-style send call is only allowed in dispatcher.ts, found in ${name}`);
   }
 }
 
