@@ -485,15 +485,198 @@ function RouteEditor({ event, route, channels, roles, onSave, readOnly, locale }
       /></label><label>{L('Retention evento', 'Event retention')}<input disabled={readOnly} type="number" min="1" max="3650" defaultValue={route.retentionDays ?? ''} placeholder="Default" onBlur={(e) => onSave({ retentionDays: e.currentTarget.value ? Number(e.currentTarget.value) : null })} /></label></div>
       <div className="inline-fields"><label>{L('Footer personalizzato', 'Custom footer')}<input disabled={readOnly} defaultValue={route.customFooter ?? ''} placeholder={L('Usa footer globale', 'Use global footer')} onBlur={(e) => onSave({ customFooter: e.currentTarget.value || null })} /></label><label>{L("Testo prima dell'embed", 'Text before embed')}<input disabled={readOnly} defaultValue={route.textPrefix ?? ''} placeholder={L('Opzionale', 'Optional')} onBlur={(e) => onSave({ textPrefix: e.currentTarget.value || null })} /></label><label>Thumbnail URL<input disabled={readOnly} type="url" defaultValue={route.thumbnailUrl ?? ''} placeholder="https://..." onBlur={(e) => onSave({ thumbnailUrl: e.currentTarget.value || null })} /></label></div>
       <div className="mini-toggles"><label><input type="checkbox" disabled={readOnly} checked={route.captureEnabled} onChange={(e) => onSave({ captureEnabled: e.target.checked })} /> {L('Acquisisci nel database', 'Collect in database')}</label><label><input type="checkbox" disabled={readOnly} checked={route.enabled} onChange={(e) => onSave({ enabled: e.target.checked })} /> {L('Invia su Discord', 'Send to Discord')}</label><label><input type="checkbox" disabled={readOnly} checked={route.showTimestamp} onChange={(e) => onSave({ showTimestamp: e.target.checked })} /> Timestamp</label><label><input type="checkbox" disabled={readOnly} checked={route.showActor} onChange={(e) => onSave({ showActor: e.target.checked })} /> Actor</label><label><input type="checkbox" disabled={readOnly} checked={route.showTarget} onChange={(e) => onSave({ showTarget: e.target.checked })} /> Target</label><label><input type="checkbox" disabled={readOnly} checked={route.showChannel} onChange={(e) => onSave({ showChannel: e.target.checked })} /> {L('Canale', 'Channel')}</label><label><input type="checkbox" disabled={readOnly} checked={route.includeContent} onChange={(e) => onSave({ includeContent: e.target.checked })} /> {L('Contenuto nell’embed', 'Content in embed')}</label><label><input type="checkbox" disabled={readOnly} checked={route.includeAttachments} onChange={(e) => onSave({ includeAttachments: e.target.checked })} /> {L('Allegati nell’embed', 'Attachments in embed')}</label><label><input type="checkbox" disabled={readOnly} checked={route.ignoreBots} onChange={(e) => onSave({ ignoreBots: e.target.checked })} /> {L('Ignora bot', 'Ignore bots')}</label></div>
-      <div className="inline-fields"><CsvField disabled={readOnly} label={L('Ignora User ID', 'Ignore User ID')} values={route.ignoredUserIds} onSave={(v) => onSave({ ignoredUserIds: v })} /><CsvField disabled={readOnly} label={L('Ignora Role ID', 'Ignore Role ID')} values={route.ignoredRoleIds} onSave={(v) => onSave({ ignoredRoleIds: v })} /><CsvField disabled={readOnly} label={L('Ignora Channel ID', 'Ignore Channel ID')} values={route.ignoredChannelIds} onSave={(v) => onSave({ ignoredChannelIds: v })} /></div>
+      <div className="ignore-fields">
+        <ManualIdList
+          disabled={readOnly}
+          label={L('Ignora utenti', 'Ignore users')}
+          placeholder={L('Discord User ID…', 'Discord User ID…')}
+          values={route.ignoredUserIds}
+          onSave={(values) => onSave({ ignoredUserIds: values })}
+          locale={locale}
+        />
+        <SearchableMultiSelect
+          disabled={readOnly}
+          label={L('Ignora ruoli', 'Ignore roles')}
+          placeholder={L('Cerca un ruolo…', 'Search roles…')}
+          values={route.ignoredRoleIds}
+          options={roles.map((role) => ({ value: role.id, label: `@${role.name}` }))}
+          onSave={(values) => onSave({ ignoredRoleIds: values })}
+          locale={locale}
+        />
+        <SearchableMultiSelect
+          disabled={readOnly}
+          label={L('Ignora canali', 'Ignore channels')}
+          placeholder={L('Cerca un canale…', 'Search channels…')}
+          values={route.ignoredChannelIds}
+          options={channels.map((channel) => ({ value: channel.id, label: `#${channel.name}` }))}
+          onSave={(values) => onSave({ ignoredChannelIds: values })}
+          locale={locale}
+        />
+      </div>
       <div className="embed-preview" style={{ borderLeftColor: route.embedColor ?? '#3f3c54' }}><small>{L('ANTEPRIMA EMBED', 'EMBED PREVIEW')}</small><strong>{title || displayEvent.label}</strong><span>{displayEvent.description}</span>{route.showActor && <em>{L('Autore azione · @utente', 'Action author · @user')}</em>}{route.showChannel && <em>{L('Canale · #canale', 'Channel · #channel')}</em>}<small>{route.customFooter || L('Footer globale', 'Global footer')}{route.showTimestamp ? ' · timestamp' : ''}</small></div>
     </div>}
   </article>;
 }
 
-function CsvField({ label, values, onSave, disabled }: { label: string; values: string[]; onSave: (values: string[]) => void; disabled?: boolean }) {
-  const [value, setValue] = useState(values.join(', '));
-  return <label>{label}<input disabled={disabled} value={value} onChange={(e) => setValue(e.target.value)} onBlur={() => onSave(value.split(',').map((x) => x.trim()).filter(Boolean))} /></label>;
+function ManualIdList({
+  label,
+  placeholder,
+  values,
+  onSave,
+  disabled,
+  locale
+}: {
+  label: string;
+  placeholder: string;
+  values: string[];
+  onSave: (values: string[]) => void;
+  disabled?: boolean;
+  locale: Locale;
+}) {
+  const [input, setInput] = useState('');
+  const L = (it: string, en: string) => locale === 'it' ? it : en;
+
+  const add = () => {
+    const candidates = input
+      .split(/[\s,;]+/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .filter((value) => /^\d{15,22}$/.test(value));
+
+    if (!candidates.length) return;
+    const next = [...new Set([...values, ...candidates])];
+    onSave(next);
+    setInput('');
+  };
+
+  const remove = (value: string) => onSave(values.filter((item) => item !== value));
+
+  return <div className="multi-filter-field">
+    <span className="multi-filter-label">{label}</span>
+    <div className="multi-filter-entry">
+      <input
+        disabled={disabled}
+        value={input}
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder={placeholder}
+        onChange={(event) => setInput(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            add();
+          }
+        }}
+      />
+      <button type="button" disabled={disabled || !input.trim()} onClick={add} aria-label={L('Aggiungi', 'Add')}>+</button>
+    </div>
+    <div className="multi-filter-list">
+      {values.map((value) => <div className="multi-filter-chip" key={value}>
+        <span><code>{value}</code></span>
+        <button type="button" disabled={disabled} onClick={() => remove(value)} aria-label={L('Rimuovi', 'Remove')}>×</button>
+      </div>)}
+    </div>
+  </div>;
+}
+
+function SearchableMultiSelect({
+  label,
+  placeholder,
+  values,
+  options,
+  onSave,
+  disabled,
+  locale
+}: {
+  label: string;
+  placeholder: string;
+  values: string[];
+  options: SearchOption[];
+  onSave: (values: string[]) => void;
+  disabled?: boolean;
+  locale: Locale;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const L = (it: string, en: string) => locale === 'it' ? it : en;
+
+  const available = options.filter((option) => !values.includes(option.value));
+  const normalized = query.trim().toLocaleLowerCase();
+  const filtered = (normalized
+    ? available.filter((option) =>
+        option.label.toLocaleLowerCase().includes(normalized) ||
+        option.value.toLocaleLowerCase().includes(normalized) ||
+        option.label.replace(/^[@#]/, '').toLocaleLowerCase().includes(normalized.replace(/^[@#]/, ''))
+      )
+    : available
+  ).slice(0, 100);
+
+  const add = (option?: SearchOption) => {
+    const selected = option ?? filtered[0];
+    if (!selected || values.includes(selected.value)) return;
+    onSave([...values, selected.value]);
+    setQuery('');
+    setOpen(false);
+  };
+
+  const remove = (value: string) => onSave(values.filter((item) => item !== value));
+
+  return <div className="multi-filter-field">
+    <span className="multi-filter-label">{label}</span>
+    <div className={`multi-filter-search ${open ? 'is-open' : ''}`}>
+      <div className="multi-filter-entry">
+        <input
+          disabled={disabled}
+          value={query}
+          autoComplete="off"
+          placeholder={placeholder}
+          role="combobox"
+          aria-expanded={open}
+          aria-autocomplete="list"
+          onFocus={() => setOpen(true)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpen(true);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              add();
+            } else if (event.key === 'Escape') {
+              event.preventDefault();
+              setOpen(false);
+            }
+          }}
+          onBlur={() => window.setTimeout(() => setOpen(false), 100)}
+        />
+        <button type="button" disabled={disabled || !filtered.length} onClick={() => add()} aria-label={L('Aggiungi', 'Add')}>+</button>
+      </div>
+      {open && !disabled && <div className="multi-filter-menu" role="listbox">
+        {filtered.length ? filtered.map((option) => <div
+          key={option.value}
+          className="multi-filter-option"
+          role="option"
+          aria-selected="false"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            add(option);
+          }}
+        >
+          <span>{option.label}</span>
+          <small>{option.value}</small>
+        </div>) : <div className="searchable-select-empty">{L('Nessun risultato', 'No results')}</div>}
+      </div>}
+    </div>
+    <div className="multi-filter-list">
+      {values.map((value) => {
+        const option = options.find((item) => item.value === value);
+        return <div className="multi-filter-chip" key={value}>
+          <span>{option?.label ?? value}{option && <small>{value}</small>}</span>
+          <button type="button" disabled={disabled} onClick={() => remove(value)} aria-label={L('Rimuovi', 'Remove')}>×</button>
+        </div>;
+      })}
+    </div>
+  </div>;
 }
 
 function AccessBindings({ guildId, roles, bindings, onChange, locale }: { guildId: string; roles: Role[]; bindings: AccessBinding[]; onChange: (bindings: AccessBinding[]) => void; locale: Locale }) {
