@@ -436,3 +436,20 @@ body { overflow-x: hidden; }
   .dashboard-language-switcher a { min-width: 32px; height: 30px; padding: 0 7px; font-size: .66rem; }
   .status-pill { padding: 7px 9px; font-size: 11px; }
 }
+
+
+/* Development notice */
+.development-page { min-height: 100vh; }
+.development-hero { min-height: calc(100vh - 75px); display: grid; align-items: center; padding: 72px 0; }
+.development-card { max-width: 880px; padding: 52px; border: 1px solid var(--site-line); border-radius: var(--site-radius); background: radial-gradient(circle at 88% 10%, rgba(139,114,255,.15), transparent 30%), rgba(18,20,38,.72); box-shadow: 0 30px 90px rgba(0,0,0,.28); }
+.development-card h1 { margin: 14px 0 24px; font-size: clamp(3rem,7vw,6.5rem); line-height: .92; letter-spacing: -.06em; }
+.development-card p { max-width: 720px; margin: 0 0 12px; color: var(--site-muted); font-size: 1rem; line-height: 1.7; }
+.development-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 30px; }
+.development-home-link { display: inline-block; margin-top: 28px; color: var(--site-muted); font-size: .82rem; }
+.development-home-link:hover { color: var(--site-text); }
+@media (max-width: 720px) {
+  .development-hero { padding: 42px 0; }
+  .development-card { padding: 30px; }
+  .development-actions { flex-direction: column; }
+  .development-actions .site-button { width: 100%; }
+}

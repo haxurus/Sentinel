@@ -142,6 +142,19 @@ Permessi consigliati al bot, senza `Administrator`:
 
 Aggiungere solo gli ulteriori permessi strettamente necessari alle funzioni effettivamente abilitate.
 
+## Installazioni private durante lo sviluppo
+
+L'istanza hosted può limitare l'installazione del bot a una allowlist di Discord User ID tramite:
+
+```env
+INVITE_ALLOWED_USER_IDS=123456789012345678
+```
+
+Il pulsante di installazione richiede prima l'identificazione Discord. Gli utenti non presenti nell'allowlist vengono reindirizzati a una pagina che indica che il progetto è ancora in sviluppo e rimanda al repository/fork.
+
+Questa protezione del sito **non sostituisce** l'impostazione Discord del bot: durante lo sviluppo impostare anche **Public Bot = OFF** nel Developer Portal e **Installation > Install Link = None**, così un utente non autorizzato non può aggirare il sito costruendo manualmente un URL OAuth.
+
+
 ## Database e retention
 
 - PostgreSQL conserva configurazione, eventi, snapshot e audit pannello.

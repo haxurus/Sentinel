@@ -97,7 +97,7 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
           </nav>
           <LanguageSwitcher locale={locale} itHref="/it/dashboard" enHref="/en/dashboard" />
           <div className="site-nav-actions">
-            <a className="site-button site-button-primary" href="/backend/bot/invite">{c.nav.add}</a>
+            <a className="site-button site-button-primary" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>
           </div>
           <details className="site-mobile-menu">
             <summary aria-label={locale === 'it' ? 'Apri menu' : 'Open menu'}><span /><span /><span /></summary>
@@ -105,7 +105,7 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
               <a href={home}>Home</a>
               <a href={`${home}#features`}>{c.nav.features}</a>
                 <LanguageSwitcher locale={locale} itHref="/it/dashboard" enHref="/en/dashboard" mobile />
-              <a className="site-button site-button-primary" href="/backend/bot/invite">{c.nav.add}</a>
+              <a className="site-button site-button-primary" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>
             </div>
           </details>
         </div>
@@ -128,7 +128,7 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
               </div>
               <div className="dashboard-auth-card dashboard-auth-card-secondary">
                 <span className="site-kicker">{c.newServer}</span><h2>{c.noBotTitle}</h2><p>{c.noBotText}</p>
-                <a className="site-button site-button-secondary" href="/backend/bot/invite">{c.nav.add}</a>
+                <a className="site-button site-button-secondary" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>
               </div>
             </div>
           )}
@@ -137,7 +137,7 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
             <div className="dashboard-server-panel">
               <div className="dashboard-server-head">
                 <div><span className="site-kicker">{c.serverKicker}</span><h2>{c.choose}</h2></div>
-                <a className="site-button site-button-secondary" href="/backend/bot/invite">{c.addServer}</a>
+                <a className="site-button site-button-secondary" href={`/backend/bot/invite?lang=${locale}`}>{c.addServer}</a>
               </div>
               {!guilds.length && <div className="notice">{c.empty}</div>}
               <div className="guild-grid">

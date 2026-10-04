@@ -108,7 +108,7 @@ export default function PublicHome({ locale }: { locale: Locale }) {
 
           <div className="site-nav-actions">
             <a className="site-button site-button-ghost site-nav-dashboard" href={dashboard}>{c.nav.signIn}</a>
-            <a className="site-button site-button-primary site-nav-invite" href="/backend/bot/invite">{c.nav.add}</a>
+            <a className="site-button site-button-primary site-nav-invite" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>
           </div>
 
           <details className="site-mobile-menu">
@@ -118,7 +118,7 @@ export default function PublicHome({ locale }: { locale: Locale }) {
               <a href="#how-it-works">{c.nav.how}</a>
               <a href={dashboard}>Dashboard</a>
               <LanguageSwitcher locale={locale} itHref="/it" enHref="/en" mobile />
-              <a className="site-button site-button-primary" href="/backend/bot/invite">{c.nav.add}</a>
+              <a className="site-button site-button-primary" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>
             </div>
           </details>
         </div>
@@ -134,7 +134,7 @@ export default function PublicHome({ locale }: { locale: Locale }) {
             </p>
             <div className="site-hero-actions">
               <a className="site-button site-button-secondary" href={dashboard}>{c.hero.dashboard}</a>
-              <a className="site-button site-button-primary" href="/backend/bot/invite">{c.hero.add}</a>
+              <a className="site-button site-button-primary" href={`/backend/bot/invite?lang=${locale}`}>{c.hero.add}</a>
             </div>
           </div>
 
@@ -201,7 +201,7 @@ export default function PublicHome({ locale }: { locale: Locale }) {
           <div><span className="site-kicker">SENTINEL</span><h2>{c.cta.title}</h2><p>{c.cta.text}</p></div>
           <div className="site-cta-actions">
             <a className="site-button site-button-secondary" href={dashboard}>Dashboard</a>
-            <a className="site-button site-button-primary" href="/backend/bot/invite">{c.cta.add}</a>
+            <a className="site-button site-button-primary" href={`/backend/bot/invite?lang=${locale}`}>{c.cta.add}</a>
           </div>
         </div>
       </section>
@@ -213,7 +213,7 @@ export default function PublicHome({ locale }: { locale: Locale }) {
             <div className="site-footer-links">
               <a href="#features">{c.nav.features}</a>
               <a href={dashboard}>Dashboard</a>
-              <a href="/backend/bot/invite">{c.footer.add}</a>
+              <a href={`/backend/bot/invite?lang=${locale}`}>{c.footer.add}</a>
               <a href="https://github.com/haxurus/Sentinel" target="_blank" rel="noreferrer">GitHub</a>
             </div>
           </div>

@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { prisma } from '@sentinel/db';
 import { EVENT_CATALOG } from '@sentinel/shared';
 import { config } from './config.js';
-import { createSession, destroySession, randomToken, requireGuild, requireSession, resolveGuildAccess, type OAuthGuild } from './auth.js';
+import { createSession, destroySession, getSession, randomToken, requireGuild, requireSession, resolveGuildAccess, type OAuthGuild } from './auth.js';
 import { getGuildResources } from './discord.js';
 import { panelAudit } from './audit.js';
 import { unprotectJson } from './security.js';
@@ -91,19 +91,49 @@ app.get('/health', async (_request, reply) => {
   }
 });
 
-app.get('/bot/invite', async (_request, reply) => {
+const botInstallUrl = () => {
   const url = new URL('https://discord.com/oauth2/authorize');
   url.searchParams.set('client_id', config.clientId);
   url.searchParams.set('scope', 'bot applications.commands');
   url.searchParams.set('permissions', '85120');
-  return reply.redirect(url.toString());
+  return url.toString();
+};
+
+const canInstallBot = (userId: string) => config.inviteAllowedUserIds.includes(userId);
+
+app.get('/bot/invite', async (request, reply) => {
+  const parsed = z.object({ lang: z.enum(['it', 'en']).optional() }).safeParse(request.query);
+  const uiLanguage = parsed.success ? (parsed.data.lang ?? 'it') : 'it';
+  const session = await getSession(request);
+
+  if (!session) {
+    const loginUrl = new URL(`${config.publicBaseUrl}/auth/discord`);
+    loginUrl.searchParams.set('lang', uiLanguage);
+    loginUrl.searchParams.set('intent', 'invite');
+    return reply.redirect(loginUrl.toString());
+  }
+
+  if (!canInstallBot(session.userId)) {
+    return reply.redirect(`${config.webUrl}/${uiLanguage}/development`);
+  }
+
+  return reply.redirect(botInstallUrl());
 });
 
 app.get('/auth/discord', async (request, reply) => {
-  const languageQuery = z.object({ lang: z.enum(['it', 'en']).optional() }).safeParse(request.query);
-  const uiLanguage = languageQuery.success ? (languageQuery.data.lang ?? 'it') : 'it';
+  const authQuery = z.object({
+    lang: z.enum(['it', 'en']).optional(),
+    intent: z.enum(['dashboard', 'invite']).optional()
+  }).safeParse(request.query);
+  const uiLanguage = authQuery.success ? (authQuery.data.lang ?? 'it') : 'it';
+  const authIntent = authQuery.success ? (authQuery.data.intent ?? 'dashboard') : 'dashboard';
+
   const languageCookieName = config.production ? '__Host-sentinel_ui_lang' : 'sentinel_ui_lang';
   reply.setCookie(languageCookieName, uiLanguage, {
+    path: '/', httpOnly: true, secure: config.production, sameSite: 'lax', maxAge: 600
+  });
+  const intentCookieName = config.production ? '__Host-sentinel_oauth_intent' : 'sentinel_oauth_intent';
+  reply.setCookie(intentCookieName, authIntent, {
     path: '/', httpOnly: true, secure: config.production, sameSite: 'lax', maxAge: 600
   });
 
@@ -134,6 +164,10 @@ app.get('/auth/discord/callback', async (request, reply) => {
   const uiLanguage = request.cookies[languageCookieName] === 'en' ? 'en' : 'it';
   reply.clearCookie(languageCookieName, { path: '/', secure: config.production, sameSite: 'lax' });
 
+  const intentCookieName = config.production ? '__Host-sentinel_oauth_intent' : 'sentinel_oauth_intent';
+  const authIntent = request.cookies[intentCookieName] === 'invite' ? 'invite' : 'dashboard';
+  reply.clearCookie(intentCookieName, { path: '/', secure: config.production, sameSite: 'lax' });
+
   const redirectUri = `${config.publicBaseUrl}/auth/discord/callback`;
   const body = new URLSearchParams({
     client_id: config.clientId,
@@ -156,6 +190,14 @@ app.get('/auth/discord/callback', async (request, reply) => {
   const user = await userResponse.json() as { id: string; username: string; global_name?: string | null; avatar?: string | null };
   const guilds = await guildResponse.json() as OAuthGuild[];
   await createSession(reply, user, guilds);
+
+  if (authIntent === 'invite') {
+    if (!canInstallBot(user.id)) {
+      return reply.redirect(`${config.webUrl}/${uiLanguage}/development`);
+    }
+    return reply.redirect(botInstallUrl());
+  }
+
   return reply.redirect(`${config.webUrl}/${uiLanguage}/dashboard`);
 });
 

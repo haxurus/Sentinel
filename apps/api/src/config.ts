@@ -11,6 +11,14 @@ const publicBaseUrl = required('PUBLIC_BASE_URL');
 const webUrl = required('WEB_URL');
 const sessionSecret = required('SESSION_SECRET');
 const encryptionKey = required('LOG_DATA_ENCRYPTION_KEY');
+const inviteAllowedUserIds = (process.env.INVITE_ALLOWED_USER_IDS ?? '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+if (inviteAllowedUserIds.some((value) => !/^\d{17,20}$/.test(value))) {
+  throw new Error('INVITE_ALLOWED_USER_IDS must contain comma-separated Discord user IDs');
+}
 
 if (production) {
   if (!publicBaseUrl.startsWith('https://') || !webUrl.startsWith('https://')) throw new Error('PUBLIC_BASE_URL and WEB_URL must use HTTPS in production');
@@ -24,6 +32,7 @@ export const config = {
   publicBaseUrl,
   webUrl,
   sessionSecret,
+  inviteAllowedUserIds,
   port: Number(process.env.PORT ?? 3001),
   production
 };
