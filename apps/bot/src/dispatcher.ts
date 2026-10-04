@@ -259,6 +259,12 @@ export function startDispatcher(client: Client) {
     });
     if (route && !route.enabled) { await mark('DISABLED'); return; }
 
+    const def = eventDefinition(event.eventKey);
+    if (def?.noisy && !event.guild.premiumEnabled) {
+      await mark('PREMIUM_REQUIRED');
+      return;
+    }
+
     const details = asObject(unprotectJson(event.details));
     const actorRoleIds = toStringList(details.actorRoleIds);
     if (route?.ignoreBots && details.actorBot === true) { await mark('FILTERED'); return; }
@@ -275,7 +281,6 @@ export function startDispatcher(client: Client) {
     const channel = await guild.channels.fetch(destinationId).catch(() => null);
     if (!channel?.isSendable()) { await mark('CHANNEL_UNAVAILABLE'); return; }
 
-    const def = eventDefinition(event.eventKey);
     const embed = new EmbedBuilder()
       .setTitle(route?.customTitle || def?.label || event.eventKey)
       .setDescription(truncate(event.summary, 4000))

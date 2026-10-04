@@ -723,3 +723,61 @@ body { overflow-x: hidden; }
 @media (max-width: 600px) {
   .multi-filter-option { align-items: flex-start; flex-direction: column; gap: 3px; }
 }
+
+
+/* Premium gating */
+.premium-status {
+  color: #f4d78b;
+  border-color: rgba(244,215,139,.34);
+  background: rgba(244,215,139,.08);
+}
+.premium-status .status-dot {
+  background: #e5bf58;
+  box-shadow: 0 0 14px rgba(229,191,88,.55);
+}
+.premium-notice {
+  margin-bottom: 14px;
+  border-color: rgba(244,215,139,.28);
+}
+.premium-badge {
+  color: #f4d78b;
+  border-color: rgba(244,215,139,.42);
+  background: rgba(244,215,139,.08);
+}
+.premium-lock-note {
+  margin: 4px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(244,215,139,.24);
+  border-radius: 9px;
+  color: #d7c99f;
+  background: rgba(244,215,139,.05);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.super-plan-badge {
+  width: fit-content;
+  margin-top: 7px !important;
+  padding: 4px 8px;
+  border: 1px solid var(--site-line);
+  border-radius: 999px;
+  color: var(--site-muted) !important;
+  background: rgba(255,255,255,.03);
+  font-size: .64rem !important;
+  font-weight: 850;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.super-plan-badge.is-premium {
+  color: #f4d78b !important;
+  border-color: rgba(244,215,139,.34);
+  background: rgba(244,215,139,.08);
+}
+.super-premium-button {
+  color: #19140a;
+  border: 1px solid #e5bf58;
+  background: #e5bf58;
+}
+.super-premium-button:hover {
+  border-color: #f4d78b;
+  background: #f4d78b;
+}

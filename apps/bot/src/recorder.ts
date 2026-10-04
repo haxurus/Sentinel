@@ -1,4 +1,5 @@
 import { prisma } from '@sentinel/db';
+import { eventDefinition } from '@sentinel/shared';
 import { logQueue } from './queue.js';
 import { jsonSafe, redactSecrets } from './utils.js';
 import { protectJson, redactText } from './security.js';
@@ -16,8 +17,15 @@ export type RecordInput = {
 export async function recordEvent(input: RecordInput) {
   const route = await prisma.logRoute.findUnique({
     where: { guildId_eventKey: { guildId: input.guildId, eventKey: input.eventKey } },
-    select: { captureEnabled: true, enabled: true }
+    select: {
+      captureEnabled: true,
+      enabled: true,
+      guild: { select: { premiumEnabled: true } }
+    }
   }).catch(() => null);
+
+  const definition = eventDefinition(input.eventKey);
+  if (definition?.noisy && !route?.guild.premiumEnabled) return null;
   if (route && !route.captureEnabled) return null;
 
   const sanitizedDetails = jsonSafe(redactSecrets(input.details ?? {}));

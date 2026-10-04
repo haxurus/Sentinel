@@ -12,6 +12,7 @@ type Guild = {
   memberCount: number;
   iconUrl: string | null;
   blocked: boolean;
+  premiumEnabled: boolean;
 };
 
 type Block = {
@@ -46,6 +47,11 @@ const copy = {
     owner: 'Proprietario',
     leave: 'Fai uscire',
     blockLeave: 'Blocca ed espelli',
+    premium: 'Premium',
+    free: 'Free',
+    enablePremium: 'Attiva Premium',
+    disablePremium: 'Disattiva Premium',
+    confirmPremiumOff: 'Disattivare Premium per questo server? I logger ad alto volume verranno disattivati immediatamente.',
     noServers: 'Sentinel non è collegato ad alcun server.',
     blacklist: 'Blacklist installazioni',
     blacklistText: 'Blocca preventivamente un server o un utente Discord. I server bloccati vengono espulsi anche se il bot viene aggiunto nuovamente.',
@@ -82,6 +88,11 @@ const copy = {
     owner: 'Owner',
     leave: 'Leave server',
     blockLeave: 'Block & leave',
+    premium: 'Premium',
+    free: 'Free',
+    enablePremium: 'Enable Premium',
+    disablePremium: 'Disable Premium',
+    confirmPremiumOff: 'Disable Premium for this server? High-volume loggers will be turned off immediately.',
     noServers: 'Sentinel is not connected to any server.',
     blacklist: 'Installation blacklist',
     blacklistText: 'Preemptively block a Discord server or user. Blocked servers are removed even if the bot is added again.',
@@ -167,6 +178,18 @@ export default function SuperConsole({ locale }: { locale: Locale }) {
     }
   };
 
+  const setPremium = async (guild: Guild, premiumEnabled: boolean) => {
+    if (!premiumEnabled && !confirm(c.confirmPremiumOff)) return;
+    try {
+      await action(`/backend/api/super/guilds/${guild.id}/premium`, {
+        method: 'PUT',
+        body: JSON.stringify({ premiumEnabled })
+      });
+    } catch {
+      setStatus(c.failed);
+    }
+  };
+
   const leave = async (guild: Guild) => {
     if (!confirm(c.confirmLeave)) return;
     try {
@@ -242,8 +265,10 @@ export default function SuperConsole({ locale }: { locale: Locale }) {
                     <div className="super-guild-meta">
                       <span>{c.owner}: {guild.ownerTag || guild.ownerId}</span>
                       <span>{guild.memberCount.toLocaleString(locale === 'it' ? 'it-IT' : 'en-US')} {c.members}</span>
+                      <span className={`super-plan-badge ${guild.premiumEnabled ? 'is-premium' : ''}`}>{guild.premiumEnabled ? c.premium : c.free}</span>
                     </div>
                     <div className="super-guild-actions">
+                      <button className={`site-button ${guild.premiumEnabled ? 'site-button-secondary' : 'super-premium-button'}`} onClick={() => setPremium(guild, !guild.premiumEnabled)}>{guild.premiumEnabled ? c.disablePremium : c.enablePremium}</button>
                       <button className="site-button site-button-secondary" onClick={() => leave(guild)}>{c.leave}</button>
                       <button className="site-button super-danger" onClick={() => blockGuild(guild)}>{c.blockLeave}</button>
                     </div>

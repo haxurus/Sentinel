@@ -201,6 +201,22 @@ La super-console permette di:
 
 Le API della super-console richiedono sempre la sessione del super-admin; nascondere il link nel frontend non è usato come controllo di sicurezza.
 
+## Premium e logger ad alto volume
+
+I server sono Free per impostazione predefinita. Lo stato Premium è modificabile esclusivamente dalla super-console globale.
+
+Gli eventi del catalogo contrassegnati come `noisy` / **ALTO VOLUME** possono essere acquisiti o inviati su Discord soltanto se `GuildSettings.premiumEnabled = true`.
+
+L'enforcement è applicato a più livelli:
+
+- la dashboard disabilita i controlli dei logger ad alto volume sui server Free;
+- l'API rifiuta con `PREMIUM_REQUIRED` ogni tentativo di attivare acquisizione o invio di un evento `noisy` su un server Free;
+- il recorder non persiste eventi `noisy` per server Free;
+- il dispatcher non invia eventuali eventi `noisy` rimasti in coda dopo la disattivazione Premium;
+- disattivare Premium dalla super-console spegne immediatamente tutti i logger `noisy`, oltre a Presence, Typing e Gateway raw.
+
+Riattivare Premium **non riaccende automaticamente** i logger ad alto volume: devono essere abilitati manualmente dalla dashboard del server.
+
 
 ## Database e retention
 

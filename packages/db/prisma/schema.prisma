@@ -22,6 +22,7 @@ model GuildSettings {
   rawGatewayEnabled       Boolean  @default(false)
   presenceLoggingEnabled  Boolean  @default(false)
   typingLoggingEnabled    Boolean  @default(false)
+  premiumEnabled          Boolean  @default(false)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 

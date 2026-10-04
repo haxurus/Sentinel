@@ -228,15 +228,24 @@ app.get('/api/super/overview', async (request, reply) => {
   const session = await requireSuperAdmin(request, reply);
   if (!session) return;
 
-  const [guilds, blocks, audit] = await Promise.all([
-    getBotGuilds(),
+  const guilds = await getBotGuilds();
+  const [blocks, audit, settingsRows] = await Promise.all([
     prisma.installBlock.findMany({ orderBy: { createdAt: 'desc' } }),
-    prisma.superAdminAudit.findMany({ orderBy: { createdAt: 'desc' }, take: 200 })
+    prisma.superAdminAudit.findMany({ orderBy: { createdAt: 'desc' }, take: 200 }),
+    prisma.guildSettings.findMany({
+      where: { guildId: { in: guilds.map((guild) => guild.id) } },
+      select: { guildId: true, premiumEnabled: true }
+    })
   ]);
 
   const guildBlocks = new Set(blocks.filter((block) => block.kind === 'GUILD').map((block) => block.subjectId));
+  const premiumMap = new Map(settingsRows.map((row) => [row.guildId, row.premiumEnabled]));
   return {
-    guilds: guilds.map((guild) => ({ ...guild, blocked: guildBlocks.has(guild.id) })),
+    guilds: guilds.map((guild) => ({
+      ...guild,
+      blocked: guildBlocks.has(guild.id),
+      premiumEnabled: premiumMap.get(guild.id) ?? false
+    })),
     blocks,
     audit: audit.map((row) => ({ ...row, details: unprotectJson(row.details) }))
   };
@@ -296,6 +305,46 @@ app.delete('/api/super/blocks/:kind/:subjectId', async (request, reply) => {
   await prisma.installBlock.deleteMany({ where: { kind, subjectId } });
   await superAdminAudit(request, session, 'install_block.delete', kind, subjectId);
   return { ok: true };
+});
+
+app.put('/api/super/guilds/:guildId/premium', async (request, reply) => {
+  const session = await requireSuperAdmin(request, reply);
+  if (!session) return;
+  const { guildId } = request.params as { guildId: string };
+  const parsed = z.object({ premiumEnabled: z.boolean() }).safeParse(request.body);
+  if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' });
+
+  const existing = await prisma.guildSettings.findUnique({ where: { guildId }, select: { guildId: true } });
+  if (!existing) return reply.code(404).send({ error: 'GUILD_NOT_FOUND' });
+
+  const noisyKeys = EVENT_CATALOG.filter((event) => event.noisy).map((event) => event.key);
+  const premiumEnabled = parsed.data.premiumEnabled;
+
+  await prisma.$transaction([
+    prisma.guildSettings.update({
+      where: { guildId },
+      data: {
+        premiumEnabled,
+        ...(!premiumEnabled ? {
+          rawGatewayEnabled: false,
+          presenceLoggingEnabled: false,
+          typingLoggingEnabled: false
+        } : {})
+      }
+    }),
+    ...(!premiumEnabled ? [
+      prisma.logRoute.updateMany({
+        where: { guildId, eventKey: { in: noisyKeys } },
+        data: { captureEnabled: false, enabled: false }
+      })
+    ] : [])
+  ]);
+
+  await superAdminAudit(request, session, premiumEnabled ? 'premium.enable' : 'premium.disable', 'GUILD', guildId, {
+    premiumEnabled
+  });
+
+  return { ok: true, guildId, premiumEnabled };
 });
 
 app.post('/api/super/guilds/:guildId/leave', async (request, reply) => {
@@ -395,6 +444,17 @@ app.put('/api/guilds/:guildId/settings', async (request, reply) => {
   if (!session) return;
   const parsed = settingsSchema.safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY', details: parsed.error.flatten() });
+
+  const wantsHighVolumeAcquisition =
+    parsed.data.rawGatewayEnabled === true ||
+    parsed.data.presenceLoggingEnabled === true ||
+    parsed.data.typingLoggingEnabled === true;
+
+  if (wantsHighVolumeAcquisition) {
+    const guild = await prisma.guildSettings.findUnique({ where: { guildId }, select: { premiumEnabled: true } });
+    if (!guild?.premiumEnabled) return reply.code(403).send({ error: 'PREMIUM_REQUIRED' });
+  }
+
   const updated = await prisma.guildSettings.update({ where: { guildId }, data: parsed.data });
   await panelAudit(request, session, guildId, 'settings.update', parsed.data);
   return updated;
@@ -413,9 +473,16 @@ app.put('/api/guilds/:guildId/routes/:eventKey', async (request, reply) => {
   const { guildId, eventKey } = request.params as { guildId: string; eventKey: string };
   const session = await requireGuild(request, reply, guildId, 'ADMIN');
   if (!session) return;
-  if (!EVENT_CATALOG.some((event) => event.key === eventKey)) return reply.code(404).send({ error: 'UNKNOWN_EVENT' });
+  const eventDefinition = EVENT_CATALOG.find((event) => event.key === eventKey);
+  if (!eventDefinition) return reply.code(404).send({ error: 'UNKNOWN_EVENT' });
   const parsed = routeSchema.safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY', details: parsed.error.flatten() });
+
+  if (eventDefinition.noisy && (parsed.data.enabled === true || parsed.data.captureEnabled === true)) {
+    const guild = await prisma.guildSettings.findUnique({ where: { guildId }, select: { premiumEnabled: true } });
+    if (!guild?.premiumEnabled) return reply.code(403).send({ error: 'PREMIUM_REQUIRED' });
+  }
+
   const route = await prisma.logRoute.upsert({
     where: { guildId_eventKey: { guildId, eventKey } },
     update: parsed.data,
@@ -435,6 +502,16 @@ app.post('/api/guilds/:guildId/routes/bulk', async (request, reply) => {
     includeNoisy: z.boolean().default(false)
   }).refine((value) => value.enabled !== undefined || value.captureEnabled !== undefined).safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' });
+
+  const wantsNoisyActivation =
+    parsed.data.includeNoisy &&
+    (parsed.data.enabled === true || parsed.data.captureEnabled === true);
+
+  if (wantsNoisyActivation) {
+    const guild = await prisma.guildSettings.findUnique({ where: { guildId }, select: { premiumEnabled: true } });
+    if (!guild?.premiumEnabled) return reply.code(403).send({ error: 'PREMIUM_REQUIRED' });
+  }
+
   const keys = EVENT_CATALOG.filter((event) => parsed.data.includeNoisy || !event.noisy).map((event) => event.key);
   const data = {
     ...(parsed.data.enabled !== undefined ? { enabled: parsed.data.enabled } : {}),

@@ -16,6 +16,7 @@ export async function ensureGuild(guild: Guild) {
     data: EVENT_CATALOG.map((event) => ({
       guildId: guild.id,
       eventKey: event.key,
+      captureEnabled: !event.noisy,
       enabled: !event.noisy
     })),
     skipDuplicates: true

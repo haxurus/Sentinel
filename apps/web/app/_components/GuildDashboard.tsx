@@ -18,6 +18,7 @@ type Settings = {
   rawGatewayEnabled: boolean;
   presenceLoggingEnabled: boolean;
   typingLoggingEnabled: boolean;
+  premiumEnabled: boolean;
 };
 
 type EventDefinition = { key: string; category: string; label: string; description: string; noisy?: boolean };
@@ -229,7 +230,7 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
         <div className="topbar-left"><a className="back" href={`/${locale}/dashboard`}>←</a><div><p className="eyebrow">SERVER</p><h1>{settings.guildName}</h1></div></div>
         <div className="topbar-actions">
           <LanguageSwitcher locale={locale} itHref={`/it/dashboard/${guildId}`} enHref={`/en/dashboard/${guildId}`} compact />
-          <div className="status-pill"><span className="status-dot" /> {L('Audit attivo', 'Audit active')}</div>
+          <div className={`status-pill ${settings.premiumEnabled ? 'premium-status' : ''}`}><span className="status-dot" /> {settings.premiumEnabled ? 'Premium' : L('Audit attivo', 'Audit active')}</div>
         </div>
       </header>
 
@@ -275,9 +276,9 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
               <div className="panel-title"><div><p className="eyebrow">{L('DATI', 'DATA')}</p><h2>{L('Acquisizione', 'Collection')}</h2></div></div>
               <Toggle disabled={!canAdmin} label={L('Snapshot messaggi', 'Message snapshots')} description={L('Conserva una copia per ricostruire i messaggi eliminati.', 'Keep a copy to reconstruct deleted messages.')} checked={settings.messageSnapshotEnabled} onChange={(value) => saveSettings({ messageSnapshotEnabled: value })} />
               <Toggle disabled={!canAdmin} label={L('Contenuto messaggi', 'Message content')} description={L('Salva testo ed embed negli snapshot.', 'Store text and embeds in snapshots.')} checked={settings.storeMessageContent} onChange={(value) => saveSettings({ storeMessageContent: value })} />
-              <Toggle disabled={!canAdmin} label={L('Presenze', 'Presence')} description={L('Status e attività. Può generare molti eventi.', 'Status and activity. This can generate many events.')} checked={settings.presenceLoggingEnabled} onChange={(value) => saveSettings({ presenceLoggingEnabled: value })} />
-              <Toggle disabled={!canAdmin} label="Typing" description={L('Registra quando un utente inizia a scrivere.', 'Record when a user starts typing.')} checked={settings.typingLoggingEnabled} onChange={(value) => saveSettings({ typingLoggingEnabled: value })} />
-              <Toggle disabled={!canAdmin} label="Gateway raw" description={L('Debug avanzato: salva eventi Gateway grezzi.', 'Advanced debug: store raw Gateway events.')} checked={settings.rawGatewayEnabled} onChange={(value) => saveSettings({ rawGatewayEnabled: value })} danger />
+              <Toggle disabled={!canAdmin || !settings.premiumEnabled} label={L('Presenze · Premium', 'Presence · Premium')} description={settings.premiumEnabled ? L('Status e attività. Può generare molti eventi.', 'Status and activity. This can generate many events.') : L('Disponibile solo sui server Premium.', 'Available only on Premium servers.')} checked={settings.presenceLoggingEnabled} onChange={(value) => saveSettings({ presenceLoggingEnabled: value })} />
+              <Toggle disabled={!canAdmin || !settings.premiumEnabled} label="Typing · Premium" description={settings.premiumEnabled ? L('Registra quando un utente inizia a scrivere.', 'Record when a user starts typing.') : L('Disponibile solo sui server Premium.', 'Available only on Premium servers.')} checked={settings.typingLoggingEnabled} onChange={(value) => saveSettings({ typingLoggingEnabled: value })} />
+              <Toggle disabled={!canAdmin || !settings.premiumEnabled} label="Gateway raw · Premium" description={settings.premiumEnabled ? L('Debug avanzato: salva eventi Gateway grezzi.', 'Advanced debug: store raw Gateway events.') : L('Disponibile solo sui server Premium.', 'Available only on Premium servers.')} checked={settings.rawGatewayEnabled} onChange={(value) => saveSettings({ rawGatewayEnabled: value })} danger />
             </section>
           </div>
 
@@ -288,6 +289,7 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
         </>}
 
         {tab === 'events' && <>
+          {!settings.premiumEnabled && <div className="notice premium-notice">{L('I logger contrassegnati ALTO VOLUME sono disponibili solo sui server Premium.', 'HIGH VOLUME loggers are available only on Premium servers.')}</div>}
           <div className="toolbar logger-toolbar">
             <input placeholder={L('Cerca logger, evento o categoria…', 'Search logger, event or category…')} value={filter} onChange={(e) => setFilter(e.target.value)} />
             <button disabled={!canAdmin} onClick={() => bulk(true, false)}>{L('Invia standard', 'Enable standard')}</button>
@@ -330,7 +332,7 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
                         <span>{categoryRows.length}</span>
                       </div>
                       <div className="route-list">
-                        {categoryRows.map(({ event, route }) => <RouteEditor key={event.key} event={event} route={route} channels={textChannels} roles={roles} onSave={(patch) => saveRoute(event.key, patch)} readOnly={!canAdmin} locale={locale} />)}
+                        {categoryRows.map(({ event, route }) => <RouteEditor key={event.key} event={event} route={route} channels={textChannels} roles={roles} onSave={(patch) => saveRoute(event.key, patch)} readOnly={!canAdmin} premiumEnabled={settings.premiumEnabled} locale={locale} />)}
                       </div>
                     </section>;
                   })}
@@ -452,15 +454,16 @@ function Toggle({ label, description, checked, onChange, danger, disabled }: { l
   return <div className={`toggle-row ${danger ? 'danger-toggle' : ''}`}><div><strong>{label}</strong><span>{description}</span></div><button disabled={disabled} className={`switch ${checked ? 'on' : ''}`} onClick={() => onChange(!checked)}><i /></button></div>;
 }
 
-function RouteEditor({ event, route, channels, roles, onSave, readOnly, locale }: { event: EventDefinition; route: Route | null; channels: Channel[]; roles: Role[]; onSave: (patch: Partial<Route>) => void; readOnly?: boolean; locale: Locale }) {
+function RouteEditor({ event, route, channels, roles, onSave, readOnly, premiumEnabled, locale }: { event: EventDefinition; route: Route | null; channels: Channel[]; roles: Role[]; onSave: (patch: Partial<Route>) => void; readOnly?: boolean; premiumEnabled: boolean; locale: Locale }) {
   const L = (it: string, en: string) => locale === 'it' ? it : en;
   const displayEvent = localizeEvent(event, locale);
+  const premiumLocked = Boolean(event.noisy && !premiumEnabled);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState(route?.customTitle ?? '');
   useEffect(() => setTitle(route?.customTitle ?? ''), [route?.customTitle]);
   if (!route) return null;
   return <article className={`route-card ${route.enabled ? 'enabled' : ''}`}>
-    <div className="route-head"><button disabled={readOnly} title={L('Invio Discord', 'Discord delivery')} className={`switch ${route.enabled ? 'on' : ''}`} onClick={() => onSave({ enabled: !route.enabled })}><i /></button><div className="route-name" onClick={() => setOpen(!open)}><div><strong>{displayEvent.label}</strong>{event.noisy && <span className="badge">{L('ALTO VOLUME', 'HIGH VOLUME')}</span>}{!route.captureEnabled && <span className="badge">{L('NON ACQUISITO', 'NOT COLLECTED')}</span>}</div><span>{event.key} · {displayEvent.description}</span></div><button className="chevron" onClick={() => setOpen(!open)}>{open ? '⌃' : '⌄'}</button></div>
+    <div className="route-head"><button disabled={readOnly || premiumLocked} title={premiumLocked ? L('Richiede Premium', 'Premium required') : L('Invio Discord', 'Discord delivery')} className={`switch ${route.enabled ? 'on' : ''}`} onClick={() => onSave({ enabled: !route.enabled })}><i /></button><div className="route-name" onClick={() => setOpen(!open)}><div><strong>{displayEvent.label}</strong>{event.noisy && <span className={`badge ${premiumLocked ? 'premium-badge' : ''}`}>{premiumLocked ? L('PREMIUM · ALTO VOLUME', 'PREMIUM · HIGH VOLUME') : L('ALTO VOLUME', 'HIGH VOLUME')}</span>}{!route.captureEnabled && <span className="badge">{L('NON ACQUISITO', 'NOT COLLECTED')}</span>}</div><span>{event.key} · {displayEvent.description}</span></div><button className="chevron" onClick={() => setOpen(!open)}>{open ? '⌃' : '⌄'}</button></div>
     {open && <div className="route-config">
       <label>{L('Canale destinazione', 'Destination channel')}<SearchableSelect
         disabled={readOnly}
@@ -484,7 +487,8 @@ function RouteEditor({ event, route, channels, roles, onSave, readOnly, locale }
         ]}
       /></label><label>{L('Retention evento', 'Event retention')}<input disabled={readOnly} type="number" min="1" max="3650" defaultValue={route.retentionDays ?? ''} placeholder="Default" onBlur={(e) => onSave({ retentionDays: e.currentTarget.value ? Number(e.currentTarget.value) : null })} /></label></div>
       <div className="inline-fields"><label>{L('Footer personalizzato', 'Custom footer')}<input disabled={readOnly} defaultValue={route.customFooter ?? ''} placeholder={L('Usa footer globale', 'Use global footer')} onBlur={(e) => onSave({ customFooter: e.currentTarget.value || null })} /></label><label>{L("Testo prima dell'embed", 'Text before embed')}<input disabled={readOnly} defaultValue={route.textPrefix ?? ''} placeholder={L('Opzionale', 'Optional')} onBlur={(e) => onSave({ textPrefix: e.currentTarget.value || null })} /></label><label>Thumbnail URL<input disabled={readOnly} type="url" defaultValue={route.thumbnailUrl ?? ''} placeholder="https://..." onBlur={(e) => onSave({ thumbnailUrl: e.currentTarget.value || null })} /></label></div>
-      <div className="mini-toggles"><label><input type="checkbox" disabled={readOnly} checked={route.captureEnabled} onChange={(e) => onSave({ captureEnabled: e.target.checked })} /> {L('Acquisisci nel database', 'Collect in database')}</label><label><input type="checkbox" disabled={readOnly} checked={route.enabled} onChange={(e) => onSave({ enabled: e.target.checked })} /> {L('Invia su Discord', 'Send to Discord')}</label><label><input type="checkbox" disabled={readOnly} checked={route.showTimestamp} onChange={(e) => onSave({ showTimestamp: e.target.checked })} /> Timestamp</label><label><input type="checkbox" disabled={readOnly} checked={route.showActor} onChange={(e) => onSave({ showActor: e.target.checked })} /> Actor</label><label><input type="checkbox" disabled={readOnly} checked={route.showTarget} onChange={(e) => onSave({ showTarget: e.target.checked })} /> Target</label><label><input type="checkbox" disabled={readOnly} checked={route.showChannel} onChange={(e) => onSave({ showChannel: e.target.checked })} /> {L('Canale', 'Channel')}</label><label><input type="checkbox" disabled={readOnly} checked={route.includeContent} onChange={(e) => onSave({ includeContent: e.target.checked })} /> {L('Contenuto nell’embed', 'Content in embed')}</label><label><input type="checkbox" disabled={readOnly} checked={route.includeAttachments} onChange={(e) => onSave({ includeAttachments: e.target.checked })} /> {L('Allegati nell’embed', 'Attachments in embed')}</label><label><input type="checkbox" disabled={readOnly} checked={route.ignoreBots} onChange={(e) => onSave({ ignoreBots: e.target.checked })} /> {L('Ignora bot', 'Ignore bots')}</label></div>
+      {premiumLocked && <div className="premium-lock-note">{L('Questo logger genera un volume elevato di eventi ed è attivabile solo sui server Premium.', 'This logger generates a high volume of events and can only be enabled on Premium servers.')}</div>}
+      <div className="mini-toggles"><label><input type="checkbox" disabled={readOnly || premiumLocked} checked={route.captureEnabled} onChange={(e) => onSave({ captureEnabled: e.target.checked })} /> {L('Acquisisci nel database', 'Collect in database')}</label><label><input type="checkbox" disabled={readOnly || premiumLocked} checked={route.enabled} onChange={(e) => onSave({ enabled: e.target.checked })} /> {L('Invia su Discord', 'Send to Discord')}</label><label><input type="checkbox" disabled={readOnly} checked={route.showTimestamp} onChange={(e) => onSave({ showTimestamp: e.target.checked })} /> Timestamp</label><label><input type="checkbox" disabled={readOnly} checked={route.showActor} onChange={(e) => onSave({ showActor: e.target.checked })} /> Actor</label><label><input type="checkbox" disabled={readOnly} checked={route.showTarget} onChange={(e) => onSave({ showTarget: e.target.checked })} /> Target</label><label><input type="checkbox" disabled={readOnly} checked={route.showChannel} onChange={(e) => onSave({ showChannel: e.target.checked })} /> {L('Canale', 'Channel')}</label><label><input type="checkbox" disabled={readOnly} checked={route.includeContent} onChange={(e) => onSave({ includeContent: e.target.checked })} /> {L('Contenuto nell’embed', 'Content in embed')}</label><label><input type="checkbox" disabled={readOnly} checked={route.includeAttachments} onChange={(e) => onSave({ includeAttachments: e.target.checked })} /> {L('Allegati nell’embed', 'Attachments in embed')}</label><label><input type="checkbox" disabled={readOnly} checked={route.ignoreBots} onChange={(e) => onSave({ ignoreBots: e.target.checked })} /> {L('Ignora bot', 'Ignore bots')}</label></div>
       <div className="ignore-fields">
         <ManualIdList
           disabled={readOnly}
