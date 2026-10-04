@@ -1,6 +1,6 @@
-# Architettura
+# Architecture
 
-## Flusso evento
+## Event flow
 
 ```text
 Discord Gateway
@@ -8,7 +8,7 @@ Discord Gateway
     v
 apps/bot/src/handlers.ts
     |
-    +--> MessageSnapshot, quando applicabile
+    +--> MessageSnapshot, when applicable
     |
     v
 LogEvent (PostgreSQL)
@@ -19,16 +19,16 @@ BullMQ / Redis
     v
 Dispatcher
     |
-    +--> legge LogRoute
-    +--> applica filtri
-    +--> genera embed
+    +--> reads LogRoute
+    +--> applies filters
+    +--> generates embed
     v
-Canale Discord
+Discord channel
 ```
 
-Il salvataggio dell'evento avviene prima della consegna a Discord. `captureEnabled` controlla l'acquisizione nel database, mentre `enabled` controlla separatamente l'invio nel canale Discord. Un errore o rate limit nell'invio dell'embed non fa perdere lo storico: BullMQ effettua retry con backoff. `LogEvent.dispatchState` conserva l'esito della consegna per diagnosi dal pannello. Ogni `LogRoute` puo inoltre sovrascrivere retention, aspetto dell'embed e visibilita dei campi principali.
+The event is stored before delivery to Discord. `captureEnabled` controls collection into the database, while `enabled` separately controls delivery to the Discord channel. An error or rate limit while sending the embed does not lose history: BullMQ retries with backoff. `LogEvent.dispatchState` stores the delivery outcome for diagnostics from the dashboard. Each `LogRoute` can also override retention, embed appearance, and visibility of the main fields.
 
-## Pannello
+## Dashboard
 
 ```text
 Browser
@@ -43,36 +43,36 @@ Fastify API
   +--> PostgreSQL
 ```
 
-## Sicurezza
+## Security
 
-- Session token casuale a 256 bit.
-- Nel database viene conservato solo SHA-256 del token di sessione.
-- Cookie HttpOnly, SameSite=Lax e Secure in produzione.
-- OAuth2 `state` anti-CSRF per il login.
-- Rate limiting API.
-- Security headers via Helmet.
-- Le autorizzazioni vengono controllate dal backend su ogni richiesta, non solo dalla UI.
-- Gli IP nell'audit del pannello vengono hashati con una chiave server-side.
+- Random 256-bit session token.
+- Only the SHA-256 hash of the session token is stored in the database.
+- HttpOnly, SameSite=Lax, and Secure cookies in production.
+- OAuth2 `state` protection against login CSRF.
+- API rate limiting.
+- Security headers through Helmet.
+- Authorization is enforced by the backend on every request, not only by the UI.
+- IP addresses in the dashboard audit log are hashed with a server-side key.
 
 ## RBAC
 
-La precedenza è:
+Precedence is:
 
 ```text
 OWNER > ADMIN > MODERATOR > VIEWER
 ```
 
-Il proprietario Discord viene riconosciuto automaticamente. Administrator e Manage Server concedono accesso Admin. Gli altri utenti possono entrare se possiedono almeno un ruolo Discord mappato nel pannello.
+The Discord server owner is recognized automatically. Administrator and Manage Server grant Admin access. Other users can access the dashboard if they have at least one Discord role mapped in the panel.
 
-## Scalabilità
+## Scalability
 
-Per una singola community il deployment Docker Compose è sufficiente. Se il volume cresce:
+For a single community, the Docker Compose deployment is sufficient. If volume grows:
 
-1. separare Worker BullMQ dal processo Gateway;
-2. usare più worker di dispatch;
-3. partizionare `LogEvent` per data;
-4. introdurre sharding Discord;
-5. spostare export pesanti in job asincroni controllati;
-6. usare object storage per eventuali copie autorizzate degli allegati.
+1. separate the BullMQ worker from the Gateway process;
+2. use multiple dispatch workers;
+3. partition `LogEvent` by date;
+4. introduce Discord sharding;
+5. move heavy exports to controlled asynchronous jobs;
+6. use object storage for any authorized attachment copies.
 
-Gli allegati attualmente non vengono scaricati: viene conservato il metadata/URL ricevuto da Discord.
+Attachments are currently not downloaded: Sentinel stores only the metadata/URL received from Discord.

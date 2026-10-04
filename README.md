@@ -1,87 +1,86 @@
 # Sentinel
 
-Sentinel è un sistema self-hosted di logging e auditing per Discord con pannello web amministrativo. Registra gli eventi disponibili tramite Discord Gateway/REST/Audit Log, conserva uno storico interrogabile e può pubblicare i log in canali Discord configurabili.
+Sentinel is a self-hosted logging and auditing system for Discord with an administrative web dashboard. It records events available through the Discord Gateway/REST/Audit Log, keeps a searchable history, and can publish logs to configurable Discord channels.
 
-> Repository di produzione. Nessun token Discord, password database, chiave di cifratura o secret applicativo deve essere salvato su GitHub.
+> Production repository. No Discord token, database password, encryption key, or application secret must ever be stored on GitHub.
 
-## Componenti
+## Components
 
-- `apps/bot` - Discord Gateway, snapshot messaggi, recorder, dispatcher e RPC interna.
-- `apps/api` - Discord OAuth2, RBAC, configurazione, ricerca, export e retention.
-- `apps/web` - pannello Next.js.
-- `packages/db` - Prisma/PostgreSQL e migrazioni.
-- `packages/shared` - catalogo eventi condiviso.
-- `deploy` - Compose di produzione e configurazione edge.
-- `ops` - installazione VPS, deploy ristretto e rollback.
-- `security` - regole firewall e hardening aggiuntivo.
+- `apps/bot` - Discord Gateway, message snapshots, recorder, dispatcher, and internal RPC.
+- `apps/api` - Discord OAuth2, RBAC, configuration, search, export, and retention.
+- `apps/web` - Next.js dashboard.
+- `packages/db` - Prisma/PostgreSQL and migrations.
+- `packages/shared` - shared event catalog.
+- `deploy` - production Compose and edge configuration.
+- `ops` - VPS installation, restricted deployment, and rollback.
+- `security` - firewall rules and additional hardening.
 
-## Funzioni principali
+## Main features
 
-Sentinel include **75 tipi di evento configurabili**, tra cui:
+Sentinel includes **75 configurable event types**, including:
 
-- join, leave, kick, ban, unban e modifiche membro;
-- messaggi creati/modificati/eliminati e bulk delete;
-- snapshot messaggi, allegati e metadata;
-- reaction e poll;
-- voice state ed effetti esposti da Discord;
-- ruoli, canali, permission overwrite, pin;
-- thread/forum, emoji, sticker, soundboard;
-- invite, webhook, integrazioni;
-- server updates, scheduled events, AutoMod e Stage;
-- interazioni, application command permissions;
-- Audit Log Discord;
-- presence, typing e Gateway raw opzionali;
-- eventi di sistema del bot.
+- member join, leave, kick, ban, unban, and member updates;
+- message create/edit/delete and bulk delete;
+- message snapshots, attachments, and metadata;
+- reactions and polls;
+- voice state and effects exposed by Discord;
+- roles, channels, permission overwrites, and pins;
+- threads/forums, emoji, stickers, and soundboard;
+- invites, webhooks, and integrations;
+- server updates, scheduled events, AutoMod, and Stage;
+- interactions and application command permissions;
+- Discord Audit Log;
+- optional presence, typing, and raw Gateway events;
+- bot system events.
 
-Ogni logger separa **acquisizione** e **invio Discord**, quindi un evento può essere conservato nello storico senza produrre messaggi nei canali di log.
+Each logger separates **collection** from **Discord delivery**, so an event can be kept in history without producing messages in log channels.
 
-## Sicurezza
+## Security
 
-La versione corrente applica un modello zero-trust/least-privilege:
+The current version applies a zero-trust/least-privilege model:
 
-- token Discord disponibile solo al processo bot;
-- API priva del token bot;
-- frontend senza segreti applicativi;
-- segreti runtime in file root-only sulla VPS;
-- cifratura AES-256-GCM dei dati sensibili applicativi;
-- utenti PostgreSQL separati per API e bot;
-- Redis privato e autenticato;
-- reti Docker segmentate;
-- filesystem container read-only, non-root dove applicabile, `cap_drop: ALL`, limiti CPU/RAM/PID;
-- cookie sicuri, CSRF Origin check, CSP, HSTS, rate limiting e validazione input;
-- nessun Docker socket montato;
-- egress di API/bot separato e bloccato verso host/LAN tramite firewall;
-- deployment GitHub con account SSH dedicato che **non dispone di una shell amministrativa** e può eseguire solo `deploy`, `rollback` e `status` tramite wrapper root-owned.
+- the Discord token is available only to the bot process;
+- the API does not have the bot token;
+- the frontend has no application secrets;
+- runtime secrets are stored in root-only files on the VPS;
+- sensitive application data is encrypted with AES-256-GCM;
+- separate PostgreSQL users are used for API and bot;
+- Redis is private and authenticated;
+- Docker networks are segmented;
+- container filesystems are read-only, non-root where applicable, with `cap_drop: ALL` and CPU/RAM/PID limits;
+- secure cookies, CSRF Origin checks, CSP, HSTS, rate limiting, and input validation;
+- no Docker socket is mounted;
+- API/bot egress is separated and blocked from reaching host/LAN networks by the firewall;
+- GitHub deployment uses a dedicated SSH account that **does not have an administrative shell** and can run only `deploy`, `rollback`, and `status` through a root-owned wrapper.
 
-Dettagli: [`docs/SECURITY.md`](docs/SECURITY.md).
+Details: [`docs/SECURITY.md`](docs/SECURITY.md).
 
-## Policy capacità Discord
+## Discord capability policy
 
-Il processo bot applica una allowlist runtime alle richieste REST Discord. I permessi Discord assegnati al ruolo del bot **non sono considerati autorizzazione sufficiente** per eseguire una mutazione.
+The bot process applies a runtime allowlist to Discord REST requests. Discord permissions assigned to the bot role **are not considered sufficient authorization** to perform a mutation.
 
-Consentito:
+Allowed:
 
-- lettura REST (`GET`), inclusi canali, messaggi, membri, ruoli e Audit Log;
-- ricezione degli eventi Gateway;
-- invio dei log tramite `POST /channels/:channelId/messages`, inclusi embed;
-- uscita dal server tramite `DELETE /users/@me/guilds/:guildId`, usata dalla super-console e dall'enforcement della blacklist.
+- REST reads (`GET`), including channels, messages, members, roles, and Audit Log;
+- receiving Gateway events;
+- sending logs through `POST /channels/:channelId/messages`, including embeds;
+- leaving a server through `DELETE /users/@me/guilds/:guildId`, used by the super console and blacklist enforcement.
 
-Qualsiasi altra mutazione Discord `POST`, `PUT`, `PATCH` o `DELETE` viene bloccata dal processo prima di raggiungere Discord. Questo include, tra le altre cose:
+Any other Discord `POST`, `PUT`, `PATCH`, or `DELETE` mutation is blocked by the process before reaching Discord. This includes, among other things:
 
-- ban, kick, timeout e modifiche dei membri;
-- cancellazione o bulk-delete dei messaggi;
-- creazione/modifica/eliminazione di canali e ruoli;
-- permission overwrite;
-- modifica delle impostazioni del server;
-- creazione/modifica/eliminazione webhook;
-- operazioni amministrative AutoMod.
+- bans, kicks, timeouts, and member changes;
+- message deletion or bulk delete;
+- channel and role creation/modification/deletion;
+- permission overwrites;
+- server setting changes;
+- webhook creation/modification/deletion;
+- administrative AutoMod operations.
 
-Il build del bot esegue inoltre `policy:check`, che verifica casi consentiti/vietati e rifiuta bypass evidenti come accesso REST Discord diretto, HTTP diretto all'API Discord o mutazioni ad alto livello note.
+The bot build also runs `policy:check`, which tests allowed/blocked cases and rejects obvious bypasses such as direct Discord REST access, direct HTTP calls to the Discord API, or known high-level mutation methods.
 
+## GitHub CI/CD -> VPS
 
-## CI/CD GitHub -> VPS
-
-Il deploy di produzione non esegue `git pull` come root e non compila codice sulla VPS.
+Production deployment does not run `git pull` as root and does not build code on the VPS.
 
 ```text
 Pull Request
@@ -100,32 +99,32 @@ GitHub Actions
     +--> push GHCR
     |
     v
-SSH con chiave dedicata e forced-command
+SSH with dedicated key and forced-command
     |
     v
 /srv/docker/sentinel
     |
-    +--> backup DB pre-deploy
-    +--> pull immagini per digest SHA-256
+    +--> pre-deploy DB backup
+    +--> pull images by SHA-256 digest
     +--> migration
-    +--> avvio stack
+    +--> start stack
     +--> health check
-    +--> rollback app se necessario
+    +--> app rollback if required
 ```
 
-I secret applicativi **non transitano da GitHub Actions**. Su GitHub servono solo le credenziali di deploy SSH della VPS, conservate nell'environment protetto `production`.
+Application secrets **never pass through GitHub Actions**. GitHub only needs the VPS SSH deployment credentials, stored in the protected `production` environment.
 
-Guida completa: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+Full guide: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
-## Sviluppo locale
+## Local development
 
-Requisiti:
+Requirements:
 
 - Node.js 22+
 - Docker + Docker Compose
-- applicazione Discord di test
+- a Discord test application
 
-Il progetto usa npm workspaces.
+The project uses npm workspaces.
 
 ```bash
 npm install
@@ -133,30 +132,30 @@ npm run db:generate
 npm run build
 ```
 
-Per il Compose locale/hardened:
+For the local/hardened Compose setup:
 
 ```bash
 cp .env.example .env
 mkdir -p secrets
-# Popolare i secret come descritto in secrets/README.md
+# Populate the secrets as described in secrets/README.md
 docker compose up -d --build
 ```
 
 ## Discord Developer Portal
 
-Privileged Gateway Intents usati dal progetto:
+Privileged Gateway Intents used by the project:
 
 - Server Members Intent
-- Presence Intent, se usi il logger presenze
-- Message Content Intent, se vuoi conservare il contenuto dei messaggi
+- Presence Intent, if the presence logger is enabled
+- Message Content Intent, if message content should be retained
 
-OAuth2 redirect di produzione:
+Production OAuth2 redirect:
 
 ```text
-https://<hostname-sentinel>/backend/auth/discord/callback
+https://<sentinel-hostname>/backend/auth/discord/callback
 ```
 
-Permessi consigliati al bot, senza `Administrator`:
+Recommended bot permissions, without `Administrator`:
 
 - View Channels
 - Send Messages
@@ -164,91 +163,90 @@ Permessi consigliati al bot, senza `Administrator`:
 - Read Message History
 - View Audit Log
 
-Aggiungere solo gli ulteriori permessi strettamente necessari alle funzioni effettivamente abilitate.
+Add only the additional permissions strictly required by the features that are actually enabled.
 
-## Installazioni private durante lo sviluppo
+## Private installations during development
 
-L'istanza hosted può limitare l'installazione del bot a una allowlist di Discord User ID tramite:
+The hosted instance can restrict bot installation to an allowlist of Discord User IDs through:
 
 ```env
 INVITE_ALLOWED_USER_IDS=123456789012345678
 ```
 
-Il pulsante di installazione richiede prima l'identificazione Discord. Gli utenti non presenti nell'allowlist vengono reindirizzati a una pagina che indica che il progetto è ancora in sviluppo e rimanda al repository/fork.
+The install button requires Discord identification first. Users who are not in the allowlist are redirected to a page explaining that the project is still under development and linking to the repository/fork.
 
-Questa protezione del sito **non sostituisce** l'impostazione Discord del bot: durante lo sviluppo impostare anche **Public Bot = OFF** nel Developer Portal e **Installation > Install Link = None**, così un utente non autorizzato non può aggirare il sito costruendo manualmente un URL OAuth.
+This website-side protection **does not replace** Discord's bot setting: during development, also set **Public Bot = OFF** in the Developer Portal and **Installation > Install Link = None**, so an unauthorized user cannot bypass the website by manually building an OAuth URL.
 
 ## Super console
 
-L'istanza hosted include una super-console globale riservata al proprietario dell'installazione. Il controllo è effettuato server-side sulla sessione Discord.
+The hosted instance includes a global super console reserved for the instance owner. Access control is enforced server-side against the Discord session.
 
-Configurazione esplicita consigliata:
+Recommended explicit configuration:
 
 ```env
 SUPER_ADMIN_USER_ID=123456789012345678
 ```
 
-Per compatibilità con installazioni private già esistenti, se `SUPER_ADMIN_USER_ID` è vuoto e `INVITE_ALLOWED_USER_IDS` contiene **esattamente un** ID, quell'unico account viene usato come super-admin. Se l'allowlist contiene più account senza un super-admin esplicito, la super-console resta disabilitata.
+For compatibility with existing private installations, if `SUPER_ADMIN_USER_ID` is empty and `INVITE_ALLOWED_USER_IDS` contains **exactly one** ID, that account is used as the super admin. If the allowlist contains multiple accounts without an explicit super admin, the super console remains disabled.
 
-La super-console permette di:
+The super console allows you to:
 
-- vedere la lista live dei server in cui il bot è connesso;
-- far uscire il bot da un server;
-- blacklistare server, con espulsione immediata e rifiuto automatico ai successivi ingressi;
-- blacklistare Discord User ID dall'installazione hosted;
-- rimuovere elementi dalla blacklist;
-- consultare un audit separato delle azioni super-admin.
+- view the live list of servers where the bot is connected;
+- make the bot leave a server;
+- blacklist servers, with immediate removal and automatic rejection on future joins;
+- blacklist Discord User IDs from the hosted installation flow;
+- remove entries from the blacklist;
+- review a separate audit log of super-admin actions.
 
-Le API della super-console richiedono sempre la sessione del super-admin; nascondere il link nel frontend non è usato come controllo di sicurezza.
+Super-console APIs always require the super-admin session; hiding the frontend link is not used as a security control.
 
-## Premium e logger ad alto volume
+## Premium and high-volume loggers
 
-I server sono Free per impostazione predefinita. Lo stato Premium è modificabile esclusivamente dalla super-console globale.
+Servers are Free by default. Premium status can be changed only from the global super console.
 
-Gli eventi del catalogo contrassegnati come `noisy` / **ALTO VOLUME** possono essere acquisiti o inviati su Discord soltanto se `GuildSettings.premiumEnabled = true`.
+Catalog events marked as `noisy` / **HIGH VOLUME** can be collected or sent to Discord only when `GuildSettings.premiumEnabled = true`.
 
-L'enforcement è applicato a più livelli:
+Enforcement is applied at multiple layers:
 
-- la dashboard disabilita i controlli dei logger ad alto volume sui server Free;
-- l'API rifiuta con `PREMIUM_REQUIRED` ogni tentativo di attivare acquisizione o invio di un evento `noisy` su un server Free;
-- il recorder non persiste eventi `noisy` per server Free;
-- il dispatcher non invia eventuali eventi `noisy` rimasti in coda dopo la disattivazione Premium;
-- disattivare Premium dalla super-console spegne immediatamente tutti i logger `noisy`, oltre a Presence, Typing e Gateway raw.
+- the dashboard disables high-volume logger controls on Free servers;
+- the API rejects with `PREMIUM_REQUIRED` any attempt to enable collection or delivery of a `noisy` event on a Free server;
+- the recorder does not persist `noisy` events for Free servers;
+- the dispatcher does not send any `noisy` events that remain queued after Premium is disabled;
+- disabling Premium from the super console immediately turns off all `noisy` loggers, as well as Presence, Typing, and raw Gateway logging.
 
-Riattivare Premium **non riaccende automaticamente** i logger ad alto volume: devono essere abilitati manualmente dalla dashboard del server.
+Re-enabling Premium **does not automatically re-enable** high-volume loggers: they must be enabled manually from the server dashboard.
 
+## Database and retention
 
-## Database e retention
+- PostgreSQL stores configuration, events, snapshots, and dashboard audit data.
+- Redis/BullMQ manages the Discord delivery queue.
+- Production migrations use `prisma migrate deploy`.
+- Default retention: 30 days, configurable.
+- Dashboard sessions expire after 8 hours.
 
-- PostgreSQL conserva configurazione, eventi, snapshot e audit pannello.
-- Redis/BullMQ gestisce la coda di consegna verso Discord.
-- Le migrazioni di produzione usano `prisma migrate deploy`.
-- Retention predefinita: 30 giorni, configurabile.
-- Le sessioni pannello scadono dopo 8 ore.
+Migrations must be **backward-compatible** with at least one previous release to keep application rollback safe. Destructive removals must be performed in a later release.
 
-Le migrazioni devono essere **backward-compatible** con almeno una release precedente per rendere sicuro il rollback applicativo. Le rimozioni distruttive vanno fatte in una release successiva.
+## Discord limitations
 
-## Limiti Discord
+Sentinel can record only what Discord makes available to the bot through Gateway, REST, and Audit Log with the granted intents and permissions. It cannot read private DMs between users, know what a person is viewing in the client, or automatically record voice conversation audio through normal Gateway events.
 
-Sentinel può registrare solo ciò che Discord rende disponibile al bot tramite Gateway, REST e Audit Log con intent e permessi concessi. Non può leggere DM private tra utenti, sapere cosa una persona sta guardando nel client o registrare automaticamente l'audio delle conversazioni vocali tramite i normali eventi Gateway.
+## Operations
 
-## Operazioni
-
-Stato produzione dalla VPS:
+Production status from the VPS:
 
 ```bash
 sudo /usr/local/sbin/sentinel-deploy status
 ```
 
-Rollback manuale:
+Manual rollback:
 
 ```bash
 sudo /usr/local/sbin/sentinel-deploy rollback
 ```
 
-In alternativa è disponibile il workflow GitHub Actions **Rollback production**.
+Alternatively, the GitHub Actions **Rollback production** workflow is available.
 
-## Documentazione
+## Documentation
 
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 - [`docs/SECURITY.md`](docs/SECURITY.md)

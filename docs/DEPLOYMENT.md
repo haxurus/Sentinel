@@ -1,46 +1,46 @@
-# Deploy GitHub -> VPS
+# GitHub -> VPS deployment
 
-Questa procedura è pensata per la VPS di produzione con Docker Compose e Nginx Proxy Manager già presenti. Sentinel non pubblica database, Redis, API o pannello direttamente sulle porte dell'host.
+This procedure is intended for the production VPS with Docker Compose and Nginx Proxy Manager already installed. Sentinel does not publish the database, Redis, API, or dashboard directly on host ports.
 
-## Modello di deploy
+## Deployment model
 
-GitHub Actions costruisce due immagini:
+GitHub Actions builds two images:
 
-- `runtime`: API, bot e web;
-- `migrate`: immagine one-shot per `prisma migrate deploy`.
+- `runtime`: API, bot, and web;
+- `migrate`: one-shot image for `prisma migrate deploy`.
 
-Le immagini vengono pubblicate su `ghcr.io/haxurus/sentinel` e la VPS riceve i riferimenti **immutabili per digest** (`@sha256:...`).
+Images are published to `ghcr.io/haxurus/sentinel`, and the VPS receives **immutable digest references** (`@sha256:...`).
 
-Il deploy SSH usa l'utente dedicato `sentinel-deploy`. La sua chiave `authorized_keys` ha un forced-command e `restrict`, quindi non può aprire una shell, fare port forwarding o eseguire comandi generici.
+SSH deployment uses the dedicated `sentinel-deploy` user. Its `authorized_keys` entry uses a forced-command and `restrict`, so it cannot open a shell, perform port forwarding, or run arbitrary commands.
 
-## 1. Generare la chiave GitHub Actions
+## 1. Generate the GitHub Actions key
 
-Da una macchina fidata:
+From a trusted machine:
 
 ```bash
 ssh-keygen -t ed25519 -a 100 -f sentinel_deploy -C "sentinel-github-actions"
 ```
 
-Si ottengono:
+This creates:
 
-- `sentinel_deploy` - **privata**, da mettere solo nei GitHub Secrets;
-- `sentinel_deploy.pub` - pubblica, da copiare temporaneamente sulla VPS per l'installazione.
+- `sentinel_deploy` - **private**, to be stored only in GitHub Secrets;
+- `sentinel_deploy.pub` - public, to be copied temporarily to the VPS for installation.
 
-Non riutilizzare la chiave SSH amministrativa personale.
+Do not reuse your personal administrative SSH key.
 
-## 2. Installare l'infrastruttura Sentinel sulla VPS
+## 2. Install the Sentinel infrastructure on the VPS
 
-### Preflight SSH se usi `AllowUsers`
+### SSH preflight when using `AllowUsers`
 
-Se `sshd -T` mostra una direttiva `AllowUsers`, aggiungi esplicitamente `sentinel-deploy` alla stessa direttiva prima di eseguire l'installer. Non rimuovere la restrizione.
+If `sshd -T` shows an `AllowUsers` directive, explicitly add `sentinel-deploy` to the same directive before running the installer. Do not remove the restriction.
 
-Esempio VPS01:
+VPS01 example:
 
 ```text
 AllowUsers user007 sentinel-deploy
 ```
 
-Poi valida e ricarica SSH senza chiudere la sessione amministrativa corrente:
+Then validate and reload SSH without closing the current administrative session:
 
 ```bash
 sudo sshd -t
@@ -48,29 +48,29 @@ sudo systemctl reload ssh
 sudo sshd -T | grep '^allowusers'
 ```
 
-L'installer rifiuta di procedere se rileva una policy `AllowUsers` che non include `sentinel-deploy`.
+The installer refuses to continue if it detects an `AllowUsers` policy that does not include `sentinel-deploy`.
 
-Clonare temporaneamente la repository e avviare l'installer come root:
+Temporarily clone the repository and run the installer as root:
 
 ```bash
 git clone https://github.com/haxurus/Sentinel.git /tmp/Sentinel
 cd /tmp/Sentinel
-sudo ./ops/install-vps.sh /percorso/sentinel_deploy.pub
+sudo ./ops/install-vps.sh /path/to/sentinel_deploy.pub
 ```
 
-L'installer:
+The installer:
 
-- crea `/srv/docker/sentinel` root-only;
-- crea l'utente `sentinel-deploy`;
-- installa il forced-command SSH;
-- installa `/usr/local/sbin/sentinel-deploy` root-owned;
-- crea i secret interni casuali;
-- crea i file vuoti per token Discord/OAuth;
-- installa la configurazione Compose di produzione;
-- installa il firewall egress persistente;
-- verifica l'esistenza della rete Docker `proxy_net`.
+- creates `/srv/docker/sentinel` as root-only;
+- creates the `sentinel-deploy` user;
+- installs the SSH forced-command;
+- installs the root-owned `/usr/local/sbin/sentinel-deploy`;
+- creates random internal secrets;
+- creates empty files for the Discord/OAuth tokens;
+- installs the production Compose configuration;
+- installs the persistent egress firewall;
+- verifies that the Docker network `proxy_net` exists.
 
-Per aggiornare in futuro **solo l'infrastruttura statica** dopo averla revisionata:
+To update **only the static infrastructure** later, after reviewing it:
 
 ```bash
 cd /tmp/Sentinel
@@ -78,17 +78,17 @@ git pull --ff-only
 sudo ./ops/install-vps.sh
 ```
 
-Senza argomento la chiave deploy esistente viene mantenuta.
+Without an argument, the existing deploy key is preserved.
 
-## 3. Configurare la VPS
+## 3. Configure the VPS
 
-Modificare le impostazioni non segrete:
+Edit non-secret settings:
 
 ```bash
 sudoedit /srv/docker/sentinel/.env
 ```
 
-Esempio:
+Example:
 
 ```dotenv
 DISCORD_CLIENT_ID=123456789012345678
@@ -99,144 +99,144 @@ POSTGRES_DB=sentinel_audit
 LOG_LEVEL=info
 ```
 
-Inserire i due secret Discord senza passarli nella command line:
+Enter the two Discord secrets without passing them on the command line:
 
 ```bash
 sudoedit /srv/docker/sentinel/secrets/discord_token
 sudoedit /srv/docker/sentinel/secrets/discord_client_secret
 ```
 
-Gli altri secret sono generati automaticamente dall'installer.
+The remaining secrets are generated automatically by the installer.
 
-Verificare i permessi:
+Verify permissions:
 
 ```bash
 sudo find /srv/docker/sentinel/secrets -maxdepth 1 -type f -printf '%m %u:%g %p\n'
 ```
 
-`postgres_admin_password` resta `600 root:root`. I secret letti dai container API/bot sono `640 root:1000`: la directory `/srv/docker/sentinel/secrets` resta `700 root:root`, quindi gli utenti normali dell'host non possono attraversarla, mentre il processo non-root `node` nei container (gid 1000) può leggere i bind mount dei secret.
+`postgres_admin_password` remains `600 root:root`. Secrets read by the API/bot containers are `640 root:1000`: the `/srv/docker/sentinel/secrets` directory remains `700 root:root`, so normal host users cannot traverse it, while the non-root `node` process inside the containers (gid 1000) can read the secret bind mounts.
 
-## 4. Configurare Nginx Proxy Manager
+## 4. Configure Nginx Proxy Manager
 
-Il container `edge` si collega alla rete Docker esterna `proxy_net` con alias:
+The `edge` container joins the external Docker network `proxy_net` with the alias:
 
 ```text
 sentinel-edge
 ```
 
-In Nginx Proxy Manager creare un Proxy Host:
+Create a Proxy Host in Nginx Proxy Manager:
 
 - Scheme: `http`
 - Forward Hostname/IP: `sentinel-edge`
 - Forward Port: `8080`
-- Websockets: opzionale
-- SSL: secondo la policy già adottata sulla VPS
+- Websockets: optional
+- SSL: according to the policy already used on the VPS
 
-NPM vede soltanto il piccolo edge proxy. Il container `web` non è collegato direttamente a `proxy_net` e non riceve secret.
+NPM sees only the small edge proxy. The `web` container is not connected directly to `proxy_net` and receives no secrets.
 
-## 5. Configurare Discord OAuth2
+## 5. Configure Discord OAuth2
 
-Nel Discord Developer Portal aggiungere:
+In the Discord Developer Portal, add:
 
 ```text
 https://sentinel.example.com/backend/auth/discord/callback
 ```
 
-Il valore deve corrispondere esattamente a `PUBLIC_BASE_URL`.
+The value must match `PUBLIC_BASE_URL` exactly.
 
-## 6. Configurare GitHub
+## 6. Configure GitHub
 
-Creare prima l'environment GitHub **`production`**, limitarlo al branch `main` e, se disponibile, richiedere almeno un reviewer. Inserire poi **nell'environment `production`** questi secret (non come repository secrets generali):
+First create the GitHub **`production` environment**, restrict it to the `main` branch, and, when available, require at least one reviewer. Then add the following secrets **inside the `production` environment** (not as general repository secrets):
 
-- `VPS_HOST` - hostname o IPv4 della VPS;
-- `VPS_PORT` - normalmente `22`;
-- `VPS_DEPLOY_KEY` - contenuto completo della chiave privata `sentinel_deploy`;
-- `VPS_KNOWN_HOSTS` - host key SSH verificata della VPS.
+- `VPS_HOST` - VPS hostname or IPv4 address;
+- `VPS_PORT` - normally `22`;
+- `VPS_DEPLOY_KEY` - complete contents of the private `sentinel_deploy` key;
+- `VPS_KNOWN_HOSTS` - verified SSH host key for the VPS.
 
-Per `VPS_KNOWN_HOSTS`, ottenere la chiave direttamente dalla VPS e costruire una riga known_hosts verificata. Con porta 22:
+For `VPS_KNOWN_HOSTS`, obtain the key directly from the VPS and build a verified known_hosts line. With port 22:
 
 ```text
 vps.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...
 ```
 
-Se si usa un IP nel secret `VPS_HOST`, la prima colonna deve essere quello stesso IP. Per porte non standard usare la sintassi `[host]:porta`.
+If an IP address is used in the `VPS_HOST` secret, the first column must contain that same IP. For non-standard ports, use `[host]:port` syntax.
 
-Non usare `StrictHostKeyChecking=no` e non affidarsi a uno `ssh-keyscan` non verificato dentro la CI.
+Do not use `StrictHostKeyChecking=no`, and do not trust an unverified `ssh-keyscan` executed inside CI.
 
-Creare inoltre la repository variable:
+Also create the repository variable:
 
 ```text
 ENABLE_VPS_DEPLOY=true
 ```
 
-Finché questa variabile non è `true`, il workflow costruisce/pusha le immagini ma non contatta la VPS.
+Until this variable is `true`, the workflow builds/pushes the images but does not contact the VPS.
 
-### Environment `production`
+### `production` environment
 
-L'environment `production` è un confine di sicurezza: deve consentire deploy soltanto da `main`. Se disponibile sul piano GitHub usato, richiedere anche approvazione/reviewer. Questo impedisce a un branch arbitrario di ottenere automaticamente i secret SSH di produzione.
+The `production` environment is a security boundary: it must allow deployment only from `main`. If supported by the GitHub plan in use, also require approval/reviewer. This prevents an arbitrary branch from automatically receiving the production SSH secrets.
 
 ## 7. GHCR
 
-Le immagini vengono pubblicate come package Container in GitHub Container Registry.
+Images are published as Container packages in GitHub Container Registry.
 
-Dato che la repository è pubblica, la configurazione più semplice è rendere pubblico anche il package `haxurus/sentinel`. In questo caso la VPS può eseguire `docker pull` senza credenziali GitHub.
+Because the repository is public, the simplest setup is to make the `haxurus/sentinel` package public as well. In that case, the VPS can run `docker pull` without GitHub credentials.
 
-Se si vuole mantenere il package privato, effettuare una volta il login GHCR sulla VPS con un token **read-only per packages** e conservarne le credenziali Docker soltanto sul root account.
+If the package must remain private, log in to GHCR once on the VPS with a **read-only packages token**, and keep the Docker credentials only under the root account.
 
-## 8. Primo deploy
+## 8. First deployment
 
-Dopo aver completato i passaggi precedenti, un push/merge su `main` avvia:
+After completing the previous steps, a push/merge to `main` starts:
 
-1. build runtime;
-2. build migration image;
-3. SBOM e provenance BuildKit;
-4. push GHCR;
-5. deploy dei digest immutabili;
-6. backup DB pre-deploy se esiste già un database;
+1. runtime build;
+2. migration image build;
+3. BuildKit SBOM and provenance;
+4. push to GHCR;
+5. deployment of immutable digests;
+6. pre-deploy DB backup if a database already exists;
 7. migration;
-8. health check di API, bot, web ed edge.
+8. health checks for API, bot, web, and edge.
 
-Se i servizi non diventano healthy entro la finestra prevista, lo script prova a ripristinare l'immagine applicativa precedente.
+If services do not become healthy within the expected window, the script attempts to restore the previous application image.
 
 ## 9. Rollback
 
-Da GitHub:
+From GitHub:
 
 **Actions -> Rollback production -> Run workflow**
 
-Oppure dalla VPS:
+Or from the VPS:
 
 ```bash
 sudo /usr/local/sbin/sentinel-deploy rollback
 ```
 
-Lo script alterna la release corrente e quella precedente registrate in file root-only.
+The script alternates between the current and previous releases recorded in root-only files.
 
-### Nota sulle migrazioni
+### Migration note
 
-Il rollback automatico non può rendere magicamente reversibile una migrazione distruttiva. Le migration devono seguire un approccio expand/contract:
+Automatic rollback cannot magically reverse a destructive migration. Migrations must follow an expand/contract approach:
 
-1. aggiungere schema compatibile;
-2. distribuire codice nuovo;
-3. migrare i dati se necessario;
-4. rimuovere colonne/tabelle obsolete solo in una release successiva quando il rollback non le richiede più.
+1. add compatible schema;
+2. deploy new code;
+3. migrate data if necessary;
+4. remove obsolete columns/tables only in a later release, once rollback no longer depends on them.
 
-Prima di ogni deploy successivo al primo viene salvato un dump PostgreSQL in:
+Before every deployment after the first one, a PostgreSQL dump is stored in:
 
 ```text
 /srv/docker/sentinel/backups/
 ```
 
-con permessi root-only e retention locale di 14 giorni.
+with root-only permissions and a local retention of 14 days.
 
-## 10. Branch protection consigliata
+## 10. Recommended branch protection
 
-Proteggere `main` nelle impostazioni GitHub:
+Protect `main` in GitHub settings:
 
-- richiedere Pull Request;
-- richiedere il check `CI / validate`;
-- bloccare force-push e cancellazione branch;
-- richiedere risoluzione delle review conversation;
-- mantenere CODEOWNERS/review per modifiche sensibili.
+- require Pull Requests;
+- require the `CI / validate` check;
+- block force-pushes and branch deletion;
+- require review conversations to be resolved;
+- keep CODEOWNERS/review for sensitive changes.
 
-Le modifiche a `deploy/`, `ops/`, `security/`, `.github/workflows/` e alle migration meritano sempre review manuale.
+Changes to `deploy/`, `ops/`, `security/`, `.github/workflows/`, and migrations should always receive manual review.

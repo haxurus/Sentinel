@@ -1,11 +1,11 @@
-## Cosa cambia
+## What changes
 
 - 
 
-## Verifiche
+## Checks
 
-- [ ] La build Docker passa
-- [ ] Non sono stati aggiunti secret, token, password o file `.env`
-- [ ] Le modifiche al database sono backward-compatible con la release precedente
-- [ ] Le nuove dipendenze sono necessarie e minimali
-- [ ] Le modifiche di sicurezza sono documentate
+- [ ] Docker build passes
+- [ ] No secrets, tokens, passwords, or `.env` files were added
+- [ ] Database changes are backward-compatible with the previous release
+- [ ] New dependencies are necessary and minimal
+- [ ] Security changes are documented

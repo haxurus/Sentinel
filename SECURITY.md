@@ -1,30 +1,30 @@
 # Security Policy
 
-## Segnalazione vulnerabilità
+## Reporting vulnerabilities
 
-Non pubblicare token, credenziali, dump database, log sensibili o dettagli di exploit funzionanti in issue pubbliche.
+Do not publish tokens, credentials, database dumps, sensitive logs, or working exploit details in public issues.
 
-Per vulnerabilità del progetto usare, quando disponibile, **GitHub Private Vulnerability Reporting / Security Advisories** della repository.
+For project vulnerabilities, use the repository's **GitHub Private Vulnerability Reporting / Security Advisories** when available.
 
-In caso di possibile compromissione:
+In case of a suspected compromise:
 
-1. disabilitare temporaneamente il deploy automatico impostando `ENABLE_VPS_DEPLOY=false`;
-2. ruotare token Discord, OAuth secret e chiavi di deploy interessate;
-3. revocare le sessioni/persistenze compromesse;
-4. analizzare i log host/container;
-5. ripristinare da una release e backup noti come affidabili.
+1. temporarily disable automatic deployment by setting `ENABLE_VPS_DEPLOY=false`;
+2. rotate affected Discord tokens, OAuth secrets, and deployment keys;
+3. revoke compromised sessions/persisted credentials;
+4. inspect host/container logs;
+5. restore from a known-good release and backup.
 
-## Secret
+## Secrets
 
-Non committare mai:
+Never commit:
 
-- `.env` reali;
+- real `.env` files;
 - `secrets/*`;
-- token Discord;
-- OAuth client secret;
-- password PostgreSQL/Redis;
+- Discord tokens;
+- OAuth client secrets;
+- PostgreSQL/Redis passwords;
 - `log_data_encryption_key`;
-- chiavi SSH private;
-- dump database o export log.
+- private SSH keys;
+- database dumps or log exports.
 
-La repository contiene soltanto file di esempio senza credenziali reali.
+The repository contains only example files without real credentials.

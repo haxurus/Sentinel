@@ -1,31 +1,31 @@
 # Validation - v0.3.0
 
-Controlli eseguiti prima del commit iniziale della repository:
+Checks performed before the repository's initial commit:
 
-- parsing di tutti i `package.json`: OK;
-- parsing YAML di Compose, workflow GitHub Actions e Dependabot: OK;
-- `sh -n` su script `ops/`, `security/`, `docker/` e `scripts/`: OK;
-- transpile sintattico di tutti i file TypeScript/TSX: 22 file, 0 errori di sintassi;
-- compilazione TypeScript del package `@sentinel/shared`: OK;
-- verifica identità tra lo script DB hardening sorgente e la copia runtime production: OK;
-- verifica assenza dei vecchi namespace/nome Celestia: OK;
-- verifica che non siano presenti file secret reali nella tree: OK;
-- verifica che il token Discord non venga passato ad API/web: OK per architettura Compose;
-- verifica separazione reti/credenziali PostgreSQL tra API e bot: OK per configurazione;
-- health endpoint API con verifica database aggiunto;
-- health endpoint bot collegato allo stato `client.isReady()` aggiunto.
+- parsing of all `package.json` files: OK;
+- YAML parsing of Compose, GitHub Actions workflows, and Dependabot: OK;
+- `sh -n` on scripts under `ops/`, `security/`, `docker/`, and `scripts/`: OK;
+- syntax transpilation of all TypeScript/TSX files: 22 files, 0 syntax errors;
+- TypeScript compilation of the `@sentinel/shared` package: OK;
+- verification that the source DB hardening script matches the production runtime copy: OK;
+- verification that old Celestia namespaces/names are absent: OK;
+- verification that no real secret files are present in the tree: OK;
+- verification that the Discord token is not passed to API/web: OK for the Compose architecture;
+- verification of separate PostgreSQL networks/credentials for API and bot: OK for the configuration;
+- API health endpoint with database verification added;
+- bot health endpoint tied to `client.isReady()` added.
 
-## Limiti dell'ambiente di generazione
+## Generation environment limitations
 
-La rete dell'ambiente non ha completato `npm install`, quindi non è stato possibile eseguire localmente la build completa con tutte le dipendenze npm reali.
+The generation environment network did not complete `npm install`, so a full local build with all real npm dependencies could not be run.
 
-Docker CLI non è disponibile nell'ambiente di generazione, quindi `docker compose config` e la build delle immagini vengono verificati dalla CI GitHub al primo Pull Request/build.
+Docker CLI is not available in the generation environment, so `docker compose config` and image builds are verified by GitHub CI on the first Pull Request/build.
 
-La pipeline `.github/workflows/ci.yml` esegue:
+The `.github/workflows/ci.yml` pipeline runs:
 
-1. validazione shell;
-2. validazione `docker compose config` del file production;
-3. build target Docker `runtime`;
-4. build target Docker `migrate`.
+1. shell validation;
+2. `docker compose config` validation of the production file;
+3. Docker `runtime` target build;
+4. Docker `migrate` target build.
 
-Il deploy verso la VPS rimane disabilitato finché la variabile GitHub `ENABLE_VPS_DEPLOY` non viene impostata a `true`.
+Deployment to the VPS remains disabled until the GitHub variable `ENABLE_VPS_DEPLOY` is set to `true`.
