@@ -112,3 +112,12 @@ export async function isGuildInstallBlocked(guildId: string) {
   });
   return Boolean(block);
 }
+
+
+export async function isUserInstallBlocked(userId: string) {
+  const block = await prisma.installBlock.findUnique({
+    where: { kind_subjectId: { kind: 'USER', subjectId: userId } },
+    select: { id: true }
+  });
+  return Boolean(block);
+}

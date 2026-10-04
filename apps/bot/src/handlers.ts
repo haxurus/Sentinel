@@ -7,7 +7,7 @@ import {
   type PartialMessage
 } from 'discord.js';
 import { prisma } from '@sentinel/db';
-import { ensureGuild, getGuildSettings, isGuildInstallBlocked, snapshotMessage } from './store.js';
+import { ensureGuild, getGuildSettings, isGuildInstallBlocked, isUserInstallBlocked, snapshotMessage } from './store.js';
 import { recordEvent } from './recorder.js';
 import { findRecentAuditEntry, jsonSafe, redactSecrets } from './utils.js';
 import { decryptText, unprotectJson } from './security.js';
@@ -32,6 +32,15 @@ export function registerHandlers(client: Client) {
       await guild.leave().catch(() => null);
       return;
     }
+
+    const installer = client.user
+      ? await findRecentAuditEntry(guild, AuditLogEvent.BotAdd, client.user.id, 20_000)
+      : null;
+    if (installer?.executorId && await isUserInstallBlocked(installer.executorId)) {
+      await guild.leave().catch(() => null);
+      return;
+    }
+
     await ensureGuild(guild);
   });
 
