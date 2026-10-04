@@ -2,7 +2,7 @@ import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { prisma } from '@sentinel/db';
 import { eventDefinition } from '@sentinel/shared';
-import { EmbedBuilder, type Client } from 'discord.js';
+import { EmbedBuilder, type Client, type Guild } from 'discord.js';
 import { config } from './config.js';
 import { truncate } from './utils.js';
 import { unprotectJson, redactText } from './security.js';
@@ -17,6 +17,231 @@ const normalizeColor = (value?: string | null) => {
   if (!value) return fallback;
   const parsed = Number.parseInt(value.replace('#', ''), 16);
   return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+type DiscordReferenceKind = 'user' | 'role' | 'channel' | 'guild' | 'technical';
+
+const USER_TARGET_EVENTS = new Set([
+  'member.join',
+  'member.leave',
+  'member.update',
+  'moderation.kick',
+  'moderation.ban',
+  'moderation.unban',
+  'voice.join',
+  'voice.leave',
+  'voice.move',
+  'voice.state',
+  'thread.member_update',
+  'user.update',
+  'presence.update',
+  'typing.start'
+]);
+
+const ROLE_TARGET_PREFIXES = ['role.'];
+const CHANNEL_TARGET_EVENTS = new Set([
+  'channel.create',
+  'channel.update',
+  'channel.delete',
+  'thread.create',
+  'thread.update',
+  'thread.delete',
+  'thread.members_update'
+]);
+
+const DETAIL_LABELS: Record<string, string> = {
+  username: 'Utente',
+  userId: 'Utente',
+  authorId: 'Autore',
+  inviterId: 'Creatore invito',
+  ownerId: 'Proprietario',
+  executorId: 'Autore azione',
+  memberId: 'Membro',
+  addedUserIds: 'Utenti aggiunti',
+  removedUserIds: 'Utenti rimossi',
+  roleId: 'Ruolo',
+  roleIds: 'Ruoli',
+  roles: 'Ruoli',
+  addedRoles: 'Ruoli aggiunti',
+  removedRoles: 'Ruoli rimossi',
+  channelId: 'Canale',
+  channelIds: 'Canali',
+  parentId: 'Canale padre',
+  fromChannelId: 'Canale precedente',
+  toChannelId: 'Nuovo canale',
+  messageId: 'Messaggio',
+  messageIds: 'Messaggi',
+  replyTo: 'Risposta a',
+  oldNickname: 'Nickname precedente',
+  newNickname: 'Nuovo nickname',
+  oldTimeout: 'Timeout precedente',
+  newTimeout: 'Nuovo timeout',
+  oldPending: 'Pending precedente',
+  newPending: 'Pending attuale',
+  oldName: 'Nome precedente',
+  newName: 'Nuovo nome',
+  oldStatus: 'Stato precedente',
+  newStatus: 'Nuovo stato',
+  oldChannelId: 'Canale precedente',
+  newChannelId: 'Nuovo canale'
+};
+
+const humanizeDetailKey = (key: string) => {
+  if (DETAIL_LABELS[key]) return DETAIL_LABELS[key]!;
+  const spaced = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim();
+  return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : key;
+};
+
+const referenceKindForDetail = (key: string): DiscordReferenceKind | null => {
+  const lower = key.toLowerCase();
+
+  if (
+    lower === 'roles' ||
+    lower === 'addedroles' ||
+    lower === 'removedroles' ||
+    /(?:^|_)(?:role)(?:id|ids)$/.test(lower) ||
+    /roleids?$/.test(lower)
+  ) return 'role';
+
+  if (
+    lower === 'addeduserids' ||
+    lower === 'removeduserids' ||
+    /(?:user|member|author|owner|inviter|executor)ids?$/.test(lower)
+  ) return 'user';
+
+  if (
+    /(?:channel|parent)ids?$/.test(lower) ||
+    lower === 'fromchannelid' ||
+    lower === 'tochannelid'
+  ) return 'channel';
+
+  if (/guildids?$/.test(lower)) return 'guild';
+  return null;
+};
+
+const targetKindForEvent = (eventKey: string): DiscordReferenceKind => {
+  if (USER_TARGET_EVENTS.has(eventKey)) return 'user';
+  if (ROLE_TARGET_PREFIXES.some((prefix) => eventKey.startsWith(prefix))) return 'role';
+  if (CHANNEL_TARGET_EVENTS.has(eventKey)) return 'channel';
+  if (eventKey === 'guild.update' || eventKey === 'guild.available' || eventKey === 'guild.unavailable' || eventKey === 'guild.remove' || eventKey === 'voice.server_update') return 'guild';
+  return 'technical';
+};
+
+const looksLikeSnowflake = (value: string) => /^\d{17,20}$/.test(value);
+
+const formatReference = (guild: Guild, kind: DiscordReferenceKind, id: string) => {
+  if (!looksLikeSnowflake(id)) return `\`${id}\``;
+
+  switch (kind) {
+    case 'user': {
+      const cached = guild.members.cache.get(id);
+      const name = cached?.displayName || cached?.user?.username;
+      return `${name ? `**${name}** · ` : ''}<@${id}> · \`${id}\``;
+    }
+    case 'role': {
+      const role = guild.roles.cache.get(id);
+      return `${role ? `**@${role.name}** · ` : ''}<@&${id}> · \`${id}\``;
+    }
+    case 'channel': {
+      const channel = guild.channels.cache.get(id);
+      const name = channel && 'name' in channel ? channel.name : null;
+      return `${name ? `**#${name}** · ` : ''}<#${id}> · \`${id}\``;
+    }
+    case 'guild':
+      return id === guild.id ? `**${guild.name}** · \`${id}\`` : `\`${id}\``;
+    default:
+      return `\`${id}\``;
+  }
+};
+
+const formatBoolean = (value: boolean) => value ? 'Sì' : 'No';
+
+const formatPrimitive = (guild: Guild, key: string, value: string | number | boolean) => {
+  if (typeof value === 'boolean') return formatBoolean(value);
+  if (typeof value === 'number') return String(value);
+
+  const kind = referenceKindForDetail(key);
+  if (kind && looksLikeSnowflake(value)) return formatReference(guild, kind, value);
+
+  if (/At$/.test(key) && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+    const timestamp = Math.floor(new Date(value).getTime() / 1000);
+    if (Number.isFinite(timestamp)) return `<t:${timestamp}:F>`;
+  }
+
+  return value.length > 180 ? `\`${truncate(value.replace(/\`/g, "'"), 176)}\`` : `\`${value.replace(/\`/g, "'")}\``;
+};
+
+const formatDetailValue = (guild: Guild, key: string, value: unknown, depth = 0): string => {
+  if (value === null || value === undefined) return '—';
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return formatPrimitive(guild, key, value);
+  }
+
+  if (Array.isArray(value)) {
+    if (!value.length) return 'Nessuno';
+
+    const kind = referenceKindForDetail(key);
+    const items = value.slice(0, 10).map((item) => {
+      if (kind && (typeof item === 'string' || typeof item === 'number')) {
+        return formatReference(guild, kind, String(item));
+      }
+      if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
+        return formatPrimitive(guild, key, item);
+      }
+      return formatDetailValue(guild, key, item, depth + 1);
+    });
+    if (value.length > 10) items.push(`… +${value.length - 10}`);
+    return items.join(', ');
+  }
+
+  if (typeof value === 'object') {
+    if (depth >= 2) {
+      const raw = JSON.stringify(value).replace(/\`/g, "'");
+      return `\`${truncate(raw, 280)}\``;
+    }
+
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, nested]) => nested !== undefined && nested !== null)
+      .slice(0, 8);
+
+    if (!entries.length) return '—';
+
+    const rendered = entries.map(([nestedKey, nestedValue]) =>
+      `${humanizeDetailKey(nestedKey)}: ${formatDetailValue(guild, nestedKey, nestedValue, depth + 1)}`
+    );
+    const extra = Object.keys(value as Record<string, unknown>).length - entries.length;
+    if (extra > 0) rendered.push(`… +${extra}`);
+    return rendered.join(' · ');
+  }
+
+  return `\`${String(value)}\``;
+};
+
+const buildDetailsField = (guild: Guild, details: Record<string, unknown>) => {
+  const ignoredDetailKeys = new Set(['content', 'oldContent', 'newContent', 'attachments', 'actorRoleIds', 'actorBot']);
+  const lines = Object.entries(details)
+    .filter(([key, value]) => !ignoredDetailKeys.has(key) && value !== undefined && value !== null)
+    .map(([key, value]) => `**${humanizeDetailKey(key)}:** ${formatDetailValue(guild, key, value)}`);
+
+  if (!lines.length) return null;
+
+  let result = '';
+  for (const line of lines) {
+    const candidate = result ? `${result}\n${line}` : line;
+    if (candidate.length <= 1024) {
+      result = candidate;
+      continue;
+    }
+
+    if (!result) result = truncate(line, 1021) + '…';
+    else if (result.length <= 1018) result += '\n…';
+    break;
+  }
+  return result || null;
 };
 
 export function startDispatcher(client: Client) {
@@ -59,9 +284,25 @@ export function startDispatcher(client: Client) {
 
     if (route?.showTimestamp !== false) embed.setTimestamp(event.createdAt);
     if (route?.thumbnailUrl) embed.setThumbnail(route.thumbnailUrl);
-    if (event.actorId && route?.showActor !== false) embed.addFields({ name: 'Autore azione', value: `<@${event.actorId}> (\`${event.actorId}\`)`, inline: true });
-    if (event.targetId && route?.showTarget !== false) embed.addFields({ name: 'Target ID', value: `\`${event.targetId}\``, inline: true });
-    if (event.channelId && route?.showChannel !== false) embed.addFields({ name: 'Canale', value: `<#${event.channelId}> (\`${event.channelId}\`)`, inline: true });
+    if (event.actorId && route?.showActor !== false) {
+      embed.addFields({ name: 'Autore azione', value: formatReference(guild, 'user', event.actorId), inline: true });
+    }
+    if (event.targetId && route?.showTarget !== false) {
+      const targetKind = targetKindForEvent(event.eventKey);
+      const targetLabel = targetKind === 'user'
+        ? 'Target utente'
+        : targetKind === 'role'
+          ? 'Target ruolo'
+          : targetKind === 'channel'
+            ? 'Target canale'
+            : targetKind === 'guild'
+              ? 'Target server'
+              : 'Target';
+      embed.addFields({ name: targetLabel, value: formatReference(guild, targetKind, event.targetId), inline: true });
+    }
+    if (event.channelId && route?.showChannel !== false) {
+      embed.addFields({ name: 'Canale', value: formatReference(guild, 'channel', event.channelId), inline: true });
+    }
 
     const content = typeof details.content === 'string' ? details.content : null;
     const oldContent = typeof details.oldContent === 'string' ? details.oldContent : null;
@@ -78,10 +319,9 @@ export function startDispatcher(client: Client) {
       embed.addFields({ name: `Allegati (${attachments.length})`, value: truncate(list, 1024) });
     }
 
-    const ignoredDetailKeys = new Set(['content', 'oldContent', 'newContent', 'attachments', 'actorRoleIds', 'actorBot']);
-    const compact = Object.fromEntries(Object.entries(details).filter(([key, value]) => !ignoredDetailKeys.has(key) && value !== undefined && value !== null));
-    if (Object.keys(compact).length) {
-      embed.addFields({ name: 'Dettagli', value: `\`\`\`json\n${truncate(JSON.stringify(compact, null, 2), 930)}\n\`\`\`` });
+    const formattedDetails = buildDetailsField(guild, details);
+    if (formattedDetails) {
+      embed.addFields({ name: 'Dettagli', value: formattedDetails });
     }
 
     const mentions = route?.mentionRoleIds.map((id) => `<@&${id}>`).join(' ') ?? '';
