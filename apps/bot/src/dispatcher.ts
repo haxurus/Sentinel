@@ -83,7 +83,37 @@ const DETAIL_LABELS: Record<string, string> = {
   oldStatus: 'Stato precedente',
   newStatus: 'Nuovo stato',
   oldChannelId: 'Canale precedente',
-  newChannelId: 'Nuovo canale'
+  newChannelId: 'Nuovo canale',
+  oldParentId: 'Categoria precedente',
+  newParentId: 'Nuova categoria',
+  commandPath: 'Comando',
+  botUserId: 'Bot',
+  applicationId: 'Application ID',
+  commandId: 'Command ID',
+  responseMessageId: 'Messaggio risposta',
+  source: 'Origine',
+  serverMute: 'Mute server',
+  serverDeaf: 'Deaf server',
+  selfMute: 'Microfono disattivato',
+  selfDeaf: 'Audio in ingresso disattivato',
+  streaming: 'Streaming',
+  selfVideo: 'Videocamera',
+  suppress: 'Stage: ascoltatore',
+  permissionOverwriteChanges: 'Permessi modificati',
+  oldType: 'Tipo precedente',
+  newType: 'Nuovo tipo',
+  oldTopic: 'Topic precedente',
+  newTopic: 'Nuovo topic',
+  oldNsfw: 'NSFW precedente',
+  newNsfw: 'NSFW attuale',
+  oldSlowmode: 'Slowmode precedente',
+  newSlowmode: 'Nuovo slowmode',
+  oldBitrate: 'Bitrate precedente',
+  newBitrate: 'Nuovo bitrate',
+  oldUserLimit: 'Limite utenti precedente',
+  newUserLimit: 'Nuovo limite utenti',
+  oldRtcRegion: 'Regione RTC precedente',
+  newRtcRegion: 'Nuova regione RTC'
 };
 
 const humanizeDetailKey = (key: string) => {
@@ -109,6 +139,7 @@ const referenceKindForDetail = (key: string): DiscordReferenceKind | null => {
   if (
     lower === 'addeduserids' ||
     lower === 'removeduserids' ||
+    lower === 'botuserid' ||
     /(?:user|member|author|owner|inviter|executor)ids?$/.test(lower)
   ) return 'user';
 
@@ -157,6 +188,61 @@ const formatReference = (guild: Guild, kind: DiscordReferenceKind, id: string) =
   }
 };
 
+const PERMISSION_LABELS: Record<string, string> = {
+  ViewChannel: 'Vedi canale',
+  ManageChannels: 'Gestisci canali',
+  ManageRoles: 'Gestisci ruoli',
+  SendMessages: 'Invia messaggi',
+  SendMessagesInThreads: 'Invia messaggi nei thread',
+  ReadMessageHistory: 'Leggi cronologia messaggi',
+  ManageMessages: 'Gestisci messaggi',
+  EmbedLinks: 'Incorpora link',
+  AttachFiles: 'Allega file',
+  AddReactions: 'Aggiungi reazioni',
+  MentionEveryone: 'Menziona @everyone/@here',
+  Connect: 'Connetti',
+  Speak: 'Parla',
+  Stream: 'Video/stream',
+  UseVAD: 'Rilevamento voce',
+  MuteMembers: 'Muta membri',
+  DeafenMembers: 'Deaf membri',
+  MoveMembers: 'Sposta membri',
+  PrioritySpeaker: 'Priorità voce',
+  UseExternalEmojis: 'Usa emoji esterne',
+  UseExternalStickers: 'Usa sticker esterni',
+  CreatePublicThreads: 'Crea thread pubblici',
+  CreatePrivateThreads: 'Crea thread privati',
+  ManageThreads: 'Gestisci thread'
+};
+
+const permissionLabel = (permission: string) =>
+  PERMISSION_LABELS[permission] ?? permission.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+
+const formatPermissionOverwriteChanges = (guild: Guild, value: unknown) => {
+  if (!Array.isArray(value) || !value.length) return '—';
+
+  return value.slice(0, 8).map((item) => {
+    const change = asObject(item);
+    const targetId = String(change.targetId ?? '');
+    const targetKind: DiscordReferenceKind = change.targetType === 'user' ? 'user' : 'role';
+    const target = formatReference(guild, targetKind, targetId);
+    const action = change.action === 'added' ? 'aggiunto' : change.action === 'removed' ? 'rimosso' : 'modificato';
+
+    const parts: string[] = [];
+    const pushPermissions = (label: string, permissions: unknown) => {
+      if (!Array.isArray(permissions) || !permissions.length) return;
+      parts.push(`${label}: ${permissions.map((permission) => permissionLabel(String(permission))).join(', ')}`);
+    };
+
+    pushPermissions('Consenti +', change.allowAdded);
+    pushPermissions('Consenti −', change.allowRemoved);
+    pushPermissions('Nega +', change.denyAdded);
+    pushPermissions('Nega −', change.denyRemoved);
+
+    return `${target} — **${action}**${parts.length ? ` — ${parts.join(' · ')}` : ''}`;
+  }).join('\n');
+};
+
 const formatBoolean = (value: boolean) => value ? 'Sì' : 'No';
 
 const formatPrimitive = (guild: Guild, key: string, value: string | number | boolean) => {
@@ -165,6 +251,11 @@ const formatPrimitive = (guild: Guild, key: string, value: string | number | boo
 
   const kind = referenceKindForDetail(key);
   if (kind && looksLikeSnowflake(value)) return formatReference(guild, kind, value);
+
+  if (key === 'source') {
+    if (value === 'direct') return 'Sentinel';
+    if (value === 'public_response') return 'Risposta pubblica di un altro bot';
+  }
 
   if (/At$/.test(key) && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
     const timestamp = Math.floor(new Date(value).getTime() / 1000);
@@ -176,6 +267,7 @@ const formatPrimitive = (guild: Guild, key: string, value: string | number | boo
 
 const formatDetailValue = (guild: Guild, key: string, value: unknown, depth = 0): string => {
   if (value === null || value === undefined) return '—';
+  if (key === 'permissionOverwriteChanges') return formatPermissionOverwriteChanges(guild, value);
 
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return formatPrimitive(guild, key, value);

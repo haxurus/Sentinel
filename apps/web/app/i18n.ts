@@ -99,6 +99,7 @@ const EVENT_EN: Record<string, { label: string; description: string }> = {
   'soundboard.update': { label: 'Sound updated', description: 'A soundboard sound is updated.' },
   'soundboard.delete': { label: 'Sound deleted', description: 'A sound is removed from the soundboard.' },
   'soundboard.sync': { label: 'Soundboard synchronized', description: 'Discord updates the server sound list.' },
+  'command.use': { label: 'Slash command', description: 'A user uses a Sentinel command or another bot command with a public response.' },
   'interaction.create': { label: 'Bot interaction', description: 'A user uses a command, button, menu or modal from the bot.' },
   'application.permissions_update': { label: 'Application command permissions', description: 'Permissions for a command or application entity change in the server.' },
   'user.update': { label: 'User profile updated', description: 'Username, avatar or other global user data changes.' },

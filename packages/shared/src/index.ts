@@ -72,6 +72,7 @@ export const EVENT_CATALOG: EventDefinition[] = [
   { key: 'soundboard.update', category: 'Soundboard', label: 'Suono modificato', description: 'Viene modificato un suono della soundboard.' },
   { key: 'soundboard.delete', category: 'Soundboard', label: 'Suono eliminato', description: 'Viene eliminato un suono dalla soundboard.' },
   { key: 'soundboard.sync', category: 'Soundboard', label: 'Soundboard sincronizzata', description: 'Discord aggiorna l’elenco dei suoni del server.', noisy: true },
+  { key: 'command.use', category: 'Interazioni', label: 'Comando slash', description: 'Un utente usa un comando slash di Sentinel o di un altro bot con risposta pubblica.' },
   { key: 'interaction.create', category: 'Interazioni', label: 'Interazione bot', description: 'Un utente usa un comando, bottone, menu o modal del bot.', noisy: true },
   { key: 'application.permissions_update', category: 'Applicazioni', label: 'Permessi comando applicazione', description: 'Cambiano i permessi di un comando o entita applicazione nel server.' },
   { key: 'user.update', category: 'Utenti', label: 'Profilo utente modificato', description: 'Cambiano username, avatar o altri dati globali di un utente.', noisy: true },

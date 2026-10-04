@@ -56,7 +56,7 @@ type AccessLevel = 'VIEWER' | 'MODERATOR' | 'ADMIN' | 'OWNER';
 type AccessBinding = { id: string; discordRoleId: string; accessLevel: 'VIEWER' | 'MODERATOR' | 'ADMIN' };
 type LoggerMacro = { key: string; label: string; description: string; categories: string[] };
 
-const textChannelTypes = new Set([0, 5]);
+const textChannelTypes = new Set([0, 2, 5]);
 
 const LOGGER_MACROS: LoggerMacro[] = [
   {

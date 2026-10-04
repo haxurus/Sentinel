@@ -1,6 +1,7 @@
 import {
   AuditLogEvent,
   Events,
+  InteractionType,
   type Client,
   type GuildMember,
   type Message,
@@ -26,6 +27,100 @@ const attachmentData = (message: Message | PartialMessage) => [...message.attach
   contentType: a.contentType,
   size: a.size
 }));
+
+const addChangedPair = (
+  details: Record<string, unknown>,
+  oldKey: string,
+  newKey: string,
+  oldValue: unknown,
+  newValue: unknown
+) => {
+  if (JSON.stringify(oldValue) === JSON.stringify(newValue)) return false;
+  details[oldKey] = oldValue;
+  details[newKey] = newValue;
+  return true;
+};
+
+const permissionNames = (overwrite: any, side: 'allow' | 'deny') =>
+  new Set<string>(overwrite?.[side]?.toArray?.() ?? []);
+
+const setDifference = (next: Set<string>, previous: Set<string>) =>
+  [...next].filter((value) => !previous.has(value));
+
+const permissionOverwriteChanges = (oldChannel: any, newChannel: any) => {
+  const oldCache = oldChannel?.permissionOverwrites?.cache;
+  const newCache = newChannel?.permissionOverwrites?.cache;
+  if (!oldCache || !newCache) return [];
+
+  const ids = new Set<string>([...oldCache.keys(), ...newCache.keys()]);
+  const changes: Array<Record<string, unknown>> = [];
+
+  for (const id of ids) {
+    const before = oldCache.get(id);
+    const after = newCache.get(id);
+    const targetType = (after?.type ?? before?.type) === 0 ? 'role' : 'user';
+
+    if (!before && after) {
+      changes.push({
+        targetId: id,
+        targetType,
+        action: 'added',
+        allowAdded: [...permissionNames(after, 'allow')],
+        denyAdded: [...permissionNames(after, 'deny')]
+      });
+      continue;
+    }
+
+    if (before && !after) {
+      changes.push({
+        targetId: id,
+        targetType,
+        action: 'removed',
+        allowRemoved: [...permissionNames(before, 'allow')],
+        denyRemoved: [...permissionNames(before, 'deny')]
+      });
+      continue;
+    }
+
+    const oldAllow = permissionNames(before, 'allow');
+    const newAllow = permissionNames(after, 'allow');
+    const oldDeny = permissionNames(before, 'deny');
+    const newDeny = permissionNames(after, 'deny');
+
+    const allowAdded = setDifference(newAllow, oldAllow);
+    const allowRemoved = setDifference(oldAllow, newAllow);
+    const denyAdded = setDifference(newDeny, oldDeny);
+    const denyRemoved = setDifference(oldDeny, newDeny);
+
+    if (allowAdded.length || allowRemoved.length || denyAdded.length || denyRemoved.length) {
+      changes.push({ targetId: id, targetType, action: 'updated', allowAdded, allowRemoved, denyAdded, denyRemoved });
+    }
+  }
+
+  return changes;
+};
+
+const voiceStateSummary = (tag: string, changes: Record<string, unknown>) => {
+  const visibleKeys = Object.keys(changes).filter((key) => !['actorBot', 'actorRoleIds'].includes(key));
+  if (visibleKeys.length !== 1) return `Lo stato vocale di ${tag} è cambiato.`;
+
+  switch (visibleKeys[0]) {
+    case 'selfMute': return changes.selfMute ? `${tag} si è mutato.` : `${tag} si è smutato.`;
+    case 'selfDeaf': return changes.selfDeaf ? `${tag} ha disattivato l’audio in ingresso.` : `${tag} ha riattivato l’audio in ingresso.`;
+    case 'serverMute': return changes.serverMute ? `${tag} è stato mutato dal server.` : `${tag} non è più mutato dal server.`;
+    case 'serverDeaf': return changes.serverDeaf ? `${tag} è stato deafened dal server.` : `${tag} non è più deafened dal server.`;
+    case 'streaming': return changes.streaming ? `${tag} ha avviato lo streaming.` : `${tag} ha interrotto lo streaming.`;
+    case 'selfVideo': return changes.selfVideo ? `${tag} ha attivato la videocamera.` : `${tag} ha disattivato la videocamera.`;
+    case 'suppress': return changes.suppress ? `${tag} è stato spostato tra gli ascoltatori.` : `${tag} può parlare sullo Stage.`;
+    default: return `Lo stato vocale di ${tag} è cambiato.`;
+  }
+};
+
+const commandPath = (interaction: any) => {
+  const group = interaction.options?.getSubcommandGroup?.(false) ?? null;
+  const subcommand = interaction.options?.getSubcommand?.(false) ?? null;
+  return '/' + [interaction.commandName, group, subcommand].filter(Boolean).join(' ');
+};
 
 export function registerHandlers(client: Client) {
   client.on(Events.GuildCreate, async (guild) => {
@@ -85,8 +180,20 @@ export function registerHandlers(client: Client) {
     const addedRoles = newRoles.filter((id) => !oldRoles.includes(id));
     const removedRoles = oldRoles.filter((id) => !newRoles.includes(id));
     const rolesChanged = addedRoles.length > 0 || removedRoles.length > 0;
+    const details: Record<string, unknown> = {};
+
+    addChangedPair(details, 'oldNickname', 'newNickname', oldMember.nickname, newMember.nickname);
+    if (addedRoles.length) details.addedRoles = addedRoles;
+    if (removedRoles.length) details.removedRoles = removedRoles;
+    addChangedPair(details, 'oldTimeout', 'newTimeout', oldMember.communicationDisabledUntil?.toISOString() ?? null, newMember.communicationDisabledUntil?.toISOString() ?? null);
+    addChangedPair(details, 'oldBoostSince', 'newBoostSince', oldMember.premiumSince?.toISOString() ?? null, newMember.premiumSince?.toISOString() ?? null);
+    addChangedPair(details, 'oldPending', 'newPending', oldMember.pending, newMember.pending);
+
+    if (!Object.keys(details).length) return;
+
     const type = rolesChanged ? AuditLogEvent.MemberRoleUpdate : AuditLogEvent.MemberUpdate;
     const actorId = await actorFromAudit(newMember.guild, type, newMember.id);
+    details.actorRoleIds = actorId ? roleIds(newMember.guild.members.cache.get(actorId)) : [];
 
     await recordEvent({
       guildId: newMember.guild.id,
@@ -94,19 +201,7 @@ export function registerHandlers(client: Client) {
       actorId,
       targetId: newMember.id,
       summary: `${newMember.user.tag} è stato modificato.`,
-      details: {
-        oldNickname: oldMember.nickname,
-        newNickname: newMember.nickname,
-        addedRoles,
-        removedRoles,
-        oldTimeout: oldMember.communicationDisabledUntil?.toISOString() ?? null,
-        newTimeout: newMember.communicationDisabledUntil?.toISOString() ?? null,
-        oldBoostSince: oldMember.premiumSince?.toISOString() ?? null,
-        newBoostSince: newMember.premiumSince?.toISOString() ?? null,
-        oldPending: oldMember.pending,
-        newPending: newMember.pending,
-        actorRoleIds: actorId ? roleIds(newMember.guild.members.cache.get(actorId)) : []
-      }
+      details
     });
   });
 
@@ -135,7 +230,36 @@ export function registerHandlers(client: Client) {
   });
 
   client.on(Events.MessageCreate, async (message) => {
-    if (!message.guildId || !message.author || message.author.id === client.user?.id) return;
+    if (!message.guildId || !message.author) return;
+
+    const interactionResponse = message.interaction;
+    const interactionMetadata = message.interactionMetadata;
+    if (
+      message.author.id !== client.user?.id &&
+      message.author.bot &&
+      interactionResponse?.type === InteractionType.ApplicationCommand &&
+      !interactionMetadata?.originalResponseMessageId
+    ) {
+      const invoker = interactionResponse.user;
+      await recordEvent({
+        guildId: message.guildId,
+        eventKey: 'command.use',
+        actorId: invoker.id,
+        channelId: message.channelId,
+        summary: `${invoker.tag} ha usato /${interactionResponse.commandName} con ${message.author.tag}.`,
+        details: {
+          commandPath: `/${interactionResponse.commandName}`,
+          botUserId: message.author.id,
+          applicationId: message.applicationId,
+          responseMessageId: message.id,
+          source: 'public_response',
+          actorBot: invoker.bot,
+          actorRoleIds: roleIds(message.guild?.members.cache.get(invoker.id))
+        }
+      });
+    }
+
+    if (message.author.id === client.user?.id) return;
     const settings = await getGuildSettings(message.guildId);
     await snapshotMessage(message);
     await recordEvent({
@@ -305,8 +429,11 @@ export function registerHandlers(client: Client) {
   client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
     const member = newState.member ?? oldState.member;
     if (!member) return;
+
     let eventKey = 'voice.state';
     let summary = `Lo stato vocale di ${member.user.tag} è cambiato.`;
+    const details: Record<string, unknown> = {};
+
     if (!oldState.channelId && newState.channelId) {
       eventKey = 'voice.join';
       summary = `${member.user.tag} è entrato in ${newState.channel?.name ?? 'un canale vocale'}.`;
@@ -315,27 +442,40 @@ export function registerHandlers(client: Client) {
       summary = `${member.user.tag} è uscito da ${oldState.channel?.name ?? 'un canale vocale'}.`;
     } else if (oldState.channelId !== newState.channelId) {
       eventKey = 'voice.move';
-      summary = `${member.user.tag} è stato spostato/cambiato canale vocale.`;
+      summary = `${member.user.tag} è passato da ${oldState.channel?.name ?? 'un canale vocale'} a ${newState.channel?.name ?? 'un canale vocale'}.`;
+      details.fromChannelId = oldState.channelId;
+      details.toChannelId = newState.channelId;
     }
+
+    const stateChanges: Array<[string, unknown, unknown]> = [
+      ['serverMute', oldState.serverMute, newState.serverMute],
+      ['serverDeaf', oldState.serverDeaf, newState.serverDeaf],
+      ['selfMute', oldState.selfMute, newState.selfMute],
+      ['selfDeaf', oldState.selfDeaf, newState.selfDeaf],
+      ['streaming', oldState.streaming, newState.streaming],
+      ['selfVideo', oldState.selfVideo, newState.selfVideo],
+      ['suppress', oldState.suppress, newState.suppress]
+    ];
+
+    for (const [key, before, after] of stateChanges) {
+      if (before !== after) details[key] = after;
+    }
+
+    if (eventKey === 'voice.state') {
+      if (!Object.keys(details).length) return;
+      summary = voiceStateSummary(member.user.tag, details);
+    }
+
+    details.actorBot = member.user.bot;
+    details.actorRoleIds = roleIds(member);
+
     await recordEvent({
       guildId: newState.guild.id,
       eventKey,
-      actorId: member.id,
       targetId: member.id,
       channelId: newState.channelId ?? oldState.channelId,
       summary,
-      details: {
-        fromChannelId: oldState.channelId,
-        toChannelId: newState.channelId,
-        serverMute: newState.serverMute,
-        serverDeaf: newState.serverDeaf,
-        selfMute: newState.selfMute,
-        selfDeaf: newState.selfDeaf,
-        streaming: newState.streaming,
-        selfVideo: newState.selfVideo,
-        actorBot: member.user.bot,
-        actorRoleIds: roleIds(member)
-      }
+      details
     });
   });
 
@@ -388,10 +528,46 @@ export function registerHandlers(client: Client) {
     }
   });
   client.on(Events.ChannelUpdate, async (oldChannel, newChannel) => {
-    if (!newChannel.isDMBased()) {
-      const actorId = await actorFromAudit(newChannel.guild, AuditLogEvent.ChannelUpdate, newChannel.id);
-      await recordEvent({ guildId: newChannel.guild.id, eventKey: 'channel.update', actorId, targetId: newChannel.id, channelId: newChannel.id, summary: `Modificato il canale ${newChannel.name}.`, details: { oldName: 'name' in oldChannel ? oldChannel.name : null, newName: newChannel.name, type: newChannel.type, parentId: newChannel.parentId, permissionOverwrites: newChannel.permissionOverwrites.cache.map((o) => ({ id: o.id, type: o.type, allow: o.allow.bitfield.toString(), deny: o.deny.bitfield.toString() })) } });
+    if (newChannel.isDMBased()) return;
+
+    const before = oldChannel as any;
+    const after = newChannel as any;
+    const details: Record<string, unknown> = {};
+    const nameChanged = addChangedPair(details, 'oldName', 'newName', before.name ?? null, after.name ?? null);
+    const parentChanged = addChangedPair(details, 'oldParentId', 'newParentId', before.parentId ?? null, after.parentId ?? null);
+    addChangedPair(details, 'oldType', 'newType', before.type, after.type);
+    addChangedPair(details, 'oldTopic', 'newTopic', before.topic ?? null, after.topic ?? null);
+    addChangedPair(details, 'oldNsfw', 'newNsfw', before.nsfw ?? null, after.nsfw ?? null);
+    addChangedPair(details, 'oldSlowmode', 'newSlowmode', before.rateLimitPerUser ?? null, after.rateLimitPerUser ?? null);
+    addChangedPair(details, 'oldBitrate', 'newBitrate', before.bitrate ?? null, after.bitrate ?? null);
+    addChangedPair(details, 'oldUserLimit', 'newUserLimit', before.userLimit ?? null, after.userLimit ?? null);
+    addChangedPair(details, 'oldRtcRegion', 'newRtcRegion', before.rtcRegion ?? null, after.rtcRegion ?? null);
+
+    const overwriteChanges = permissionOverwriteChanges(oldChannel, newChannel);
+    if (overwriteChanges.length) details.permissionOverwriteChanges = overwriteChanges;
+
+    if (!Object.keys(details).length) return;
+
+    const actorId = await actorFromAudit(newChannel.guild, AuditLogEvent.ChannelUpdate, newChannel.id);
+    if (actorId) details.actorRoleIds = roleIds(newChannel.guild.members.cache.get(actorId));
+
+    let summary = `Modificato il canale ${newChannel.name}.`;
+    if (overwriteChanges.length && Object.keys(details).filter((key) => !['permissionOverwriteChanges', 'actorRoleIds'].includes(key)).length === 0) {
+      summary = `Modificati i permessi del canale ${newChannel.name}.`;
+    } else if (nameChanged && Object.keys(details).filter((key) => !['oldName', 'newName', 'actorRoleIds'].includes(key)).length === 0) {
+      summary = `Canale rinominato da ${before.name} a ${after.name}.`;
+    } else if (parentChanged && Object.keys(details).filter((key) => !['oldParentId', 'newParentId', 'actorRoleIds'].includes(key)).length === 0) {
+      summary = `Spostato il canale ${newChannel.name}.`;
     }
+
+    await recordEvent({
+      guildId: newChannel.guild.id,
+      eventKey: 'channel.update',
+      actorId,
+      channelId: newChannel.id,
+      summary,
+      details
+    });
   });
   client.on(Events.ChannelDelete, async (channel) => {
     if (!channel.isDMBased()) {
@@ -623,17 +799,38 @@ export function registerHandlers(client: Client) {
 
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.guildId || interaction.user.id === client.user?.id) return;
+
+    if (interaction.isChatInputCommand()) {
+      const path = commandPath(interaction);
+      await recordEvent({
+        guildId: interaction.guildId,
+        eventKey: 'command.use',
+        actorId: interaction.user.id,
+        channelId: interaction.channelId,
+        summary: `${interaction.user.tag} ha usato ${path} con Sentinel.`,
+        details: {
+          commandPath: path,
+          botUserId: client.user?.id ?? null,
+          applicationId: interaction.applicationId,
+          commandId: interaction.commandId,
+          source: 'direct',
+          actorBot: interaction.user.bot,
+          actorRoleIds: (interaction.member as any)?.roles?.cache ? [...(interaction.member as any).roles.cache.keys()] : []
+        }
+      });
+      return;
+    }
+
     const item = interaction as any;
     await recordEvent({
       guildId: interaction.guildId,
       eventKey: 'interaction.create',
       actorId: interaction.user.id,
-      targetId: item.commandId ?? item.customId ?? null,
+      targetId: item.customId ?? null,
       channelId: interaction.channelId,
-      summary: `${interaction.user.tag} ha usato un’interazione del bot.`,
+      summary: `${interaction.user.tag} ha usato un’interazione di Sentinel.`,
       details: {
         kind: interaction.type,
-        commandName: item.commandName ?? null,
         customId: item.customId ?? null,
         actorBot: interaction.user.bot,
         actorRoleIds: (interaction.member as any)?.roles?.cache ? [...(interaction.member as any).roles.cache.keys()] : []
