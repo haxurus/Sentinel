@@ -55,6 +55,30 @@ La versione corrente applica un modello zero-trust/least-privilege:
 
 Dettagli: [`docs/SECURITY.md`](docs/SECURITY.md).
 
+## Policy capacità Discord
+
+Il processo bot applica una allowlist runtime alle richieste REST Discord. I permessi Discord assegnati al ruolo del bot **non sono considerati autorizzazione sufficiente** per eseguire una mutazione.
+
+Consentito:
+
+- lettura REST (`GET`), inclusi canali, messaggi, membri, ruoli e Audit Log;
+- ricezione degli eventi Gateway;
+- invio dei log tramite `POST /channels/:channelId/messages`, inclusi embed;
+- uscita dal server tramite `DELETE /users/@me/guilds/:guildId`, usata dalla super-console e dall'enforcement della blacklist.
+
+Qualsiasi altra mutazione Discord `POST`, `PUT`, `PATCH` o `DELETE` viene bloccata dal processo prima di raggiungere Discord. Questo include, tra le altre cose:
+
+- ban, kick, timeout e modifiche dei membri;
+- cancellazione o bulk-delete dei messaggi;
+- creazione/modifica/eliminazione di canali e ruoli;
+- permission overwrite;
+- modifica delle impostazioni del server;
+- creazione/modifica/eliminazione webhook;
+- operazioni amministrative AutoMod.
+
+Il build del bot esegue inoltre `policy:check`, che verifica casi consentiti/vietati e rifiuta bypass evidenti come accesso REST Discord diretto, HTTP diretto all'API Discord o mutazioni ad alto livello note.
+
+
 ## CI/CD GitHub -> VPS
 
 Il deploy di produzione non esegue `git pull` come root e non compila codice sulla VPS.

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
 import type { Client } from 'discord.js';
+import { leaveGuild } from './discord-actions.js';
 
 const SNOWFLAKE = /^\d{17,20}$/;
 
@@ -48,7 +49,7 @@ export function startInternalApi(client: Client, secret: string, port = 3002) {
         const guildId = match[1]!;
         const guild = client.guilds.cache.get(guildId);
         if (!guild) throw new Error('GUILD_NOT_FOUND');
-        await guild.leave();
+        await leaveGuild(guild, 'super-console');
         res.end(JSON.stringify({ ok: true, guildId }));
         return;
       }

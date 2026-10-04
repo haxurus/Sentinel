@@ -6,8 +6,9 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js"
+    "build": "npm run policy:check && tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "policy:check": "tsx src/capability-policy-check.ts"
   },
   "dependencies": {
     "@sentinel/db": "0.3.0",

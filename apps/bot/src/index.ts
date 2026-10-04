@@ -13,6 +13,8 @@ import { startDispatcher } from './dispatcher.js';
 import { recordEvent } from './recorder.js';
 import { queueConnection } from './queue.js';
 import { startInternalApi } from './internal-api.js';
+import { installDiscordCapabilityPolicy } from './capability-policy.js';
+import { leaveGuild } from './discord-actions.js';
 
 const logger = pino({ level: config.logLevel });
 
@@ -39,6 +41,10 @@ const client = new Client({
   partials: [Partials.User, Partials.Channel, Partials.GuildMember, Partials.Message, Partials.Reaction]
 });
 
+installDiscordCapabilityPolicy(client, ({ method, route }) => {
+  logger.error({ method, route }, 'Blocked Discord mutation by capability policy');
+});
+
 registerHandlers(client);
 let worker: ReturnType<typeof startDispatcher> | null = null;
 let internalApi: ReturnType<typeof startInternalApi> | null = null;
@@ -48,7 +54,7 @@ client.once(Events.ClientReady, async (ready) => {
   for (const guild of ready.guilds.cache.values()) {
     if (await isGuildInstallBlocked(guild.id)) {
       logger.warn({ guildId: guild.id, guildName: guild.name }, 'Leaving blocked guild');
-      await guild.leave().catch((error) => logger.error({ err: error, guildId: guild.id }, 'Unable to leave blocked guild'));
+      await leaveGuild(guild, 'blocked-guild').catch((error) => logger.error({ err: error, guildId: guild.id }, 'Unable to leave blocked guild'));
       continue;
     }
     await ensureGuild(guild);

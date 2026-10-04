@@ -11,6 +11,7 @@ import { ensureGuild, getGuildSettings, isGuildInstallBlocked, isUserInstallBloc
 import { recordEvent } from './recorder.js';
 import { findRecentAuditEntry, jsonSafe, redactSecrets } from './utils.js';
 import { decryptText, unprotectJson } from './security.js';
+import { leaveGuild } from './discord-actions.js';
 
 const roleIds = (member: GuildMember | null | undefined | any) => member?.roles?.cache ? [...member.roles.cache.keys()] : [];
 const actorFromAudit = async (guild: any, type: AuditLogEvent, targetId?: string) => {
@@ -29,7 +30,7 @@ const attachmentData = (message: Message | PartialMessage) => [...message.attach
 export function registerHandlers(client: Client) {
   client.on(Events.GuildCreate, async (guild) => {
     if (await isGuildInstallBlocked(guild.id)) {
-      await guild.leave().catch(() => null);
+      await leaveGuild(guild, 'blocked-guild').catch(() => null);
       return;
     }
 
@@ -37,7 +38,7 @@ export function registerHandlers(client: Client) {
       ? await findRecentAuditEntry(guild, AuditLogEvent.BotAdd, client.user.id, 20_000)
       : null;
     if (installer?.executorId && await isUserInstallBlocked(installer.executorId)) {
-      await guild.leave().catch(() => null);
+      await leaveGuild(guild, 'blocked-installer').catch(() => null);
       return;
     }
 
@@ -508,7 +509,7 @@ export function registerHandlers(client: Client) {
 
   client.on(Events.GuildAvailable, async (guild) => {
     if (await isGuildInstallBlocked(guild.id)) {
-      await guild.leave().catch(() => null);
+      await leaveGuild(guild, 'blocked-guild').catch(() => null);
       return;
     }
     await ensureGuild(guild);
