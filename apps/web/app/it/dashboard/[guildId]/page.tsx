@@ -1,6 +1,6 @@
-import { redirect } from 'next/navigation';
+import GuildDashboard from '../../../_components/GuildDashboard';
 
 export default async function Page({ params }: { params: Promise<{ guildId: string }> }) {
   const { guildId } = await params;
-  redirect(`/it/dashboard/${guildId}`);
+  return <GuildDashboard guildId={guildId} locale="it" />;
 }

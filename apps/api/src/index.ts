@@ -99,7 +99,14 @@ app.get('/bot/invite', async (_request, reply) => {
   return reply.redirect(url.toString());
 });
 
-app.get('/auth/discord', async (_request, reply) => {
+app.get('/auth/discord', async (request, reply) => {
+  const languageQuery = z.object({ lang: z.enum(['it', 'en']).optional() }).safeParse(request.query);
+  const uiLanguage = languageQuery.success ? (languageQuery.data.lang ?? 'it') : 'it';
+  const languageCookieName = config.production ? '__Host-sentinel_ui_lang' : 'sentinel_ui_lang';
+  reply.setCookie(languageCookieName, uiLanguage, {
+    path: '/', httpOnly: true, secure: config.production, sameSite: 'lax', maxAge: 600
+  });
+
   const state = randomToken();
   reply.setCookie(config.production ? '__Host-discord_oauth_state' : 'discord_oauth_state', state, {
     path: '/', httpOnly: true, secure: config.production, sameSite: 'lax', maxAge: 600
@@ -123,6 +130,9 @@ app.get('/auth/discord/callback', async (request, reply) => {
     return reply.code(400).send({ error: 'INVALID_OAUTH_STATE' });
   }
   reply.clearCookie(stateCookieName, { path: '/', secure: config.production, sameSite: 'lax' });
+  const languageCookieName = config.production ? '__Host-sentinel_ui_lang' : 'sentinel_ui_lang';
+  const uiLanguage = request.cookies[languageCookieName] === 'en' ? 'en' : 'it';
+  reply.clearCookie(languageCookieName, { path: '/', secure: config.production, sameSite: 'lax' });
 
   const redirectUri = `${config.publicBaseUrl}/auth/discord/callback`;
   const body = new URLSearchParams({
@@ -146,7 +156,7 @@ app.get('/auth/discord/callback', async (request, reply) => {
   const user = await userResponse.json() as { id: string; username: string; global_name?: string | null; avatar?: string | null };
   const guilds = await guildResponse.json() as OAuthGuild[];
   await createSession(reply, user, guilds);
-  return reply.redirect(`${config.webUrl}/dashboard`);
+  return reply.redirect(`${config.webUrl}/${uiLanguage}/dashboard`);
 });
 
 app.post('/auth/logout', async (request, reply) => {
