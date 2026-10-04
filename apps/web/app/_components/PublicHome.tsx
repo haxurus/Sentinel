@@ -3,7 +3,7 @@ import type { Locale } from '../i18n';
 
 const copy = {
   it: {
-    nav: { features: 'Funzioni', how: 'Come funziona', security: 'Sicurezza', signIn: 'Accedi', add: 'Aggiungi Sentinel' },
+    nav: { features: 'Funzioni', how: 'Come funziona', signIn: 'Accedi', add: 'Aggiungi Sentinel' },
     hero: {
       line1: 'Il bot di audit e logging che tiene traccia di ciò che succede nel tuo server Discord.',
       line2: 'Configura cosa registrare, dove inviarlo e consulta tutto dalla dashboard.',
@@ -39,22 +39,11 @@ const copy = {
         ['Configura i logger', 'Scegli eventi, destinazioni, retention e dettagli da conservare. Le modifiche restano tracciate nel pannello.']
       ]
     },
-    security: {
-      kicker: 'SICUREZZA',
-      title: 'Isolamento prima delle scorciatoie.',
-      intro: "Il token Discord resta nel processo bot, l'API usa credenziali separate e i servizi comunicano attraverso reti Docker segmentate. I container applicativi girano senza privilegi superflui e con filesystem read-only dove previsto.",
-      rows: [
-        ['Least privilege', 'Niente permesso Administrator richiesto al bot.'],
-        ['Secret separati', 'Token, sessioni, database e chiavi non finiscono nel frontend.'],
-        ['Audit del pannello', 'Le modifiche amministrative vengono registrate.'],
-        ['Retention configurabile', 'Conserva i dati per il tempo realmente necessario.']
-      ]
-    },
     cta: { title: 'Porta ordine nei log del tuo server.', text: 'Aggiungi il bot, accedi con Discord e configura il primo logger dalla dashboard.', add: 'Aggiungi Sentinel' },
     footer: { text: 'Logging e auditing self-hosted per server Discord, con storico ricercabile e configurazione web.', add: 'Aggiungi il bot' }
   },
   en: {
-    nav: { features: 'Features', how: 'How it works', security: 'Security', signIn: 'Sign in', add: 'Add Sentinel' },
+    nav: { features: 'Features', how: 'How it works', signIn: 'Sign in', add: 'Add Sentinel' },
     hero: {
       line1: 'The audit and logging bot that keeps track of what happens on your Discord server.',
       line2: 'Choose what to record, where to send it, and review everything from the dashboard.',
@@ -90,17 +79,6 @@ const copy = {
         ['Configure loggers', 'Choose events, destinations, retention and stored details. Panel changes remain audited.']
       ]
     },
-    security: {
-      kicker: 'SECURITY',
-      title: 'Isolation before shortcuts.',
-      intro: 'The Discord token stays inside the bot process, the API uses separate credentials, and services communicate through segmented Docker networks. Application containers run without unnecessary privileges and use read-only filesystems where supported.',
-      rows: [
-        ['Least privilege', 'The bot does not require the Administrator permission.'],
-        ['Separate secrets', 'Tokens, sessions, database credentials and keys never reach the frontend.'],
-        ['Panel audit', 'Administrative changes are recorded.'],
-        ['Configurable retention', 'Keep data only for as long as you actually need it.']
-      ]
-    },
     cta: { title: 'Bring order to your server logs.', text: 'Add the bot, sign in with Discord and configure your first logger from the dashboard.', add: 'Add Sentinel' },
     footer: { text: 'Self-hosted logging and auditing for Discord servers, with searchable history and web configuration.', add: 'Add the bot' }
   }
@@ -123,7 +101,6 @@ export default function PublicHome({ locale }: { locale: Locale }) {
           <nav className="site-nav-links" aria-label={locale === 'it' ? 'Navigazione principale' : 'Main navigation'}>
             <a href="#features">{c.nav.features}</a>
             <a href="#how-it-works">{c.nav.how}</a>
-            <a href="#security">{c.nav.security}</a>
             <a href={dashboard}>Dashboard</a>
           </nav>
 
@@ -139,7 +116,6 @@ export default function PublicHome({ locale }: { locale: Locale }) {
             <div>
               <a href="#features">{c.nav.features}</a>
               <a href="#how-it-works">{c.nav.how}</a>
-              <a href="#security">{c.nav.security}</a>
               <a href={dashboard}>Dashboard</a>
               <LanguageSwitcher locale={locale} itHref="/it" enHref="/en" mobile />
               <a className="site-button site-button-primary" href="/backend/bot/invite">{c.nav.add}</a>
@@ -219,14 +195,6 @@ export default function PublicHome({ locale }: { locale: Locale }) {
         </div>
       </section>
 
-      <section className="site-section" id="security">
-        <div className="site-container site-security">
-          <div><span className="site-kicker">{c.security.kicker}</span><h2>{c.security.title}</h2><p>{c.security.intro}</p></div>
-          <div className="site-security-list">
-            {c.security.rows.map(([title, text]) => <div key={title}><strong>{title}</strong><span>{text}</span></div>)}
-          </div>
-        </div>
-      </section>
 
       <section className="site-cta-section">
         <div className="site-container site-cta-card">
@@ -244,7 +212,6 @@ export default function PublicHome({ locale }: { locale: Locale }) {
             <div className="site-footer-brand"><strong>Sentinel</strong><p>{c.footer.text}</p></div>
             <div className="site-footer-links">
               <a href="#features">{c.nav.features}</a>
-              <a href="#security">{c.nav.security}</a>
               <a href={dashboard}>Dashboard</a>
               <a href="/backend/bot/invite">{c.footer.add}</a>
               <a href="https://github.com/haxurus/Sentinel" target="_blank" rel="noreferrer">GitHub</a>
