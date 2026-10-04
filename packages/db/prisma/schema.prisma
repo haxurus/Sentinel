@@ -13,7 +13,7 @@ model GuildSettings {
   iconUrl                 String?
   defaultLogChannelId     String?
   timezone                String   @default("Europe/Rome")
-  locale                  String   @default("it-IT")
+  locale                  String   @default("en")
   defaultRetentionDays    Int      @default(30)
   embedColor              String   @default("#3f3c54")
   embedFooter             String   @default("Discord Audit")

@@ -6,6 +6,17 @@ import { EmbedBuilder, type Client, type Guild } from 'discord.js';
 import { config } from './config.js';
 import { truncate } from './utils.js';
 import { unprotectJson, redactText } from './security.js';
+import {
+  detailLabel,
+  eventEmbedCopy,
+  fieldLabel,
+  normalizeEmbedLocale,
+  overwriteActionLabel,
+  permissionLabel,
+  sourceLabel,
+  yesNo,
+  type EmbedLocale
+} from './embed-i18n.js';
 
 const asObject = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -49,81 +60,7 @@ const CHANNEL_TARGET_EVENTS = new Set([
   'thread.members_update'
 ]);
 
-const DETAIL_LABELS: Record<string, string> = {
-  username: 'Utente',
-  userId: 'Utente',
-  authorId: 'Autore',
-  inviterId: 'Creatore invito',
-  ownerId: 'Proprietario',
-  executorId: 'Autore azione',
-  memberId: 'Membro',
-  addedUserIds: 'Utenti aggiunti',
-  removedUserIds: 'Utenti rimossi',
-  roleId: 'Ruolo',
-  roleIds: 'Ruoli',
-  roles: 'Ruoli',
-  addedRoles: 'Ruoli aggiunti',
-  removedRoles: 'Ruoli rimossi',
-  channelId: 'Canale',
-  channelIds: 'Canali',
-  parentId: 'Canale padre',
-  fromChannelId: 'Canale precedente',
-  toChannelId: 'Nuovo canale',
-  messageId: 'Messaggio',
-  messageIds: 'Messaggi',
-  replyTo: 'Risposta a',
-  oldNickname: 'Nickname precedente',
-  newNickname: 'Nuovo nickname',
-  oldTimeout: 'Timeout precedente',
-  newTimeout: 'Nuovo timeout',
-  oldPending: 'Pending precedente',
-  newPending: 'Pending attuale',
-  oldName: 'Nome precedente',
-  newName: 'Nuovo nome',
-  oldStatus: 'Stato precedente',
-  newStatus: 'Nuovo stato',
-  oldChannelId: 'Canale precedente',
-  newChannelId: 'Nuovo canale',
-  oldParentId: 'Categoria precedente',
-  newParentId: 'Nuova categoria',
-  commandPath: 'Comando',
-  botUserId: 'Bot',
-  applicationId: 'Application ID',
-  commandId: 'Command ID',
-  responseMessageId: 'Messaggio risposta',
-  source: 'Origine',
-  serverMute: 'Mute server',
-  serverDeaf: 'Deaf server',
-  selfMute: 'Microfono disattivato',
-  selfDeaf: 'Audio in ingresso disattivato',
-  streaming: 'Streaming',
-  selfVideo: 'Videocamera',
-  suppress: 'Stage: ascoltatore',
-  permissionOverwriteChanges: 'Permessi modificati',
-  oldType: 'Tipo precedente',
-  newType: 'Nuovo tipo',
-  oldTopic: 'Topic precedente',
-  newTopic: 'Nuovo topic',
-  oldNsfw: 'NSFW precedente',
-  newNsfw: 'NSFW attuale',
-  oldSlowmode: 'Slowmode precedente',
-  newSlowmode: 'Nuovo slowmode',
-  oldBitrate: 'Bitrate precedente',
-  newBitrate: 'Nuovo bitrate',
-  oldUserLimit: 'Limite utenti precedente',
-  newUserLimit: 'Nuovo limite utenti',
-  oldRtcRegion: 'Regione RTC precedente',
-  newRtcRegion: 'Nuova regione RTC'
-};
-
-const humanizeDetailKey = (key: string) => {
-  if (DETAIL_LABELS[key]) return DETAIL_LABELS[key]!;
-  const spaced = key
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .trim();
-  return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : key;
-};
+const humanizeDetailKey = (key: string, locale: EmbedLocale) => detailLabel(key, locale);
 
 const referenceKindForDetail = (key: string): DiscordReferenceKind | null => {
   const lower = key.toLowerCase();
@@ -188,37 +125,7 @@ const formatReference = (guild: Guild, kind: DiscordReferenceKind, id: string) =
   }
 };
 
-const PERMISSION_LABELS: Record<string, string> = {
-  ViewChannel: 'Vedi canale',
-  ManageChannels: 'Gestisci canali',
-  ManageRoles: 'Gestisci ruoli',
-  SendMessages: 'Invia messaggi',
-  SendMessagesInThreads: 'Invia messaggi nei thread',
-  ReadMessageHistory: 'Leggi cronologia messaggi',
-  ManageMessages: 'Gestisci messaggi',
-  EmbedLinks: 'Incorpora link',
-  AttachFiles: 'Allega file',
-  AddReactions: 'Aggiungi reazioni',
-  MentionEveryone: 'Menziona @everyone/@here',
-  Connect: 'Connetti',
-  Speak: 'Parla',
-  Stream: 'Video/stream',
-  UseVAD: 'Rilevamento voce',
-  MuteMembers: 'Muta membri',
-  DeafenMembers: 'Deaf membri',
-  MoveMembers: 'Sposta membri',
-  PrioritySpeaker: 'Priorità voce',
-  UseExternalEmojis: 'Usa emoji esterne',
-  UseExternalStickers: 'Usa sticker esterni',
-  CreatePublicThreads: 'Crea thread pubblici',
-  CreatePrivateThreads: 'Crea thread privati',
-  ManageThreads: 'Gestisci thread'
-};
-
-const permissionLabel = (permission: string) =>
-  PERMISSION_LABELS[permission] ?? permission.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
-
-const formatPermissionOverwriteChanges = (guild: Guild, value: unknown) => {
+const formatPermissionOverwriteChanges = (guild: Guild, value: unknown, locale: EmbedLocale) => {
   if (!Array.isArray(value) || !value.length) return '—';
 
   return value.slice(0, 8).map((item) => {
@@ -226,36 +133,31 @@ const formatPermissionOverwriteChanges = (guild: Guild, value: unknown) => {
     const targetId = String(change.targetId ?? '');
     const targetKind: DiscordReferenceKind = change.targetType === 'user' ? 'user' : 'role';
     const target = formatReference(guild, targetKind, targetId);
-    const action = change.action === 'added' ? 'aggiunto' : change.action === 'removed' ? 'rimosso' : 'modificato';
+    const action = overwriteActionLabel(change.action, locale);
 
     const parts: string[] = [];
     const pushPermissions = (label: string, permissions: unknown) => {
       if (!Array.isArray(permissions) || !permissions.length) return;
-      parts.push(`${label}: ${permissions.map((permission) => permissionLabel(String(permission))).join(', ')}`);
+      parts.push(`${label}: ${permissions.map((permission) => permissionLabel(String(permission), locale)).join(', ')}`);
     };
 
-    pushPermissions('Consenti +', change.allowAdded);
-    pushPermissions('Consenti −', change.allowRemoved);
-    pushPermissions('Nega +', change.denyAdded);
-    pushPermissions('Nega −', change.denyRemoved);
+    pushPermissions(fieldLabel('allowAdd', locale), change.allowAdded);
+    pushPermissions(fieldLabel('allowRemove', locale), change.allowRemoved);
+    pushPermissions(fieldLabel('denyAdd', locale), change.denyAdded);
+    pushPermissions(fieldLabel('denyRemove', locale), change.denyRemoved);
 
     return `${target} — **${action}**${parts.length ? ` — ${parts.join(' · ')}` : ''}`;
   }).join('\n');
 };
 
-const formatBoolean = (value: boolean) => value ? 'Sì' : 'No';
-
-const formatPrimitive = (guild: Guild, key: string, value: string | number | boolean) => {
-  if (typeof value === 'boolean') return formatBoolean(value);
+const formatPrimitive = (guild: Guild, key: string, value: string | number | boolean, locale: EmbedLocale) => {
+  if (typeof value === 'boolean') return yesNo(value, locale);
   if (typeof value === 'number') return String(value);
 
   const kind = referenceKindForDetail(key);
   if (kind && looksLikeSnowflake(value)) return formatReference(guild, kind, value);
 
-  if (key === 'source') {
-    if (value === 'direct') return 'Sentinel';
-    if (value === 'public_response') return 'Risposta pubblica di un altro bot';
-  }
+  if (key === 'source') return sourceLabel(value, locale);
 
   if (/At$/.test(key) && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
     const timestamp = Math.floor(new Date(value).getTime() / 1000);
@@ -265,16 +167,16 @@ const formatPrimitive = (guild: Guild, key: string, value: string | number | boo
   return value.length > 180 ? `\`${truncate(value.replace(/\`/g, "'"), 176)}\`` : `\`${value.replace(/\`/g, "'")}\``;
 };
 
-const formatDetailValue = (guild: Guild, key: string, value: unknown, depth = 0): string => {
+const formatDetailValue = (guild: Guild, key: string, value: unknown, locale: EmbedLocale, depth = 0): string => {
   if (value === null || value === undefined) return '—';
-  if (key === 'permissionOverwriteChanges') return formatPermissionOverwriteChanges(guild, value);
+  if (key === 'permissionOverwriteChanges') return formatPermissionOverwriteChanges(guild, value, locale);
 
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return formatPrimitive(guild, key, value);
+    return formatPrimitive(guild, key, value, locale);
   }
 
   if (Array.isArray(value)) {
-    if (!value.length) return 'Nessuno';
+    if (!value.length) return fieldLabel('none', locale);
 
     const kind = referenceKindForDetail(key);
     const items = value.slice(0, 10).map((item) => {
@@ -282,9 +184,9 @@ const formatDetailValue = (guild: Guild, key: string, value: unknown, depth = 0)
         return formatReference(guild, kind, String(item));
       }
       if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
-        return formatPrimitive(guild, key, item);
+        return formatPrimitive(guild, key, item, locale);
       }
-      return formatDetailValue(guild, key, item, depth + 1);
+      return formatDetailValue(guild, key, item, locale, depth + 1);
     });
     if (value.length > 10) items.push(`… +${value.length - 10}`);
     return items.join(', ');
@@ -303,7 +205,7 @@ const formatDetailValue = (guild: Guild, key: string, value: unknown, depth = 0)
     if (!entries.length) return '—';
 
     const rendered = entries.map(([nestedKey, nestedValue]) =>
-      `${humanizeDetailKey(nestedKey)}: ${formatDetailValue(guild, nestedKey, nestedValue, depth + 1)}`
+      `${humanizeDetailKey(nestedKey, locale)}: ${formatDetailValue(guild, nestedKey, nestedValue, locale, depth + 1)}`
     );
     const extra = Object.keys(value as Record<string, unknown>).length - entries.length;
     if (extra > 0) rendered.push(`… +${extra}`);
@@ -313,11 +215,11 @@ const formatDetailValue = (guild: Guild, key: string, value: unknown, depth = 0)
   return `\`${String(value)}\``;
 };
 
-const buildDetailsField = (guild: Guild, details: Record<string, unknown>) => {
+const buildDetailsField = (guild: Guild, details: Record<string, unknown>, locale: EmbedLocale) => {
   const ignoredDetailKeys = new Set(['content', 'oldContent', 'newContent', 'attachments', 'actorRoleIds', 'actorBot']);
   const lines = Object.entries(details)
     .filter(([key, value]) => !ignoredDetailKeys.has(key) && value !== undefined && value !== null)
-    .map(([key, value]) => `**${humanizeDetailKey(key)}:** ${formatDetailValue(guild, key, value)}`);
+    .map(([key, value]) => `**${humanizeDetailKey(key, locale)}:** ${formatDetailValue(guild, key, value, locale)}`);
 
   if (!lines.length) return null;
 
@@ -373,52 +275,61 @@ export function startDispatcher(client: Client) {
     const channel = await guild.channels.fetch(destinationId).catch(() => null);
     if (!channel?.isSendable()) { await mark('CHANNEL_UNAVAILABLE'); return; }
 
+    const embedLocale = normalizeEmbedLocale(event.guild.locale);
+    const copy = eventEmbedCopy(
+      event.eventKey,
+      embedLocale,
+      def?.label ?? event.eventKey,
+      def?.description ?? event.summary
+    );
+    const description = embedLocale === 'it' ? event.summary : copy.description;
+
     const embed = new EmbedBuilder()
-      .setTitle(route?.customTitle || def?.label || event.eventKey)
-      .setDescription(truncate(event.summary, 4000))
+      .setTitle(route?.customTitle || copy.label)
+      .setDescription(truncate(description, 4000))
       .setColor(normalizeColor(route?.embedColor || event.guild.embedColor))
       .setFooter({ text: route?.customFooter || event.guild.embedFooter });
 
     if (route?.showTimestamp !== false) embed.setTimestamp(event.createdAt);
     if (route?.thumbnailUrl) embed.setThumbnail(route.thumbnailUrl);
     if (event.actorId && route?.showActor !== false) {
-      embed.addFields({ name: 'Autore azione', value: formatReference(guild, 'user', event.actorId), inline: true });
+      embed.addFields({ name: fieldLabel('actionAuthor', embedLocale), value: formatReference(guild, 'user', event.actorId), inline: true });
     }
     if (event.targetId && route?.showTarget !== false) {
       const targetKind = targetKindForEvent(event.eventKey);
       const targetLabel = targetKind === 'user'
-        ? 'Target utente'
+        ? fieldLabel('targetUser', embedLocale)
         : targetKind === 'role'
-          ? 'Target ruolo'
+          ? fieldLabel('targetRole', embedLocale)
           : targetKind === 'channel'
-            ? 'Target canale'
+            ? fieldLabel('targetChannel', embedLocale)
             : targetKind === 'guild'
-              ? 'Target server'
-              : 'Target';
+              ? fieldLabel('targetGuild', embedLocale)
+              : fieldLabel('target', embedLocale);
       embed.addFields({ name: targetLabel, value: formatReference(guild, targetKind, event.targetId), inline: true });
     }
     if (event.channelId && route?.showChannel !== false) {
-      embed.addFields({ name: 'Canale', value: formatReference(guild, 'channel', event.channelId), inline: true });
+      embed.addFields({ name: fieldLabel('channel', embedLocale), value: formatReference(guild, 'channel', event.channelId), inline: true });
     }
 
     const content = typeof details.content === 'string' ? details.content : null;
     const oldContent = typeof details.oldContent === 'string' ? details.oldContent : null;
     const newContent = typeof details.newContent === 'string' ? details.newContent : null;
     if (route?.includeContent !== false) {
-      if (content) embed.addFields({ name: 'Contenuto', value: truncate(content, 1024) || '*vuoto*' });
-      if (oldContent !== null) embed.addFields({ name: 'Prima', value: truncate(oldContent, 1024) || '*vuoto*' });
-      if (newContent !== null) embed.addFields({ name: 'Dopo', value: truncate(newContent, 1024) || '*vuoto*' });
+      if (content) embed.addFields({ name: fieldLabel('content', embedLocale), value: truncate(content, 1024) || fieldLabel('empty', embedLocale) });
+      if (oldContent !== null) embed.addFields({ name: fieldLabel('before', embedLocale), value: truncate(oldContent, 1024) || fieldLabel('empty', embedLocale) });
+      if (newContent !== null) embed.addFields({ name: fieldLabel('after', embedLocale), value: truncate(newContent, 1024) || fieldLabel('empty', embedLocale) });
     }
 
     const attachments = Array.isArray(details.attachments) ? details.attachments as Array<Record<string, unknown>> : [];
     if (route?.includeAttachments !== false && attachments.length) {
-      const list = attachments.slice(0, 10).map((a) => `[${String(a.name ?? 'file')}](${String(a.url ?? '')})`).join('\n');
-      embed.addFields({ name: `Allegati (${attachments.length})`, value: truncate(list, 1024) });
+      const list = attachments.slice(0, 10).map((a) => `[${String(a.name ?? fieldLabel('file', embedLocale))}](${String(a.url ?? '')})`).join('\n');
+      embed.addFields({ name: `${fieldLabel('attachments', embedLocale)} (${attachments.length})`, value: truncate(list, 1024) });
     }
 
-    const formattedDetails = buildDetailsField(guild, details);
+    const formattedDetails = buildDetailsField(guild, details, embedLocale);
     if (formattedDetails) {
-      embed.addFields({ name: 'Dettagli', value: formattedDetails });
+      embed.addFields({ name: fieldLabel('details', embedLocale), value: formattedDetails });
     }
 
     const mentions = route?.mentionRoleIds.map((id) => `<@&${id}>`).join(' ') ?? '';

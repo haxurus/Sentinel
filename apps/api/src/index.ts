@@ -397,7 +397,7 @@ app.get('/api/guilds/:guildId/access', async (request, reply) => {
 const settingsSchema = z.object({
   defaultLogChannelId: optionalSnowflake,
   timezone: z.string().min(1).max(64).optional(),
-  locale: z.string().min(2).max(16).optional(),
+  locale: z.enum(['en', 'it']).optional(),
   defaultRetentionDays: z.number().int().min(1).max(3650).optional(),
   embedColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   embedFooter: z.string().max(200).optional(),
