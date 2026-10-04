@@ -486,7 +486,13 @@ app.put('/api/guilds/:guildId/routes/:eventKey', async (request, reply) => {
   const route = await prisma.logRoute.upsert({
     where: { guildId_eventKey: { guildId, eventKey } },
     update: parsed.data,
-    create: { guildId, eventKey, ...parsed.data }
+    create: {
+      guildId,
+      eventKey,
+      captureEnabled: eventDefinition.noisy ? false : true,
+      enabled: eventDefinition.noisy ? false : true,
+      ...parsed.data
+    }
   });
   await panelAudit(request, session, guildId, 'route.update', { eventKey, ...parsed.data });
   return route;
