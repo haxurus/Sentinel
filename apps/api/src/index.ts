@@ -16,7 +16,9 @@ import { exportJsonChunks, findForeignReference, isValidTimeZone, rateLimitKey }
 import { Readable } from 'node:stream';
 
 const app = Fastify({
-  trustProxy: 1,
+  // Trust exactly one hop (the Next.js proxy in front of the API), as the
+  // former `trustProxy: 1`; fastify >= 5.12 only accepts this as a function.
+  trustProxy: (_address: string, hop: number) => hop < 1,
   bodyLimit: 32 * 1024,
   requestTimeout: 15_000,
   connectionTimeout: 10_000,
@@ -63,7 +65,8 @@ app.addHook('preValidation', async (request, reply) => {
 app.setErrorHandler((error, request, reply) => {
   request.log.error({ err: error }, 'Request failed');
   if (reply.sent) return;
-  const status = error.statusCode && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;
+  const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
+  const status = typeof statusCode === 'number' && statusCode >= 400 && statusCode < 500 ? statusCode : 500;
   return reply.code(status).send({ error: status === 500 ? 'INTERNAL_ERROR' : 'REQUEST_FAILED' });
 });
 

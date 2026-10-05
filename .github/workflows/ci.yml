@@ -43,19 +43,11 @@ jobs:
           set -euo pipefail
           find ops security deploy scripts -type f \( -name '*.sh' -o -name 'sentinel-deploy*' \) -print0 | xargs -0 -n1 sh -n
 
-      # TEMPORARY (lockfile refresh): replaced by `npm ci` in the next commit.
-      - name: Refresh lockfile
-        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install dependencies from lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Upload refreshed lockfile
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: package-lock
-          path: package-lock.json
-          retention-days: 3
-
-      - name: Audit report
-        run: npm audit --omit=dev || true
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=critical
 
       - name: Generate Prisma client and build all workspaces
         run: npm run db:generate && npm run build
