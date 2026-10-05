@@ -43,24 +43,11 @@ jobs:
           set -euo pipefail
           find ops security deploy scripts -type f \( -name '*.sh' -o -name 'sentinel-deploy*' \) -print0 | xargs -0 -n1 sh -n
 
-      - name: Install dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -f package-lock.json ]; then
-            npm ci --ignore-scripts --no-audit --no-fund
-          else
-            echo '::warning::package-lock.json missing: generating it (bootstrap only)'
-            npm install --ignore-scripts --no-audit --no-fund
-          fi
+      - name: Install dependencies from lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Upload generated lockfile
-        if: ${{ hashFiles('package-lock.json') != '' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: package-lock
-          path: package-lock.json
-          retention-days: 3
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=critical
 
       - name: Generate Prisma client and build all workspaces
         run: npm run db:generate && npm run build
