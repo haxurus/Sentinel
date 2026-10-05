@@ -26,8 +26,21 @@ const rank: Record<AccessLevel, number> = { VIEWER: 1, MODERATOR: 2, ADMIN: 3, O
 const hash = (value: string) => crypto.createHmac('sha256', config.sessionSecret).update(value).digest('hex');
 export const randomToken = () => crypto.randomBytes(32).toString('base64url');
 const accessCache = new Map<string, { owner: boolean; permissions: bigint; roles: string[]; expires: number }>();
+const sessionCookieName = () => config.production ? '__Host-audit_session' : 'audit_session';
+const LAST_SEEN_RESOLUTION_MS = 5 * 60 * 1000;
 
-export async function createSession(reply: FastifyReply, user: { id: string; username: string; global_name?: string | null; avatar?: string | null }, guilds: OAuthGuild[]) {
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of accessCache) {
+    if (value.expires <= now) accessCache.delete(key);
+  }
+}, 5 * 60 * 1000).unref();
+
+export async function createSession(request: FastifyRequest, reply: FastifyReply, user: { id: string; username: string; global_name?: string | null; avatar?: string | null }, guilds: OAuthGuild[]) {
+  // Rotate: a new login always invalidates the session cookie it replaces.
+  const previous = request.cookies[sessionCookieName()];
+  if (previous) await prisma.panelSession.deleteMany({ where: { sessionTokenHash: hash(previous) } }).catch(() => null);
+
   const token = randomToken();
   const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000);
   const avatarUrl = user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128` : null;
@@ -49,7 +62,11 @@ export async function getSession(request: FastifyRequest): Promise<SessionInfo |
   if (!token) return null;
   const session = await prisma.panelSession.findUnique({ where: { sessionTokenHash: hash(token) } });
   if (!session || session.expiresAt < new Date()) return null;
-  await prisma.panelSession.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } }).catch(() => null);
+  // lastSeenAt is informational: refreshing it on every request would turn
+  // each dashboard read into a database write.
+  if (Date.now() - session.lastSeenAt.getTime() > LAST_SEEN_RESOLUTION_MS) {
+    await prisma.panelSession.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } }).catch(() => null);
+  }
   return { id: session.id, userId: session.userId, username: session.username, avatarUrl: session.avatarUrl, guilds: unprotectJson(session.guilds) as OAuthGuild[] };
 }
 

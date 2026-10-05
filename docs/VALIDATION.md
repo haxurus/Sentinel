@@ -1,31 +1,38 @@
-# Validation - v0.3.0
+# Validation
 
-Checks performed before the repository's initial commit:
+Every pull request runs `.github/workflows/ci.yml`. The deploy workflow calls the
+same pipeline (`workflow_call`) and builds/pushes images only after it passes, so
+nothing reaches the VPS untested.
 
-- parsing of all `package.json` files: OK;
-- YAML parsing of Compose, GitHub Actions workflows, and Dependabot: OK;
-- `sh -n` on scripts under `ops/`, `security/`, `docker/`, and `scripts/`: OK;
-- syntax transpilation of all TypeScript/TSX files: 22 files, 0 syntax errors;
-- TypeScript compilation of the `@sentinel/shared` package: OK;
-- verification that the source DB hardening script matches the production runtime copy: OK;
-- verification that old Celestia namespaces/names are absent: OK;
-- verification that no real secret files are present in the tree: OK;
-- verification that the Discord token is not passed to API/web: OK for the Compose architecture;
-- verification of separate PostgreSQL networks/credentials for API and bot: OK for the configuration;
-- API health endpoint with database verification added;
-- bot health endpoint tied to `client.isReady()` added.
+## `test` job
 
-## Generation environment limitations
+1. `sh -n` on every shell script under `ops/`, `security/`, `deploy/` and `scripts/`;
+2. `npm ci` from the committed `package-lock.json`;
+3. Prisma client generation and a full build of all workspaces (TypeScript
+   typecheck for shared/db/api/bot, `next build` for web, Discord capability
+   policy static check for the bot);
+4. unit tests (`npm test`, Node test runner + tsx): change detection, embed
+   limits and formatting, capability policy, encryption/redaction, API helpers;
+5. `prisma migrate deploy` against a fresh PostgreSQL 17;
+6. `prisma migrate diff --exit-code`: migrations must match `schema.prisma`;
+7. `deploy/runtime/harden-users.sh` on that database, then privilege checks:
+   the bot role can write logs and read the install blacklist but cannot read
+   panel/session/super-admin tables or modify the blacklist; the API role can
+   use every application table but cannot create tables.
 
-The generation environment network did not complete `npm install`, so a full local build with all real npm dependencies could not be run.
+## `containers` job
 
-Docker CLI is not available in the generation environment, so `docker compose config` and image builds are verified by GitHub CI on the first Pull Request/build.
+1. `docker compose config` on the production Compose file;
+2. `nginx -t` on the edge configuration with the pinned Nginx image;
+3. Docker `runtime` and `migrate` target builds;
+4. runtime smoke test: API, bot, web and Prisma client artifacts present and the
+   image does not run as root.
 
-The `.github/workflows/ci.yml` pipeline runs:
+## Notes
 
-1. shell validation;
-2. `docker compose config` validation of the production file;
-3. Docker `runtime` target build;
-4. Docker `migrate` target build.
-
-Deployment to the VPS remains disabled until the GitHub variable `ENABLE_VPS_DEPLOY` is set to `true`.
+- `deploy/runtime/harden-users.sh` is the single source of the database
+  hardening script; the local Compose file mounts the same file.
+- Files under `deploy/`, `ops/` and `security/` are installed on the VPS by
+  `ops/install-vps.sh` and are **not** updated by the application deploy.
+- Deployment to the VPS remains disabled until the GitHub variable
+  `ENABLE_VPS_DEPLOY` is set to `true`.

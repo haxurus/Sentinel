@@ -99,7 +99,28 @@ const DETAIL_LABELS_IT: Record<string, string> = {
   oldNsfw: 'NSFW precedente', newNsfw: 'NSFW attuale', oldSlowmode: 'Slowmode precedente',
   newSlowmode: 'Nuovo slowmode', oldBitrate: 'Bitrate precedente', newBitrate: 'Nuovo bitrate',
   oldUserLimit: 'Limite utenti precedente', newUserLimit: 'Nuovo limite utenti',
-  oldRtcRegion: 'Regione RTC precedente', newRtcRegion: 'Nuova regione RTC'
+  oldRtcRegion: 'Regione RTC precedente', newRtcRegion: 'Nuova regione RTC',
+  oldColor: 'Colore precedente', newColor: 'Nuovo colore', oldHoist: 'Separato (prima)', newHoist: 'Separato (ora)',
+  oldMentionable: 'Menzionabile (prima)', newMentionable: 'Menzionabile (ora)', oldIcon: 'Icona precedente', newIcon: 'Nuova icona',
+  addedPermissions: 'Permessi aggiunti', removedPermissions: 'Permessi rimossi',
+  oldArchived: 'Archiviato (prima)', newArchived: 'Archiviato (ora)', oldLocked: 'Bloccato (prima)', newLocked: 'Bloccato (ora)',
+  oldAutoArchiveDuration: 'Auto-archiviazione precedente', newAutoArchiveDuration: 'Nuova auto-archiviazione',
+  oldInvitable: 'Invitabile (prima)', newInvitable: 'Invitabile (ora)', oldAppliedTags: 'Tag precedenti', newAppliedTags: 'Nuovi tag',
+  oldDescription: 'Descrizione precedente', newDescription: 'Nuova descrizione', oldBanner: 'Banner precedente', newBanner: 'Nuovo banner',
+  oldSplash: 'Splash precedente', newSplash: 'Nuovo splash', oldOwnerId: 'Proprietario precedente', newOwnerId: 'Nuovo proprietario',
+  oldVerificationLevel: 'Verifica precedente', newVerificationLevel: 'Nuovo livello verifica',
+  oldExplicitContentFilter: 'Filtro contenuti precedente', newExplicitContentFilter: 'Nuovo filtro contenuti',
+  oldMfaLevel: 'MFA precedente', newMfaLevel: 'Nuovo livello MFA', oldNsfwLevel: 'NSFW precedente', newNsfwLevel: 'Nuovo livello NSFW',
+  oldDefaultMessageNotifications: 'Notifiche precedenti', newDefaultMessageNotifications: 'Nuove notifiche predefinite',
+  oldAfkChannelId: 'Canale AFK precedente', newAfkChannelId: 'Nuovo canale AFK', oldAfkTimeout: 'Timeout AFK precedente', newAfkTimeout: 'Nuovo timeout AFK',
+  oldSystemChannelId: 'Canale di sistema precedente', newSystemChannelId: 'Nuovo canale di sistema',
+  oldRulesChannelId: 'Canale regole precedente', newRulesChannelId: 'Nuovo canale regole',
+  oldPublicUpdatesChannelId: 'Canale aggiornamenti precedente', newPublicUpdatesChannelId: 'Nuovo canale aggiornamenti',
+  oldVanityUrlCode: 'Vanity URL precedente', newVanityUrlCode: 'Nuovo vanity URL',
+  oldPreferredLocale: 'Lingua precedente', newPreferredLocale: 'Nuova lingua',
+  oldPremiumProgressBarEnabled: 'Barra boost (prima)', newPremiumProgressBarEnabled: 'Barra boost (ora)',
+  oldBoostSince: 'Boost precedente', newBoostSince: 'Boost attuale', accountCreatedAt: 'Account creato il',
+  reason: 'Motivo', name: 'Nome', code: 'Codice', count: 'Numero', emoji: 'Emoji', type: 'Tipo', topic: 'Topic'
 };
 
 const DETAIL_LABELS_EN: Record<string, string> = {
@@ -122,7 +143,15 @@ const DETAIL_LABELS_EN: Record<string, string> = {
   oldNsfw: 'Previous NSFW', newNsfw: 'Current NSFW', oldSlowmode: 'Previous slowmode',
   newSlowmode: 'New slowmode', oldBitrate: 'Previous bitrate', newBitrate: 'New bitrate',
   oldUserLimit: 'Previous user limit', newUserLimit: 'New user limit',
-  oldRtcRegion: 'Previous RTC region', newRtcRegion: 'New RTC region'
+  oldRtcRegion: 'Previous RTC region', newRtcRegion: 'New RTC region',
+  oldColor: 'Previous color', newColor: 'New color', oldHoist: 'Displayed separately (before)', newHoist: 'Displayed separately (now)',
+  oldMentionable: 'Mentionable (before)', newMentionable: 'Mentionable (now)', oldIcon: 'Previous icon', newIcon: 'New icon',
+  addedPermissions: 'Added permissions', removedPermissions: 'Removed permissions',
+  oldArchived: 'Archived (before)', newArchived: 'Archived (now)', oldLocked: 'Locked (before)', newLocked: 'Locked (now)',
+  oldAutoArchiveDuration: 'Previous auto-archive', newAutoArchiveDuration: 'New auto-archive',
+  oldInvitable: 'Invitable (before)', newInvitable: 'Invitable (now)', oldAppliedTags: 'Previous tags', newAppliedTags: 'New tags',
+  oldOwnerId: 'Previous owner', newOwnerId: 'New owner', oldVanityUrlCode: 'Previous vanity URL', newVanityUrlCode: 'New vanity URL',
+  oldBoostSince: 'Previous boost', newBoostSince: 'Current boost', accountCreatedAt: 'Account created at'
 };
 
 const FIELD_LABELS = {

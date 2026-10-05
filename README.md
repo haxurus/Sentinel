@@ -127,9 +127,10 @@ Requirements:
 The project uses npm workspaces.
 
 ```bash
-npm install
+npm ci
 npm run db:generate
 npm run build
+npm test
 ```
 
 For the local/hardened Compose setup:

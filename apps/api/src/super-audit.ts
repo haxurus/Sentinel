@@ -2,6 +2,7 @@ import { prisma } from '@sentinel/db';
 import type { FastifyRequest } from 'fastify';
 import type { SessionInfo } from './auth.js';
 import { hashIp } from './auth.js';
+import { clientIp } from './helpers.js';
 import { protectJson } from './security.js';
 
 export async function superAdminAudit(
@@ -20,7 +21,7 @@ export async function superAdminAudit(
       subjectType,
       subjectId,
       details: protectJson(JSON.parse(JSON.stringify(details))),
-      ipHash: hashIp(request.ip)
+      ipHash: hashIp(clientIp(request))
     }
   });
 }

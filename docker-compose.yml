@@ -85,7 +85,7 @@ services:
       BOT_DB_PASSWORD_FILE: /run/secrets/bot_db_password
     secrets: [postgres_admin_password, api_db_password, bot_db_password]
     volumes:
-      - ./docker/postgres/harden-users.sh:/usr/local/bin/harden-users.sh:ro
+      - ./deploy/runtime/harden-users.sh:/usr/local/bin/harden-users.sh:ro
     command: ["/usr/local/bin/harden-users.sh"]
     depends_on:
       migrate:

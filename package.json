@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspace @sentinel/shared && npm run build --workspace @sentinel/db && npm run build --workspace @sentinel/api && npm run build --workspace @sentinel/bot && npm run build --workspace @sentinel/web",
+    "test": "node --import tsx --test \"apps/*/test/**/*.test.ts\"",
     "dev:bot": "npm run dev --workspace @sentinel/bot",
     "dev:api": "npm run dev --workspace @sentinel/api",
     "dev:web": "npm run dev --workspace @sentinel/web",

@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
@@ -12,9 +12,13 @@ import { getBotGuilds, getGuildResources, leaveBotGuild } from './discord.js';
 import { panelAudit } from './audit.js';
 import { superAdminAudit } from './super-audit.js';
 import { unprotectJson } from './security.js';
+import { exportJsonChunks, findForeignReference, isValidTimeZone, rateLimitKey } from './helpers.js';
+import { Readable } from 'node:stream';
 
 const app = Fastify({
-  trustProxy: 1,
+  // Trust exactly one hop (the Next.js proxy in front of the API), as the
+  // former `trustProxy: 1`; fastify >= 5.12 only accepts this as a function.
+  trustProxy: (_address: string, hop: number) => hop < 1,
   bodyLimit: 32 * 1024,
   requestTimeout: 15_000,
   connectionTimeout: 10_000,
@@ -29,7 +33,7 @@ const app = Fastify({
 });
 await app.register(cookie);
 await app.register(helmet);
-await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
+await app.register(rateLimit, { max: 120, timeWindow: '1 minute', keyGenerator: (request) => rateLimitKey(request) });
 
 const allowedOrigin = new URL(config.webUrl).origin;
 const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -61,7 +65,8 @@ app.addHook('preValidation', async (request, reply) => {
 app.setErrorHandler((error, request, reply) => {
   request.log.error({ err: error }, 'Request failed');
   if (reply.sent) return;
-  const status = error.statusCode && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;
+  const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
+  const status = typeof statusCode === 'number' && statusCode >= 400 && statusCode < 500 ? statusCode : 500;
   return reply.code(status).send({ error: status === 500 ? 'INTERNAL_ERROR' : 'REQUEST_FAILED' });
 });
 
@@ -196,7 +201,7 @@ app.get('/auth/discord/callback', async (request, reply) => {
   if (!userResponse.ok || !guildResponse.ok) return reply.code(502).send({ error: 'DISCORD_PROFILE_FETCH_FAILED' });
   const user = await userResponse.json() as { id: string; username: string; global_name?: string | null; avatar?: string | null };
   const guilds = await guildResponse.json() as OAuthGuild[];
-  await createSession(reply, user, guilds);
+  await createSession(request, reply, user, guilds);
 
   if (authIntent === 'invite') {
     if (!(await canInstallBot(user.id))) {
@@ -396,11 +401,11 @@ app.get('/api/guilds/:guildId/access', async (request, reply) => {
 
 const settingsSchema = z.object({
   defaultLogChannelId: optionalSnowflake,
-  timezone: z.string().min(1).max(64).optional(),
+  timezone: z.string().trim().min(1).max(64).refine(isValidTimeZone, 'Unknown IANA time zone').optional(),
   locale: z.enum(['en', 'it']).optional(),
   defaultRetentionDays: z.number().int().min(1).max(3650).optional(),
   embedColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-  embedFooter: z.string().max(200).optional(),
+  embedFooter: z.string().trim().max(200).optional(),
   messageSnapshotEnabled: z.boolean().optional(),
   storeMessageContent: z.boolean().optional(),
   rawGatewayEnabled: z.boolean().optional(),
@@ -431,6 +436,29 @@ const routeSchema = z.object({
   mentionRoleIds: z.array(snowflake).max(20).optional()
 });
 
+type GuildReferences = Parameters<typeof findForeignReference>[1];
+
+// Channel and role IDs come from the browser: confirm through the bot that
+// they belong to this guild before storing them.
+const ensureGuildReferences = async (request: FastifyRequest, reply: FastifyReply, guildId: string, refs: GuildReferences) => {
+  const ids = [...(refs.channelIds ?? []), ...(refs.sendableChannelIds ?? []), ...(refs.roleIds ?? [])].filter(Boolean);
+  if (!ids.length) return true;
+  let resources: Awaited<ReturnType<typeof getGuildResources>>;
+  try {
+    resources = await getGuildResources(guildId);
+  } catch (error) {
+    request.log.error({ err: error }, 'Unable to verify guild references');
+    reply.code(502).send({ error: 'DISCORD_RESOURCES_FAILED' });
+    return false;
+  }
+  const foreign = findForeignReference(resources, refs);
+  if (foreign) {
+    reply.code(400).send({ error: 'UNKNOWN_GUILD_REFERENCE', id: foreign });
+    return false;
+  }
+  return true;
+};
+
 app.get('/api/guilds/:guildId/settings', async (request, reply) => {
   const { guildId } = request.params as { guildId: string };
   const session = await requireGuild(request, reply, guildId);
@@ -454,6 +482,8 @@ app.put('/api/guilds/:guildId/settings', async (request, reply) => {
     const guild = await prisma.guildSettings.findUnique({ where: { guildId }, select: { premiumEnabled: true } });
     if (!guild?.premiumEnabled) return reply.code(403).send({ error: 'PREMIUM_REQUIRED' });
   }
+
+  if (!(await ensureGuildReferences(request, reply, guildId, { sendableChannelIds: [parsed.data.defaultLogChannelId] }))) return;
 
   const updated = await prisma.guildSettings.update({ where: { guildId }, data: parsed.data });
   await panelAudit(request, session, guildId, 'settings.update', parsed.data);
@@ -482,6 +512,24 @@ app.put('/api/guilds/:guildId/routes/:eventKey', async (request, reply) => {
     const guild = await prisma.guildSettings.findUnique({ where: { guildId }, select: { premiumEnabled: true } });
     if (!guild?.premiumEnabled) return reply.code(403).send({ error: 'PREMIUM_REQUIRED' });
   }
+
+  // Only IDs added by this request are verified, so lists that still contain
+  // a since-deleted channel or role can always be cleaned up.
+  const current = await prisma.logRoute.findUnique({
+    where: { guildId_eventKey: { guildId, eventKey } },
+    select: { ignoredChannelIds: true, ignoredRoleIds: true, mentionRoleIds: true }
+  });
+  const added = (next: string[] | undefined, previous: string[] | undefined) =>
+    (next ?? []).filter((id) => !(previous ?? []).includes(id));
+  const referencesValid = await ensureGuildReferences(request, reply, guildId, {
+    sendableChannelIds: [parsed.data.destinationChannelId],
+    channelIds: added(parsed.data.ignoredChannelIds, current?.ignoredChannelIds),
+    roleIds: [
+      ...added(parsed.data.ignoredRoleIds, current?.ignoredRoleIds),
+      ...added(parsed.data.mentionRoleIds, current?.mentionRoleIds)
+    ]
+  });
+  if (!referencesValid) return;
 
   const route = await prisma.logRoute.upsert({
     where: { guildId_eventKey: { guildId, eventKey } },
@@ -612,6 +660,8 @@ app.put('/api/guilds/:guildId/access-bindings/:roleId', async (request, reply) =
   if (!session) return;
   const parsed = z.object({ accessLevel: z.enum(['VIEWER', 'MODERATOR', 'ADMIN']) }).safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' });
+  if (roleId === guildId) return reply.code(400).send({ error: 'EVERYONE_ROLE_NOT_ALLOWED' });
+  if (!(await ensureGuildReferences(request, reply, guildId, { roleIds: [roleId] }))) return;
   const binding = await prisma.panelRoleBinding.upsert({
     where: { guildId_discordRoleId: { guildId, discordRoleId: roleId } },
     update: { accessLevel: parsed.data.accessLevel },
@@ -646,25 +696,67 @@ app.get('/api/guilds/:guildId/export', async (request, reply) => {
   const { guildId } = request.params as { guildId: string };
   const session = await requireGuild(request, reply, guildId, 'MODERATOR');
   if (!session) return;
-  const query = z.object({ from: z.coerce.date().optional(), to: z.coerce.date().optional(), eventKey: z.string().optional() }).safeParse(request.query);
+  const query = z.object({
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
+    eventKey: z.string().max(100).refine((value) => EVENT_CATALOG.some((event) => event.key === value)).optional()
+  }).safeParse(request.query);
   if (!query.success) return reply.code(400).send({ error: 'INVALID_QUERY' });
-  const events = await prisma.logEvent.findMany({
-    where: {
-      guildId,
-      ...(query.data.eventKey ? { eventKey: query.data.eventKey } : {}),
-      ...((query.data.from || query.data.to) ? { createdAt: { ...(query.data.from ? { gte: query.data.from } : {}), ...(query.data.to ? { lte: query.data.to } : {}) } } : {})
-    },
-    orderBy: { createdAt: 'asc' },
-    take: 50_000
-  });
-  await panelAudit(request, session, guildId, 'events.export', { count: events.length, filters: query.data });
+
+  const where = {
+    guildId,
+    ...(query.data.eventKey ? { eventKey: query.data.eventKey } : {}),
+    ...((query.data.from || query.data.to) ? { createdAt: { ...(query.data.from ? { gte: query.data.from } : {}), ...(query.data.to ? { lte: query.data.to } : {}) } } : {})
+  };
+  const limit = 50_000;
+  const total = Math.min(await prisma.logEvent.count({ where }), limit);
+  await panelAudit(request, session, guildId, 'events.export', { count: total, filters: query.data });
+
+  // Keyset pagination keeps memory flat regardless of the export size.
+  async function* pages() {
+    const pageSize = 1000;
+    let cursor: string | undefined;
+    let sent = 0;
+    while (sent < limit) {
+      const page = await prisma.logEvent.findMany({
+        where,
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        take: Math.min(pageSize, limit - sent),
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+      });
+      if (!page.length) return;
+      sent += page.length;
+      cursor = page[page.length - 1]!.id;
+      yield page;
+      if (page.length < pageSize) return;
+    }
+  }
+
+  const decrypt = (event: { details: unknown }) => {
+    try {
+      return unprotectJson(event.details);
+    } catch {
+      return { error: 'DETAILS_UNREADABLE' };
+    }
+  };
+
   reply.header('Content-Type', 'application/json; charset=utf-8');
   reply.header('Content-Disposition', `attachment; filename="discord-audit-${guildId}-${new Date().toISOString().slice(0, 10)}.json"`);
-  return JSON.stringify({ exportedAt: new Date().toISOString(), guildId, count: events.length, events }, null, 2);
+  return reply.send(Readable.from(exportJsonChunks(
+    { exportedAt: new Date().toISOString(), guildId },
+    pages(),
+    (event) => ({ ...event, details: decrypt(event) })
+  )));
 });
 
-setInterval(() => {
-  prisma.panelSession.deleteMany({ where: { expiresAt: { lt: new Date() } } }).catch(() => null);
-}, 60 * 60 * 1000).unref();
+const shutdown = async (signal: string) => {
+  app.log.info({ signal }, 'Shutting down');
+  setTimeout(() => process.exit(1), 8_000).unref();
+  await app.close().catch(() => null);
+  await prisma.$disconnect().catch(() => null);
+  process.exit(0);
+};
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
 
 await app.listen({ port: config.port, host: '0.0.0.0' });

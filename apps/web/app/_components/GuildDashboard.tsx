@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { localizeCategory, localizeEvent, type Locale } from '../i18n';
 
@@ -97,10 +97,58 @@ const LOGGER_MACROS: LoggerMacro[] = [
   }
 ];
 
+class ApiError extends Error {
+  constructor(readonly code: string, readonly status: number) {
+    super(code);
+  }
+}
+
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } });
-  if (!response.ok) throw new Error(await response.text());
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { error?: unknown };
+    throw new ApiError(typeof body.error === 'string' ? body.error : `HTTP_${response.status}`, response.status);
+  }
   return response.json() as Promise<T>;
+}
+
+const errorMessage = (error: unknown, locale: Locale) => {
+  const code = error instanceof ApiError ? error.code : 'NETWORK_ERROR';
+  const it: Record<string, string> = {
+    PREMIUM_REQUIRED: 'Questa funzione richiede Premium.',
+    UNKNOWN_GUILD_REFERENCE: 'Canale o ruolo non trovato in questo server.',
+    INVALID_BODY: 'Valore non valido.',
+    FORBIDDEN: 'Permessi insufficienti.',
+    UNAUTHORIZED: 'Sessione scaduta: accedi di nuovo.',
+    RATE_LIMITED: 'Troppe richieste, riprova tra poco.',
+    DISCORD_RESOURCES_FAILED: 'Impossibile verificare i dati su Discord.'
+  };
+  const en: Record<string, string> = {
+    PREMIUM_REQUIRED: 'This feature requires Premium.',
+    UNKNOWN_GUILD_REFERENCE: 'Channel or role not found in this server.',
+    INVALID_BODY: 'Invalid value.',
+    FORBIDDEN: 'Insufficient permissions.',
+    UNAUTHORIZED: 'Session expired: sign in again.',
+    RATE_LIMITED: 'Too many requests, try again shortly.',
+    DISCORD_RESOURCES_FAILED: 'Unable to verify data on Discord.'
+  };
+  const normalized = error instanceof ApiError && error.status === 429 ? 'RATE_LIMITED' : code;
+  const table = locale === 'it' ? it : en;
+  return table[normalized] ?? (locale === 'it' ? `Operazione non riuscita (${normalized}).` : `Operation failed (${normalized}).`);
+};
+
+// Coalesces rapid edits (color pickers, number fields) into a single request.
+function useDebouncedCallback() {
+  const timers = useRef(new Map<string, number>());
+  useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
+  return useCallback((key: string, run: () => void, delay = 500) => {
+    const existing = timers.current.get(key);
+    if (existing) window.clearTimeout(existing);
+    timers.current.set(key, window.setTimeout(() => {
+      timers.current.delete(key);
+      run();
+    }, delay));
+  }, []);
 }
 
 export default function GuildDashboard({ guildId, locale }: { guildId: string; locale: Locale }) {
@@ -132,7 +180,19 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
   const [openMacro, setOpenMacro] = useState<string | null>(null);
   const [historyEvent, setHistoryEvent] = useState('');
   const [historyText, setHistoryText] = useState('');
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPages, setHistoryPages] = useState(1);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [retentionDraft, setRetentionDraft] = useState('');
   const [status, setStatus] = useState('');
+  const debounce = useDebouncedCallback();
+  const statusTimer = useRef<number | undefined>(undefined);
+  const flash = useCallback((message: string, duration = 1800) => {
+    setStatus(message);
+    window.clearTimeout(statusTimer.current);
+    statusTimer.current = window.setTimeout(() => setStatus(''), duration);
+  }, []);
 
   const load = async () => {
     const [s, r, resources, st, ac] = await Promise.all([
@@ -143,17 +203,36 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
       api<{ access: AccessLevel }>(`/backend/api/guilds/${guildId}/access`)
     ]);
     setSettings(s); setRoutes(r); setChannels(resources.channels); setRoles(resources.roles); setStats(st); setAccess(ac.access);
+    setRetentionDraft(String(s.defaultRetentionDays));
   };
 
   useEffect(() => { load().catch(() => setStatus(L('Errore durante il caricamento.', 'Error while loading.'))); }, [guildId, locale]);
 
+  // Search on pause instead of on every keystroke.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHistoryQuery(historyText.trim()), 350);
+    return () => window.clearTimeout(timer);
+  }, [historyText]);
+
+  useEffect(() => { setHistoryPage(1); }, [historyEvent, historyQuery]);
+
   useEffect(() => {
     if (tab !== 'history') return;
-    const qs = new URLSearchParams({ take: '100' });
+    let cancelled = false;
+    const qs = new URLSearchParams({ take: '100', page: String(historyPage) });
     if (historyEvent) qs.set('eventKey', historyEvent);
-    if (historyText) qs.set('q', historyText);
-    api<{ items: LogItem[] }>(`/backend/api/guilds/${guildId}/events?${qs}`).then((x) => setHistory(x.items)).catch(() => setStatus(L('Impossibile caricare lo storico.', 'Unable to load history.')));
-  }, [tab, guildId, historyEvent, historyText]);
+    if (historyQuery) qs.set('q', historyQuery);
+    setHistoryLoading(true);
+    api<{ items: LogItem[]; pages: number }>(`/backend/api/guilds/${guildId}/events?${qs}`)
+      .then((x) => {
+        if (cancelled) return;
+        setHistory((current) => historyPage === 1 ? x.items : [...current, ...x.items]);
+        setHistoryPages(x.pages);
+      })
+      .catch(() => { if (!cancelled) setStatus(L('Impossibile caricare lo storico.', 'Unable to load history.')); })
+      .finally(() => { if (!cancelled) setHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [tab, guildId, historyEvent, historyQuery, historyPage]);
 
   useEffect(() => {
     if (tab !== 'admin') return;
@@ -189,7 +268,7 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
       });
     }
     return groups;
-  }, [routes, filter]);
+  }, [routes, filter, locale]);
   const textChannels = channels.filter((c) => textChannelTypes.has(c.type));
   const canAdmin = access === 'ADMIN' || access === 'OWNER';
   const canModerate = canAdmin || access === 'MODERATOR';
@@ -201,25 +280,68 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
     }
   };
 
-  const saveSettings = async (patch: Partial<Settings>) => {
+  // Optimistic update with rollback: the UI never keeps showing a value the
+  // server rejected (e.g. PREMIUM_REQUIRED or a foreign channel).
+  const persistSettings = async (patch: Partial<Settings>, previous: Settings) => {
+    try {
+      const saved = await api<Settings>(`/backend/api/guilds/${guildId}/settings`, { method: 'PUT', body: JSON.stringify(patch) });
+      // Only adopt the fields this request changed, so other inputs being
+      // edited at the same time keep their local value.
+      setSettings((current) => current ? { ...current, ...Object.fromEntries(Object.keys(patch).map((key) => [key, saved[key as keyof Settings]])) } : saved);
+      if ('defaultRetentionDays' in patch) setRetentionDraft(String(saved.defaultRetentionDays));
+      flash(L('Impostazioni salvate.', 'Settings saved.'));
+    } catch (error) {
+      setSettings((current) => current ? { ...current, ...Object.fromEntries(Object.keys(patch).map((key) => [key, previous[key as keyof Settings]])) } : current);
+      if ('defaultRetentionDays' in patch) setRetentionDraft(String(previous.defaultRetentionDays));
+      flash(errorMessage(error, locale), 4000);
+    }
+  };
+
+  const saveSettings = (patch: Partial<Settings>, options: { debounceKey?: string } = {}) => {
     if (!settings) return;
-    const next = { ...settings, ...patch };
-    setSettings(next);
-    await api(`/backend/api/guilds/${guildId}/settings`, { method: 'PUT', body: JSON.stringify(patch) });
-    setStatus(L('Impostazioni salvate.', 'Settings saved.'));
-    setTimeout(() => setStatus(''), 1800);
+    const previous = settings;
+    setSettings({ ...settings, ...patch });
+    if (options.debounceKey) debounce(options.debounceKey, () => void persistSettings(patch, previous));
+    else void persistSettings(patch, previous);
   };
 
   const saveRoute = async (eventKey: string, patch: Partial<Route>) => {
+    const previous = routes.find((row) => row.event.key === eventKey)?.route ?? null;
     setRoutes((current) => current.map((row) => row.event.key === eventKey ? { ...row, route: { ...(row.route as Route), eventKey, ...patch } } : row));
-    await api(`/backend/api/guilds/${guildId}/routes/${encodeURIComponent(eventKey)}`, { method: 'PUT', body: JSON.stringify(patch) });
-    setStatus(L('Logger aggiornato.', 'Logger updated.'));
-    setTimeout(() => setStatus(''), 1400);
+    try {
+      const saved = await api<Route>(`/backend/api/guilds/${guildId}/routes/${encodeURIComponent(eventKey)}`, { method: 'PUT', body: JSON.stringify(patch) });
+      setRoutes((current) => current.map((row) => row.event.key === eventKey ? { ...row, route: saved } : row));
+      flash(L('Logger aggiornato.', 'Logger updated.'), 1400);
+    } catch (error) {
+      setRoutes((current) => current.map((row) => row.event.key === eventKey ? { ...row, route: previous } : row));
+      flash(errorMessage(error, locale), 4000);
+    }
+  };
+
+  const saveRouteDebounced = (eventKey: string, patch: Partial<Route>, key: string) => {
+    setRoutes((current) => current.map((row) => row.event.key === eventKey ? { ...row, route: { ...(row.route as Route), eventKey, ...patch } } : row));
+    debounce(`${eventKey}:${key}`, () => void saveRoute(eventKey, patch));
   };
 
   const bulk = async (enabled: boolean, includeNoisy = false) => {
-    await api(`/backend/api/guilds/${guildId}/routes/bulk`, { method: 'POST', body: JSON.stringify({ enabled, includeNoisy }) });
-    await load();
+    try {
+      await api(`/backend/api/guilds/${guildId}/routes/bulk`, { method: 'POST', body: JSON.stringify({ enabled, includeNoisy }) });
+      await load();
+      flash(L('Logger aggiornati.', 'Loggers updated.'));
+    } catch (error) {
+      flash(errorMessage(error, locale), 4000);
+    }
+  };
+
+  const commitRetention = () => {
+    if (!settings) return;
+    const value = Math.round(Number(retentionDraft));
+    if (!Number.isFinite(value) || value < 1 || value > 3650) {
+      setRetentionDraft(String(settings.defaultRetentionDays));
+      flash(L('La retention deve essere tra 1 e 3650 giorni.', 'Retention must be between 1 and 3650 days.'), 3000);
+      return;
+    }
+    if (value !== settings.defaultRetentionDays) saveSettings({ defaultRetentionDays: value });
   };
 
   if (!settings) return <main className="loading">{L('Caricamento pannello…', 'Loading dashboard…')}</main>;
@@ -267,9 +389,9 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
                   ...textChannels.map((channel) => ({ value: channel.id, label: `#${channel.name}` }))
                 ]}
               /></label>
-              <label>{L('Retention dati', 'Data retention')}<input disabled={!canAdmin} type="number" min="1" max="3650" value={settings.defaultRetentionDays} onChange={(e) => saveSettings({ defaultRetentionDays: Number(e.target.value) })} /></label>
-              <div className="inline-fields"><label>{L('Fuso orario', 'Timezone')}<input disabled={!canAdmin} value={settings.timezone} onChange={(e) => setSettings({ ...settings, timezone: e.target.value })} onBlur={() => saveSettings({ timezone: settings.timezone })} /></label><label>{L('Lingua embed', 'Embed language')}<select disabled={!canAdmin} value={settings.locale === 'it' ? 'it' : 'en'} onChange={(e) => saveSettings({ locale: e.target.value as 'en' | 'it' })}><option value="en">English</option><option value="it">Italiano</option></select></label></div>
-              <div className="inline-fields"><label>{L('Colore embed', 'Embed color')}<input disabled={!canAdmin} type="color" value={settings.embedColor} onChange={(e) => saveSettings({ embedColor: e.target.value })} /></label><label>Footer<input disabled={!canAdmin} value={settings.embedFooter} onChange={(e) => setSettings({ ...settings, embedFooter: e.target.value })} onBlur={() => saveSettings({ embedFooter: settings.embedFooter })} /></label></div>
+              <label>{L('Retention dati', 'Data retention')}<input disabled={!canAdmin} type="number" min="1" max="3650" value={retentionDraft} onChange={(e) => setRetentionDraft(e.target.value)} onBlur={commitRetention} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
+              <div className="inline-fields"><label>{L('Fuso orario', 'Timezone')}<input disabled={!canAdmin} value={settings.timezone} placeholder="Europe/Rome" onChange={(e) => setSettings({ ...settings, timezone: e.target.value })} onBlur={() => saveSettings({ timezone: settings.timezone.trim() })} /></label><label>{L('Lingua embed', 'Embed language')}<select disabled={!canAdmin} value={settings.locale === 'it' ? 'it' : 'en'} onChange={(e) => saveSettings({ locale: e.target.value as 'en' | 'it' })}><option value="en">English</option><option value="it">Italiano</option></select></label></div>
+              <div className="inline-fields"><label>{L('Colore embed', 'Embed color')}<input disabled={!canAdmin} type="color" value={settings.embedColor} onChange={(e) => saveSettings({ embedColor: e.target.value }, { debounceKey: 'embedColor' })} /></label><label>Footer<input disabled={!canAdmin} value={settings.embedFooter} onChange={(e) => setSettings({ ...settings, embedFooter: e.target.value })} onBlur={() => saveSettings({ embedFooter: settings.embedFooter })} /></label></div>
             </section>
 
             <section className="panel">
@@ -332,7 +454,7 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
                         <span>{categoryRows.length}</span>
                       </div>
                       <div className="route-list">
-                        {categoryRows.map(({ event, route }) => <RouteEditor key={event.key} event={event} route={route} channels={textChannels} roles={roles} onSave={(patch) => saveRoute(event.key, patch)} readOnly={!canAdmin} premiumEnabled={settings.premiumEnabled} locale={locale} />)}
+                        {categoryRows.map(({ event, route }) => <RouteEditor key={event.key} event={event} route={route} channels={textChannels} roles={roles} onSave={(patch) => void saveRoute(event.key, patch)} onSaveDebounced={(patch, key) => saveRouteDebounced(event.key, patch, key)} readOnly={!canAdmin} premiumEnabled={settings.premiumEnabled} locale={locale} />)}
                       </div>
                     </section>;
                   })}
@@ -343,8 +465,10 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
         </>}
 
         {tab === 'history' && <>
-          <div className="toolbar"><input placeholder={L('Cerca nel riepilogo…', 'Search summaries…')} value={historyText} onChange={(e) => setHistoryText(e.target.value)} /><select value={historyEvent} onChange={(e) => setHistoryEvent(e.target.value)}><option value="">{L('Tutti gli eventi', 'All events')}</option>{routes.map(({ event }) => <option key={event.key} value={event.key}>{localizeEvent(event, locale).label}</option>)}</select>{canModerate && <a className="button-link" href={`/backend/api/guilds/${guildId}/export`}>{L('Esporta JSON', 'Export JSON')}</a>}</div>
-          <div className="history-list">{history.map((item) => <article key={item.id} className="history-item"><div><span className="event-key">{item.eventKey} · {item.dispatchState}</span><time>{formatDate(item.createdAt)}</time></div><strong>{item.summary}</strong><p>{item.actorId ? `Actor: ${item.actorId}` : ''}{item.channelId ? ` · ${L('Canale', 'Channel')}: ${item.channelId}` : ''}</p><details><summary>{L('Dettagli', 'Details')}</summary>{item.dispatchError && <p>Errore invio: {item.dispatchError}</p>}<pre>{JSON.stringify(item.details, null, 2)}</pre></details></article>)}</div>
+          <div className="toolbar"><input placeholder={L('Cerca nel riepilogo…', 'Search summaries…')} value={historyText} onChange={(e) => setHistoryText(e.target.value)} /><select value={historyEvent} onChange={(e) => setHistoryEvent(e.target.value)}><option value="">{L('Tutti gli eventi', 'All events')}</option>{routes.map(({ event }) => <option key={event.key} value={event.key}>{localizeEvent(event, locale).label}</option>)}</select>{canModerate && <a className="button-link" href={`/backend/api/guilds/${guildId}/export${historyEvent ? `?eventKey=${encodeURIComponent(historyEvent)}` : ''}`}>{L('Esporta JSON', 'Export JSON')}</a>}</div>
+          <div className="history-list">{history.map((item) => <article key={item.id} className="history-item"><div><span className="event-key">{item.eventKey} · {item.dispatchState}</span><time>{formatDate(item.createdAt)}</time></div><strong>{item.summary}</strong><p>{item.actorId ? `${L('Autore', 'Actor')}: ${item.actorId}` : ''}{item.channelId ? ` · ${L('Canale', 'Channel')}: ${item.channelId}` : ''}</p><details><summary>{L('Dettagli', 'Details')}</summary>{item.dispatchError && <p>{L('Errore invio', 'Delivery error')}: {item.dispatchError}</p>}<pre>{JSON.stringify(item.details, null, 2)}</pre></details></article>)}</div>
+          {!historyLoading && !history.length && <div className="notice">{L('Nessun evento trovato.', 'No events found.')}</div>}
+          {historyPage < historyPages && <div className="toolbar"><button disabled={historyLoading} onClick={() => setHistoryPage((page) => page + 1)}>{historyLoading ? L('Caricamento…', 'Loading…') : L('Carica altri', 'Load more')}</button></div>}
         </>}
 
         {tab === 'admin' && canAdmin && <>
@@ -454,7 +578,7 @@ function Toggle({ label, description, checked, onChange, danger, disabled }: { l
   return <div className={`toggle-row ${danger ? 'danger-toggle' : ''}`}><div><strong>{label}</strong><span>{description}</span></div><button disabled={disabled} className={`switch ${checked ? 'on' : ''}`} onClick={() => onChange(!checked)}><i /></button></div>;
 }
 
-function RouteEditor({ event, route, channels, roles, onSave, readOnly, premiumEnabled, locale }: { event: EventDefinition; route: Route | null; channels: Channel[]; roles: Role[]; onSave: (patch: Partial<Route>) => void; readOnly?: boolean; premiumEnabled: boolean; locale: Locale }) {
+function RouteEditor({ event, route, channels, roles, onSave, onSaveDebounced, readOnly, premiumEnabled, locale }: { event: EventDefinition; route: Route | null; channels: Channel[]; roles: Role[]; onSave: (patch: Partial<Route>) => void; onSaveDebounced: (patch: Partial<Route>, key: string) => void; readOnly?: boolean; premiumEnabled: boolean; locale: Locale }) {
   const L = (it: string, en: string) => locale === 'it' ? it : en;
   const displayEvent = localizeEvent(event, locale);
   const premiumLocked = Boolean(event.noisy && !premiumEnabled);
@@ -476,7 +600,7 @@ function RouteEditor({ event, route, channels, roles, onSave, readOnly, premiumE
         ]}
       /></label>
       <label>{L('Titolo personalizzato', 'Custom title')}<input disabled={readOnly} value={title} placeholder={displayEvent.label} onBlur={() => onSave({ customTitle: title || null })} onChange={(e) => setTitle(e.target.value)} /></label>
-      <div className="inline-fields"><label>{L('Colore', 'Color')}<input disabled={readOnly} type="color" value={route.embedColor ?? '#3f3c54'} onChange={(e) => onSave({ embedColor: e.target.value })} /></label><label>{L('Menziona ruolo', 'Mention role')}<SearchableSelect
+      <div className="inline-fields"><label>{L('Colore', 'Color')}<input disabled={readOnly} type="color" value={route.embedColor ?? '#3f3c54'} onChange={(e) => onSaveDebounced({ embedColor: e.target.value }, 'embedColor')} /></label><label>{L('Menziona ruolo', 'Mention role')}<SearchableSelect
         disabled={readOnly}
         value={route.mentionRoleIds[0] ?? ''}
         onChange={(value) => onSave({ mentionRoleIds: value ? [value] : [] })}
@@ -545,7 +669,7 @@ function ManualIdList({
       .split(/[\s,;]+/)
       .map((value) => value.trim())
       .filter(Boolean)
-      .filter((value) => /^\d{15,22}$/.test(value));
+      .filter((value) => /^\d{17,20}$/.test(value));
 
     if (!candidates.length) return;
     const next = [...new Set([...values, ...candidates])];
@@ -687,27 +811,48 @@ function AccessBindings({ guildId, roles, bindings, onChange, locale }: { guildI
   const L = (it: string, en: string) => locale === 'it' ? it : en;
   const [roleId, setRoleId] = useState('');
   const [level, setLevel] = useState<'VIEWER' | 'MODERATOR' | 'ADMIN'>('VIEWER');
+  const [error, setError] = useState('');
   const save = async () => {
     if (!roleId) return;
-    const binding = await api<AccessBinding>(`/backend/api/guilds/${guildId}/access-bindings/${roleId}`, { method: 'PUT', body: JSON.stringify({ accessLevel: level }) });
-    onChange([...bindings.filter((x) => x.discordRoleId !== roleId), binding]);
-    setRoleId('');
+    setError('');
+    try {
+      const binding = await api<AccessBinding>(`/backend/api/guilds/${guildId}/access-bindings/${roleId}`, { method: 'PUT', body: JSON.stringify({ accessLevel: level }) });
+      onChange([...bindings.filter((x) => x.discordRoleId !== roleId), binding]);
+      setRoleId('');
+    } catch (cause) {
+      setError(errorMessage(cause, locale));
+    }
   };
   const remove = async (id: string) => {
-    await api(`/backend/api/guilds/${guildId}/access-bindings/${id}`, { method: 'DELETE' });
-    onChange(bindings.filter((x) => x.discordRoleId !== id));
+    setError('');
+    try {
+      await api(`/backend/api/guilds/${guildId}/access-bindings/${id}`, { method: 'DELETE' });
+      onChange(bindings.filter((x) => x.discordRoleId !== id));
+    } catch (cause) {
+      setError(errorMessage(cause, locale));
+    }
   };
-  return <section className="panel access-panel"><div className="panel-title"><div><p className="eyebrow">{L('PERMESSI', 'PERMISSIONS')}</p><h2>{L('Accesso tramite ruoli Discord', 'Access through Discord roles')}</h2></div></div><div className="access-add"><SearchableSelect value={roleId} onChange={setRoleId} placeholder={L('Cerca un ruolo…', 'Search roles…')} options={roles.filter((role) => role.name !== '@everyone').map((role) => ({ value: role.id, label: `@${role.name}` }))} /><select value={level} onChange={(e) => setLevel(e.target.value as 'VIEWER' | 'MODERATOR' | 'ADMIN')}><option value="VIEWER">Viewer</option><option value="MODERATOR">Moderator</option><option value="ADMIN">Admin</option></select><button onClick={save}>{L('Aggiungi', 'Add')}</button></div><div className="binding-list">{bindings.map((b) => { const role = roles.find((r) => r.id === b.discordRoleId); return <div key={b.id}><span>@{role?.name ?? b.discordRoleId}</span><strong>{b.accessLevel}</strong><button onClick={() => remove(b.discordRoleId)}>{L('Rimuovi', 'Remove')}</button></div>; })}</div></section>;
+  return <section className="panel access-panel"><div className="panel-title"><div><p className="eyebrow">{L('PERMESSI', 'PERMISSIONS')}</p><h2>{L('Accesso tramite ruoli Discord', 'Access through Discord roles')}</h2></div></div>{error && <div className="notice">{error}</div>}<div className="access-add"><SearchableSelect value={roleId} onChange={setRoleId} placeholder={L('Cerca un ruolo…', 'Search roles…')} options={roles.filter((role) => role.name !== '@everyone').map((role) => ({ value: role.id, label: `@${role.name}` }))} /><select value={level} onChange={(e) => setLevel(e.target.value as 'VIEWER' | 'MODERATOR' | 'ADMIN')}><option value="VIEWER">Viewer</option><option value="MODERATOR">Moderator</option><option value="ADMIN">Admin</option></select><button onClick={save}>{L('Aggiungi', 'Add')}</button></div><div className="binding-list">{bindings.map((b) => { const role = roles.find((r) => r.id === b.discordRoleId); return <div key={b.id}><span>@{role?.name ?? b.discordRoleId}</span><strong>{b.accessLevel}</strong><button onClick={() => remove(b.discordRoleId)}>{L('Rimuovi', 'Remove')}</button></div>; })}</div></section>;
 }
 
 function PrivacyDelete({ guildId, onDone, locale }: { guildId: string; onDone: () => void; locale: Locale }) {
   const L = (it: string, en: string) => locale === 'it' ? it : en;
   const [userId, setUserId] = useState('');
+  const [error, setError] = useState('');
   const submit = async () => {
-    if (!/^\d{15,22}$/.test(userId)) return;
-    if (!confirm(locale === 'it' ? `Eliminare i dati salvati per ${userId}?` : `Delete stored data for ${userId}?`)) return;
-    await api(`/backend/api/guilds/${guildId}/privacy/user/${userId}`, { method: 'DELETE' });
-    setUserId(''); onDone();
+    const id = userId.trim();
+    if (!/^\d{17,20}$/.test(id)) {
+      setError(L('Inserisci un Discord User ID valido (17-20 cifre).', 'Enter a valid Discord User ID (17-20 digits).'));
+      return;
+    }
+    if (!confirm(locale === 'it' ? `Eliminare i dati salvati per ${id}?` : `Delete stored data for ${id}?`)) return;
+    setError('');
+    try {
+      await api(`/backend/api/guilds/${guildId}/privacy/user/${id}`, { method: 'DELETE' });
+      setUserId(''); onDone();
+    } catch (cause) {
+      setError(errorMessage(cause, locale));
+    }
   };
-  return <div className="danger-action"><input placeholder="Discord User ID" value={userId} onChange={(e) => setUserId(e.target.value)} /><button onClick={submit}>{L('Elimina dati', 'Delete data')}</button></div>;
+  return <>{error && <div className="notice">{error}</div>}<div className="danger-action"><input placeholder="Discord User ID" inputMode="numeric" value={userId} onChange={(e) => setUserId(e.target.value)} /><button onClick={submit}>{L('Elimina dati', 'Delete data')}</button></div></>;
 }
