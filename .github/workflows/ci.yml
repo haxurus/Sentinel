@@ -3,28 +3,113 @@ name: CI
 on:
   pull_request:
   workflow_dispatch:
+  # Called by the deploy workflow so nothing reaches production untested.
+  workflow_call:
 
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  validate:
+  test:
+    name: Typecheck, tests and migrations
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: sentinel_owner
+          POSTGRES_PASSWORD: ci-owner-password
+          POSTGRES_DB: sentinel_audit
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sentinel_owner -d sentinel_audit"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://sentinel_owner:ci-owner-password@localhost:5432/sentinel_audit?schema=public
+      NEXT_TELEMETRY_DISABLED: 1
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
 
       - name: Validate shell scripts
         shell: bash
         run: |
           set -euo pipefail
-          find ops security docker -type f -name '*.sh' -print0 | xargs -0 -n1 sh -n
-          cmp docker/postgres/harden-users.sh deploy/runtime/harden-users.sh
+          find ops security deploy scripts -type f \( -name '*.sh' -o -name 'sentinel-deploy*' \) -print0 | xargs -0 -n1 sh -n
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then
+            npm ci --ignore-scripts --no-audit --no-fund
+          else
+            echo '::warning::package-lock.json missing: generating it (bootstrap only)'
+            npm install --ignore-scripts --no-audit --no-fund
+          fi
+
+      - name: Upload generated lockfile
+        if: ${{ hashFiles('package-lock.json') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: package-lock
+          path: package-lock.json
+          retention-days: 3
+
+      - name: Generate Prisma client and build all workspaces
+        run: npm run db:generate && npm run build
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Apply migrations to a fresh database
+        run: npm run db:migrate
+
+      - name: Verify migrations match the Prisma schema
+        run: npm exec --workspace @sentinel/db -- prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+
+      - name: Apply and verify least-privilege database roles
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v psql >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends postgresql-client; }
+          tmp="$(mktemp -d)"
+          printf 'ci-owner-password' > "$tmp/owner"
+          printf 'ci-api-password' > "$tmp/api"
+          printf 'ci-bot-password' > "$tmp/bot"
+          PGHOST=localhost PGDATABASE=sentinel_audit PGUSER=sentinel_owner \
+          POSTGRES_ADMIN_PASSWORD_FILE="$tmp/owner" API_DB_PASSWORD_FILE="$tmp/api" BOT_DB_PASSWORD_FILE="$tmp/bot" \
+            sh deploy/runtime/harden-users.sh
+          export PGHOST=localhost PGDATABASE=sentinel_audit
+          as_bot() { PGUSER=sentinel_bot PGPASSWORD=ci-bot-password psql -q -v ON_ERROR_STOP=1 -c "$1" >/dev/null; }
+          as_api() { PGUSER=sentinel_api PGPASSWORD=ci-api-password psql -q -v ON_ERROR_STOP=1 -c "$1" >/dev/null; }
+          # The bot writes logs and reads the blacklist, nothing else.
+          as_bot 'SELECT count(*) FROM "LogEvent"'
+          as_bot 'SELECT count(*) FROM "MessageSnapshot"'
+          as_bot 'SELECT count(*) FROM "InstallBlock"'
+          for table in PanelSession PanelAudit PanelRoleBinding SuperAdminAudit; do
+            if as_bot "SELECT count(*) FROM \"$table\"" 2>/dev/null; then echo "sentinel_bot can read $table" >&2; exit 1; fi
+          done
+          if as_bot "DELETE FROM \"InstallBlock\"" 2>/dev/null; then echo 'sentinel_bot can modify InstallBlock' >&2; exit 1; fi
+          for table in GuildSettings LogRoute LogEvent MessageSnapshot PanelAudit PanelSession PanelRoleBinding InstallBlock SuperAdminAudit; do
+            as_api "SELECT count(*) FROM \"$table\""
+          done
+          if as_api 'CREATE TABLE ci_should_fail (id int)' 2>/dev/null; then echo 'sentinel_api can create tables' >&2; exit 1; fi
+          echo 'database privileges verified'
+
+  containers:
+    name: Compose and container images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Validate production Compose
         shell: bash
@@ -38,8 +123,28 @@ jobs:
           SENTINEL_MIGRATE_IMAGE=ghcr.io/haxurus/sentinel@sha256:$(printf 'b%.0s' {1..64}) \
           docker compose --env-file deploy/.env.production.example -f deploy/docker-compose.prod.yml config -q
 
+      - name: Validate edge Nginx configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="$(awk '/^  edge:/{f=1} f && /image:/{print $2; exit}' deploy/docker-compose.prod.yml)"
+          docker run --rm --add-host web:127.0.0.1 -v "$PWD/deploy/runtime/nginx.conf:/etc/nginx/nginx.conf:ro" "$image" nginx -t
+
       - name: Build runtime image
         run: docker build --pull --target runtime -t sentinel-ci-runtime:${GITHUB_SHA} .
 
       - name: Build migration image
         run: docker build --target migrate -t sentinel-ci-migrate:${GITHUB_SHA} .
+
+      - name: Runtime image smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --read-only sentinel-ci-runtime:${GITHUB_SHA} node -e "
+            const fs = require('fs');
+            for (const file of ['apps/api/dist/index.js', 'apps/bot/dist/index.js', 'apps/web/.next/BUILD_ID', 'node_modules/.prisma/client/index.js']) {
+              if (!fs.existsSync(file)) { console.error('missing ' + file); process.exit(1); }
+            }
+            if (process.getuid() === 0) { console.error('runtime image runs as root'); process.exit(1); }
+            console.log('runtime image OK');
+          "

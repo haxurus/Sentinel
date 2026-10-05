@@ -17,7 +17,13 @@ env:
   IMAGE: ghcr.io/haxurus/sentinel
 
 jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   build:
+    needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     outputs:
@@ -29,9 +35,12 @@ jobs:
 
       - name: Login to GHCR
         shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
         run: |
           set -euo pipefail
-          printf '%s' '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
       - name: Create Buildx builder
         shell: bash

@@ -3,6 +3,8 @@ import { eventDefinition } from '@sentinel/shared';
 import { logQueue } from './queue.js';
 import { jsonSafe, redactSecrets } from './utils.js';
 import { protectJson, redactText } from './security.js';
+import { DISPATCH_ATTEMPTS } from './dispatcher.js';
+import { logger } from './logger.js';
 
 export type RecordInput = {
   guildId: string;
@@ -14,25 +16,74 @@ export type RecordInput = {
   details?: Record<string, unknown>;
 };
 
-export async function recordEvent(input: RecordInput) {
+type RouteState = { captureEnabled: boolean; enabled: boolean; premiumEnabled: boolean } | null;
+
+// Dashboard changes become effective within this window. It keeps the hot path
+// (every Gateway event) from issuing one database query per event.
+const ROUTE_CACHE_MS = 10_000;
+const routeCache = new Map<string, { value: RouteState; expires: number }>();
+
+async function getRouteState(guildId: string, eventKey: string): Promise<RouteState> {
+  const key = `${guildId}:${eventKey}`;
+  const cached = routeCache.get(key);
+  if (cached && cached.expires > Date.now()) return cached.value;
+
   const route = await prisma.logRoute.findUnique({
-    where: { guildId_eventKey: { guildId: input.guildId, eventKey: input.eventKey } },
-    select: {
-      captureEnabled: true,
-      enabled: true,
-      guild: { select: { premiumEnabled: true } }
-    }
-  }).catch(() => null);
+    where: { guildId_eventKey: { guildId, eventKey } },
+    select: { captureEnabled: true, enabled: true, guild: { select: { premiumEnabled: true } } }
+  });
+  const value: RouteState = route
+    ? { captureEnabled: route.captureEnabled, enabled: route.enabled, premiumEnabled: route.guild.premiumEnabled }
+    : null;
+  routeCache.set(key, { value, expires: Date.now() + ROUTE_CACHE_MS });
+  return value;
+}
 
-  const definition = eventDefinition(input.eventKey);
-  if (definition?.noisy && !route?.guild.premiumEnabled) return null;
-  if (route && !route.captureEnabled) return null;
+export function invalidateRouteCache(guildId?: string) {
+  if (!guildId) {
+    routeCache.clear();
+    return;
+  }
+  for (const key of routeCache.keys()) {
+    if (key.startsWith(`${guildId}:`)) routeCache.delete(key);
+  }
+}
 
-  const sanitizedDetails = jsonSafe(redactSecrets(input.details ?? {}));
+const captureAllowed = (eventKey: string, route: RouteState) => {
+  if (eventDefinition(eventKey)?.noisy && !route?.premiumEnabled) return false;
+  if (route && !route.captureEnabled) return false;
+  return true;
+};
+
+/**
+ * Cheap pre-check used by handlers before expensive work such as Audit Log
+ * lookups. On database errors it answers true so recordEvent stays the single
+ * place that decides.
+ */
+export async function shouldCapture(guildId: string, eventKey: string) {
+  try {
+    return captureAllowed(eventKey, await getRouteState(guildId, eventKey));
+  } catch {
+    return true;
+  }
+}
+
+const MAX_DETAILS_BYTES = 64_000;
+
+export function boundDetails(details: Record<string, unknown> | undefined) {
+  const sanitizedDetails = jsonSafe(redactSecrets(details ?? {})) as Record<string, unknown>;
   const serializedDetails = JSON.stringify(sanitizedDetails);
-  const boundedDetails = serializedDetails.length <= 64_000
-    ? sanitizedDetails
-    : { truncated: true, originalBytes: Buffer.byteLength(serializedDetails), preview: serializedDetails.slice(0, 60_000) };
+  const bytes = Buffer.byteLength(serializedDetails);
+  if (bytes <= MAX_DETAILS_BYTES) return sanitizedDetails;
+  return { truncated: true, originalBytes: bytes, preview: Buffer.from(serializedDetails).subarray(0, 60_000).toString('utf8') };
+}
+
+export async function recordEvent(input: RecordInput) {
+  const route = await getRouteState(input.guildId, input.eventKey).catch((error) => {
+    logger.warn({ guildId: input.guildId, eventKey: input.eventKey, error: redactText(String(error)) }, 'Route lookup failed');
+    return null;
+  });
+  if (!captureAllowed(input.eventKey, route)) return null;
 
   const event = await prisma.logEvent.create({
     data: {
@@ -41,8 +92,8 @@ export async function recordEvent(input: RecordInput) {
       actorId: input.actorId ?? null,
       targetId: input.targetId ?? null,
       channelId: input.channelId ?? null,
-      summary: input.summary,
-      details: protectJson(boundedDetails),
+      summary: input.summary.slice(0, 2000),
+      details: protectJson(boundDetails(input.details)),
       dispatchState: route?.enabled === false ? 'DISABLED' : 'PENDING'
     }
   });
@@ -53,13 +104,13 @@ export async function recordEvent(input: RecordInput) {
         jobId: event.id,
         removeOnComplete: 500,
         removeOnFail: 1000,
-        attempts: 4,
+        attempts: DISPATCH_ATTEMPTS,
         backoff: { type: 'exponential', delay: 1500 }
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await prisma.logEvent.update({ where: { id: event.id }, data: { dispatchState: 'QUEUE_ERROR', dispatchError: redactText(message).slice(0, 1000) } }).catch(() => null);
-      console.error('Unable to enqueue Discord log', event.id, redactText(message));
+      logger.error({ eventId: event.id, error: redactText(message) }, 'Unable to enqueue Discord log');
     }
   }
 

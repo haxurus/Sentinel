@@ -82,12 +82,15 @@ export function installDiscordCapabilityPolicy(client: Client, onBlocked?: Block
     }
   };
 
-  // Guard the generic request method used by @discordjs/rest.
-  if (typeof rest.request === 'function') {
-    const originalRequest = rest.request.bind(rest);
-    rest.request = (options: any) => {
+  // Guard the generic request methods used by @discordjs/rest. request() is
+  // the public entry point; queueRequest() is the lower-level one it delegates
+  // to and is wrapped too so no code path can reach the network unchecked.
+  for (const methodName of ['request', 'queueRequest'] as const) {
+    if (typeof rest[methodName] !== 'function') continue;
+    const original = rest[methodName].bind(rest);
+    rest[methodName] = (options: any) => {
       check(options?.method ?? 'GET', options?.fullRoute ?? options?.route ?? '');
-      return originalRequest(options);
+      return original(options);
     };
   }
 

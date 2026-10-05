@@ -3,19 +3,38 @@ import {
   Events,
   InteractionType,
   type Client,
+  type ClientEvents,
+  type Guild,
   type GuildMember,
   type Message,
   type PartialMessage
 } from 'discord.js';
 import { prisma } from '@sentinel/db';
 import { ensureGuild, getGuildSettings, isGuildInstallBlocked, isUserInstallBlocked, snapshotMessage } from './store.js';
-import { recordEvent } from './recorder.js';
+import { recordEvent, shouldCapture } from './recorder.js';
 import { findRecentAuditEntry, jsonSafe, redactSecrets } from './utils.js';
-import { decryptText, unprotectJson } from './security.js';
+import { decryptText, redactText, unprotectJson } from './security.js';
 import { leaveGuild } from './discord-actions.js';
+import { logger } from './logger.js';
+import {
+  addChangedPair,
+  guildChanges,
+  isAuthorEdit,
+  permissionOverwriteChanges,
+  roleChanges,
+  sameAttachments,
+  threadChanges
+} from './diff.js';
 
-const roleIds = (member: GuildMember | null | undefined | any) => member?.roles?.cache ? [...member.roles.cache.keys()] : [];
-const actorFromAudit = async (guild: any, type: AuditLogEvent, targetId?: string) => {
+const roleIds = (member: GuildMember | null | undefined | any): string[] => member?.roles?.cache ? [...member.roles.cache.keys()] : [];
+
+/**
+ * Resolves the moderator behind an action through the Audit Log, but only when
+ * the event will actually be stored: the lookup waits ~700 ms and costs a REST
+ * call, which is wasted (and rate-limited) for disabled loggers.
+ */
+const actorFromAudit = async (eventKey: string, guild: Guild | null | undefined, type: AuditLogEvent, targetId?: string) => {
+  if (!guild || !(await shouldCapture(guild.id, eventKey))) return null;
   const entry = await findRecentAuditEntry(guild, type, targetId);
   return entry?.executorId ?? null;
 };
@@ -27,78 +46,6 @@ const attachmentData = (message: Message | PartialMessage) => [...message.attach
   contentType: a.contentType,
   size: a.size
 }));
-
-const addChangedPair = (
-  details: Record<string, unknown>,
-  oldKey: string,
-  newKey: string,
-  oldValue: unknown,
-  newValue: unknown
-) => {
-  if (JSON.stringify(oldValue) === JSON.stringify(newValue)) return false;
-  details[oldKey] = oldValue;
-  details[newKey] = newValue;
-  return true;
-};
-
-const permissionNames = (overwrite: any, side: 'allow' | 'deny') =>
-  new Set<string>(overwrite?.[side]?.toArray?.() ?? []);
-
-const setDifference = (next: Set<string>, previous: Set<string>) =>
-  [...next].filter((value) => !previous.has(value));
-
-const permissionOverwriteChanges = (oldChannel: any, newChannel: any) => {
-  const oldCache = oldChannel?.permissionOverwrites?.cache;
-  const newCache = newChannel?.permissionOverwrites?.cache;
-  if (!oldCache || !newCache) return [];
-
-  const ids = new Set<string>([...oldCache.keys(), ...newCache.keys()]);
-  const changes: Array<Record<string, unknown>> = [];
-
-  for (const id of ids) {
-    const before = oldCache.get(id);
-    const after = newCache.get(id);
-    const targetType = (after?.type ?? before?.type) === 0 ? 'role' : 'user';
-
-    if (!before && after) {
-      changes.push({
-        targetId: id,
-        targetType,
-        action: 'added',
-        allowAdded: [...permissionNames(after, 'allow')],
-        denyAdded: [...permissionNames(after, 'deny')]
-      });
-      continue;
-    }
-
-    if (before && !after) {
-      changes.push({
-        targetId: id,
-        targetType,
-        action: 'removed',
-        allowRemoved: [...permissionNames(before, 'allow')],
-        denyRemoved: [...permissionNames(before, 'deny')]
-      });
-      continue;
-    }
-
-    const oldAllow = permissionNames(before, 'allow');
-    const newAllow = permissionNames(after, 'allow');
-    const oldDeny = permissionNames(before, 'deny');
-    const newDeny = permissionNames(after, 'deny');
-
-    const allowAdded = setDifference(newAllow, oldAllow);
-    const allowRemoved = setDifference(oldAllow, newAllow);
-    const denyAdded = setDifference(newDeny, oldDeny);
-    const denyRemoved = setDifference(oldDeny, newDeny);
-
-    if (allowAdded.length || allowRemoved.length || denyAdded.length || denyRemoved.length) {
-      changes.push({ targetId: id, targetType, action: 'updated', allowAdded, allowRemoved, denyAdded, denyRemoved });
-    }
-  }
-
-  return changes;
-};
 
 const voiceStateSummary = (tag: string, changes: Record<string, unknown>) => {
   const visibleKeys = Object.keys(changes).filter((key) => !['actorBot', 'actorRoleIds'].includes(key));
@@ -123,7 +70,19 @@ const commandPath = (interaction: any) => {
 };
 
 export function registerHandlers(client: Client) {
-  client.on(Events.GuildCreate, async (guild) => {
+  // Every handler is async: without this wrapper a single failure (database
+  // hiccup, missing partial) becomes an anonymous unhandled rejection.
+  const report = (event: string, error: unknown) => {
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    logger.error({ event, error: redactText(message) }, 'Gateway handler failed');
+  };
+  const on = <Event extends keyof ClientEvents>(event: Event, handler: (...args: ClientEvents[Event]) => Promise<unknown>) => {
+    client.on(event, (...args: ClientEvents[Event]) => {
+      handler(...args).catch((error: unknown) => report(event, error));
+    });
+  };
+
+  on(Events.GuildCreate, async (guild) => {
     if (await isGuildInstallBlocked(guild.id)) {
       await leaveGuild(guild, 'blocked-guild').catch(() => null);
       return;
@@ -140,7 +99,7 @@ export function registerHandlers(client: Client) {
     await ensureGuild(guild);
   });
 
-  client.on(Events.GuildMemberAdd, async (member) => {
+  on(Events.GuildMemberAdd, async (member) => {
     await recordEvent({
       guildId: member.guild.id,
       eventKey: 'member.join',
@@ -156,7 +115,12 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.GuildMemberRemove, async (member) => {
+  on(Events.GuildMemberRemove, async (member) => {
+    const [kickCaptured, leaveCaptured] = await Promise.all([
+      shouldCapture(member.guild.id, 'moderation.kick'),
+      shouldCapture(member.guild.id, 'member.leave')
+    ]);
+    if (!kickCaptured && !leaveCaptured) return;
     const kickEntry = await findRecentAuditEntry(member.guild, AuditLogEvent.MemberKick, member.id);
     const kicked = Boolean(kickEntry);
     await recordEvent({
@@ -174,7 +138,7 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+  on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     const oldRoles = roleIds(oldMember);
     const newRoles = roleIds(newMember);
     const addedRoles = newRoles.filter((id) => !oldRoles.includes(id));
@@ -182,17 +146,23 @@ export function registerHandlers(client: Client) {
     const rolesChanged = addedRoles.length > 0 || removedRoles.length > 0;
     const details: Record<string, unknown> = {};
 
-    addChangedPair(details, 'oldNickname', 'newNickname', oldMember.nickname, newMember.nickname);
-    if (addedRoles.length) details.addedRoles = addedRoles;
-    if (removedRoles.length) details.removedRoles = removedRoles;
-    addChangedPair(details, 'oldTimeout', 'newTimeout', oldMember.communicationDisabledUntil?.toISOString() ?? null, newMember.communicationDisabledUntil?.toISOString() ?? null);
-    addChangedPair(details, 'oldBoostSince', 'newBoostSince', oldMember.premiumSince?.toISOString() ?? null, newMember.premiumSince?.toISOString() ?? null);
-    addChangedPair(details, 'oldPending', 'newPending', oldMember.pending, newMember.pending);
+    // A partial old member has no reliable previous state: only role changes
+    // can be derived safely from it.
+    if (!oldMember.partial) {
+      addChangedPair(details, 'oldNickname', 'newNickname', oldMember.nickname, newMember.nickname);
+      addChangedPair(details, 'oldTimeout', 'newTimeout', oldMember.communicationDisabledUntil?.toISOString() ?? null, newMember.communicationDisabledUntil?.toISOString() ?? null);
+      addChangedPair(details, 'oldBoostSince', 'newBoostSince', oldMember.premiumSince?.toISOString() ?? null, newMember.premiumSince?.toISOString() ?? null);
+      addChangedPair(details, 'oldPending', 'newPending', oldMember.pending, newMember.pending);
+    }
+    if (!oldMember.partial || oldRoles.length) {
+      if (addedRoles.length) details.addedRoles = addedRoles;
+      if (removedRoles.length) details.removedRoles = removedRoles;
+    }
 
     if (!Object.keys(details).length) return;
 
     const type = rolesChanged ? AuditLogEvent.MemberRoleUpdate : AuditLogEvent.MemberUpdate;
-    const actorId = await actorFromAudit(newMember.guild, type, newMember.id);
+    const actorId = await actorFromAudit('member.update', newMember.guild, type, newMember.id);
     details.actorRoleIds = actorId ? roleIds(newMember.guild.members.cache.get(actorId)) : [];
 
     await recordEvent({
@@ -205,7 +175,8 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.GuildBanAdd, async (ban) => {
+  on(Events.GuildBanAdd, async (ban) => {
+    if (!(await shouldCapture(ban.guild.id, 'moderation.ban'))) return;
     const entry = await findRecentAuditEntry(ban.guild, AuditLogEvent.MemberBanAdd, ban.user.id);
     await recordEvent({
       guildId: ban.guild.id,
@@ -213,11 +184,12 @@ export function registerHandlers(client: Client) {
       actorId: entry?.executorId ?? null,
       targetId: ban.user.id,
       summary: `${ban.user.tag} è stato bannato.`,
-      details: { reason: entry?.reason ?? ban.reason ?? null, username: ban.user.tag }
+      details: { reason: entry?.reason ?? ban.reason ?? null, username: ban.user.tag, actorBot: entry?.executor?.bot ?? false }
     });
   });
 
-  client.on(Events.GuildBanRemove, async (ban) => {
+  on(Events.GuildBanRemove, async (ban) => {
+    if (!(await shouldCapture(ban.guild.id, 'moderation.unban'))) return;
     const entry = await findRecentAuditEntry(ban.guild, AuditLogEvent.MemberBanRemove, ban.user.id);
     await recordEvent({
       guildId: ban.guild.id,
@@ -225,11 +197,11 @@ export function registerHandlers(client: Client) {
       actorId: entry?.executorId ?? null,
       targetId: ban.user.id,
       summary: `Il ban di ${ban.user.tag} è stato rimosso.`,
-      details: { username: ban.user.tag }
+      details: { username: ban.user.tag, actorBot: entry?.executor?.bot ?? false }
     });
   });
 
-  client.on(Events.MessageCreate, async (message) => {
+  on(Events.MessageCreate, async (message) => {
     if (!message.guildId || !message.author) return;
 
     const interactionResponse = message.interaction;
@@ -280,17 +252,30 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
+  on(Events.MessageUpdate, async (oldMessage, newMessage) => {
     if (!newMessage.guildId || newMessage.author?.id === client.user?.id) return;
-    if (newMessage.partial) await newMessage.fetch().catch(() => null);
+    if (newMessage.partial) {
+      const fetched = await newMessage.fetch().catch(() => null);
+      if (!fetched) return;
+    }
+    if (!newMessage.author || newMessage.author.id === client.user?.id) return;
+
+    // Link-embed resolution, pins and component refreshes also emit
+    // MESSAGE_UPDATE; they must neither be logged nor overwrite the snapshot
+    // that holds the author's last real version.
+    if (!isAuthorEdit(oldMessage, newMessage)) return;
+
     const before = await prisma.messageSnapshot.findUnique({ where: { messageId: newMessage.id } });
-    if (!newMessage.author) return;
     const settings = await getGuildSettings(newMessage.guildId);
     await snapshotMessage(newMessage as Message);
-    const oldComparableContent = decryptText(before?.content) ?? oldMessage.content ?? '';
-    const newComparableContent = newMessage.content ?? '';
-    const sameAttachments = JSON.stringify(before ? unprotectJson(before.attachments) : attachmentData(oldMessage)) === JSON.stringify(attachmentData(newMessage));
-    if (oldComparableContent === newComparableContent && sameAttachments && settings?.storeMessageContent) return;
+
+    const previousContent = decryptText(before?.content) ?? (oldMessage.partial ? null : oldMessage.content) ?? null;
+    const previousAttachments = before ? unprotectJson(before.attachments) : (oldMessage.partial ? null : attachmentData(oldMessage));
+    const currentAttachments = attachmentData(newMessage);
+    const contentKnown = previousContent !== null;
+    const contentChanged = contentKnown && previousContent !== (newMessage.content ?? '');
+    const attachmentsChanged = previousAttachments !== null && !sameAttachments(previousAttachments, currentAttachments);
+    if (contentKnown && !contentChanged && !attachmentsChanged) return;
 
     await recordEvent({
       guildId: newMessage.guildId,
@@ -300,20 +285,21 @@ export function registerHandlers(client: Client) {
       channelId: newMessage.channelId,
       summary: `${newMessage.author.tag} ha modificato un messaggio.`,
       details: {
-        oldContent: settings?.storeMessageContent ? (decryptText(before?.content) ?? oldMessage.content ?? null) : null,
+        oldContent: settings?.storeMessageContent ? previousContent : null,
         newContent: settings?.storeMessageContent ? (newMessage.content ?? null) : null,
-        attachments: attachmentData(newMessage),
+        attachments: currentAttachments,
+        messageId: newMessage.id,
         actorBot: newMessage.author.bot,
         actorRoleIds: roleIds(newMessage.member)
       }
     });
   });
 
-  client.on(Events.MessageDelete, async (message) => {
+  on(Events.MessageDelete, async (message) => {
     if (!message.guildId) return;
     const snapshot = await prisma.messageSnapshot.findUnique({ where: { messageId: message.id } });
-    const settings = await getGuildSettings(message.guildId);
     if (snapshot?.authorId === client.user?.id || message.author?.id === client.user?.id) return;
+    const settings = await getGuildSettings(message.guildId);
     const authorId = snapshot?.authorId ?? message.author?.id ?? null;
     await recordEvent({
       guildId: message.guildId,
@@ -333,7 +319,7 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.MessageBulkDelete, async (messages, channel) => {
+  on(Events.MessageBulkDelete, async (messages, channel) => {
     const ids = [...messages.keys()];
     await recordEvent({
       guildId: channel.guild.id,
@@ -344,7 +330,7 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.MessageReactionAdd, async (reaction, user) => {
+  on(Events.MessageReactionAdd, async (reaction, user) => {
     if (!reaction.message.guildId || user.id === client.user?.id) return;
     await recordEvent({
       guildId: reaction.message.guildId,
@@ -353,11 +339,11 @@ export function registerHandlers(client: Client) {
       targetId: reaction.message.id,
       channelId: reaction.message.channelId,
       summary: `${user.tag ?? user.id} ha aggiunto una reaction.`,
-      details: { emoji: reaction.emoji.toString(), actorBot: user.bot }
+      details: { emoji: reaction.emoji.toString(), actorBot: user.bot ?? false }
     });
   });
 
-  client.on(Events.MessageReactionRemove, async (reaction, user) => {
+  on(Events.MessageReactionRemove, async (reaction, user) => {
     if (!reaction.message.guildId || user.id === client.user?.id) return;
     await recordEvent({
       guildId: reaction.message.guildId,
@@ -366,11 +352,11 @@ export function registerHandlers(client: Client) {
       targetId: reaction.message.id,
       channelId: reaction.message.channelId,
       summary: `${user.tag ?? user.id} ha rimosso una reaction.`,
-      details: { emoji: reaction.emoji.toString(), actorBot: user.bot }
+      details: { emoji: reaction.emoji.toString(), actorBot: user.bot ?? false }
     });
   });
 
-  client.on(Events.MessageReactionRemoveAll, async (message, reactions) => {
+  on(Events.MessageReactionRemoveAll, async (message, reactions) => {
     if (!message.guildId) return;
     await recordEvent({
       guildId: message.guildId,
@@ -382,7 +368,7 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.MessageReactionRemoveEmoji, async (reaction) => {
+  on(Events.MessageReactionRemoveEmoji, async (reaction) => {
     if (!reaction.message.guildId) return;
     await recordEvent({
       guildId: reaction.message.guildId,
@@ -394,7 +380,7 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.MessagePollVoteAdd, async (pollAnswer, userId) => {
+  on(Events.MessagePollVoteAdd, async (pollAnswer, userId) => {
     const answer = pollAnswer as any;
     const message = answer.poll?.message;
     const guildId = message?.guildId ?? answer.poll?.guildId ?? null;
@@ -410,7 +396,7 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.MessagePollVoteRemove, async (pollAnswer, userId) => {
+  on(Events.MessagePollVoteRemove, async (pollAnswer, userId) => {
     const answer = pollAnswer as any;
     const message = answer.poll?.message;
     const guildId = message?.guildId ?? answer.poll?.guildId ?? null;
@@ -426,7 +412,7 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+  on(Events.VoiceStateUpdate, async (oldState, newState) => {
     const member = newState.member ?? oldState.member;
     if (!member) return;
 
@@ -447,18 +433,22 @@ export function registerHandlers(client: Client) {
       details.toChannelId = newState.channelId;
     }
 
-    const stateChanges: Array<[string, unknown, unknown]> = [
-      ['serverMute', oldState.serverMute, newState.serverMute],
-      ['serverDeaf', oldState.serverDeaf, newState.serverDeaf],
-      ['selfMute', oldState.selfMute, newState.selfMute],
-      ['selfDeaf', oldState.selfDeaf, newState.selfDeaf],
-      ['streaming', oldState.streaming, newState.streaming],
-      ['selfVideo', oldState.selfVideo, newState.selfVideo],
-      ['suppress', oldState.suppress, newState.suppress]
-    ];
+    // Joins and leaves carry the full state in newState/oldState: diffing it
+    // against "null" would report every flag as a change.
+    if (eventKey === 'voice.state' || eventKey === 'voice.move') {
+      const stateChanges: Array<[string, unknown, unknown]> = [
+        ['serverMute', oldState.serverMute, newState.serverMute],
+        ['serverDeaf', oldState.serverDeaf, newState.serverDeaf],
+        ['selfMute', oldState.selfMute, newState.selfMute],
+        ['selfDeaf', oldState.selfDeaf, newState.selfDeaf],
+        ['streaming', oldState.streaming, newState.streaming],
+        ['selfVideo', oldState.selfVideo, newState.selfVideo],
+        ['suppress', oldState.suppress, newState.suppress]
+      ];
 
-    for (const [key, before, after] of stateChanges) {
-      if (before !== after) details[key] = after;
+      for (const [key, before, after] of stateChanges) {
+        if (before !== null && after !== null && before !== after) details[key] = after;
+      }
     }
 
     if (eventKey === 'voice.state') {
@@ -479,8 +469,7 @@ export function registerHandlers(client: Client) {
     });
   });
 
-
-  client.on(Events.VoiceServerUpdate, async (data) => {
+  on(Events.VoiceServerUpdate, async (data) => {
     await recordEvent({
       guildId: data.guildId,
       eventKey: 'voice.server_update',
@@ -490,7 +479,7 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.VoiceChannelEffectSend, async (effect) => {
+  on(Events.VoiceChannelEffectSend, async (effect) => {
     await recordEvent({
       guildId: effect.guild.id,
       eventKey: 'voice.effect',
@@ -508,26 +497,27 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.GuildRoleCreate, async (role) => {
-    const actorId = await actorFromAudit(role.guild, AuditLogEvent.RoleCreate, role.id);
-    await recordEvent({ guildId: role.guild.id, eventKey: 'role.create', actorId, targetId: role.id, summary: `Creato il ruolo ${role.name}.`, details: { name: role.name, permissions: role.permissions.bitfield.toString(), color: role.hexColor } });
+  on(Events.GuildRoleCreate, async (role) => {
+    const actorId = await actorFromAudit('role.create', role.guild, AuditLogEvent.RoleCreate, role.id);
+    await recordEvent({ guildId: role.guild.id, eventKey: 'role.create', actorId, targetId: role.id, summary: `Creato il ruolo ${role.name}.`, details: { name: role.name, color: role.hexColor, permissions: role.permissions.toArray() } });
   });
-  client.on(Events.GuildRoleUpdate, async (oldRole, newRole) => {
-    const actorId = await actorFromAudit(newRole.guild, AuditLogEvent.RoleUpdate, newRole.id);
-    await recordEvent({ guildId: newRole.guild.id, eventKey: 'role.update', actorId, targetId: newRole.id, summary: `Modificato il ruolo ${newRole.name}.`, details: { oldName: oldRole.name, newName: newRole.name, oldPermissions: oldRole.permissions.bitfield.toString(), newPermissions: newRole.permissions.bitfield.toString(), oldColor: oldRole.hexColor, newColor: newRole.hexColor } });
+  on(Events.GuildRoleUpdate, async (oldRole, newRole) => {
+    const details = roleChanges(oldRole, newRole);
+    if (!Object.keys(details).length) return;
+    const actorId = await actorFromAudit('role.update', newRole.guild, AuditLogEvent.RoleUpdate, newRole.id);
+    await recordEvent({ guildId: newRole.guild.id, eventKey: 'role.update', actorId, targetId: newRole.id, summary: `Modificato il ruolo ${newRole.name}.`, details });
   });
-  client.on(Events.GuildRoleDelete, async (role) => {
-    const actorId = await actorFromAudit(role.guild, AuditLogEvent.RoleDelete, role.id);
-    await recordEvent({ guildId: role.guild.id, eventKey: 'role.delete', actorId, targetId: role.id, summary: `Eliminato il ruolo ${role.name}.`, details: { name: role.name, permissions: role.permissions.bitfield.toString(), color: role.hexColor } });
+  on(Events.GuildRoleDelete, async (role) => {
+    const actorId = await actorFromAudit('role.delete', role.guild, AuditLogEvent.RoleDelete, role.id);
+    await recordEvent({ guildId: role.guild.id, eventKey: 'role.delete', actorId, targetId: role.id, summary: `Eliminato il ruolo ${role.name}.`, details: { name: role.name, color: role.hexColor, permissions: role.permissions.toArray() } });
   });
 
-  client.on(Events.ChannelCreate, async (channel) => {
-    if (!channel.isDMBased()) {
-      const actorId = await actorFromAudit(channel.guild, AuditLogEvent.ChannelCreate, channel.id);
-      await recordEvent({ guildId: channel.guild.id, eventKey: 'channel.create', actorId, targetId: channel.id, channelId: channel.id, summary: `Creato il canale ${channel.name}.`, details: { name: channel.name, type: channel.type, parentId: channel.parentId } });
-    }
+  on(Events.ChannelCreate, async (channel) => {
+    if (channel.isDMBased()) return;
+    const actorId = await actorFromAudit('channel.create', channel.guild, AuditLogEvent.ChannelCreate, channel.id);
+    await recordEvent({ guildId: channel.guild.id, eventKey: 'channel.create', actorId, targetId: channel.id, channelId: channel.id, summary: `Creato il canale ${channel.name}.`, details: { name: channel.name, type: channel.type, parentId: channel.parentId } });
   });
-  client.on(Events.ChannelUpdate, async (oldChannel, newChannel) => {
+  on(Events.ChannelUpdate, async (oldChannel, newChannel) => {
     if (newChannel.isDMBased()) return;
 
     const before = oldChannel as any;
@@ -548,7 +538,7 @@ export function registerHandlers(client: Client) {
 
     if (!Object.keys(details).length) return;
 
-    const actorId = await actorFromAudit(newChannel.guild, AuditLogEvent.ChannelUpdate, newChannel.id);
+    const actorId = await actorFromAudit('channel.update', newChannel.guild, AuditLogEvent.ChannelUpdate, newChannel.id);
     if (actorId) details.actorRoleIds = roleIds(newChannel.guild.members.cache.get(actorId));
 
     let summary = `Modificato il canale ${newChannel.name}.`;
@@ -564,19 +554,19 @@ export function registerHandlers(client: Client) {
       guildId: newChannel.guild.id,
       eventKey: 'channel.update',
       actorId,
+      targetId: newChannel.id,
       channelId: newChannel.id,
       summary,
       details
     });
   });
-  client.on(Events.ChannelDelete, async (channel) => {
-    if (!channel.isDMBased()) {
-      const actorId = await actorFromAudit(channel.guild, AuditLogEvent.ChannelDelete, channel.id);
-      await recordEvent({ guildId: channel.guild.id, eventKey: 'channel.delete', actorId, targetId: channel.id, summary: `Eliminato il canale ${channel.name}.`, details: { name: channel.name, type: channel.type, parentId: channel.parentId } });
-    }
+  on(Events.ChannelDelete, async (channel) => {
+    if (channel.isDMBased()) return;
+    const actorId = await actorFromAudit('channel.delete', channel.guild, AuditLogEvent.ChannelDelete, channel.id);
+    await recordEvent({ guildId: channel.guild.id, eventKey: 'channel.delete', actorId, targetId: channel.id, summary: `Eliminato il canale ${channel.name}.`, details: { name: channel.name, type: channel.type, parentId: channel.parentId } });
   });
 
-  client.on(Events.ChannelPinsUpdate, async (channel, date) => {
+  on(Events.ChannelPinsUpdate, async (channel, date) => {
     if (channel.isDMBased()) return;
     await recordEvent({
       guildId: channel.guild.id,
@@ -588,20 +578,25 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.ThreadCreate, async (thread) => {
-    const actorId = await actorFromAudit(thread.guild, AuditLogEvent.ThreadCreate, thread.id);
+  on(Events.ThreadCreate, async (thread, newlyCreated) => {
+    // ThreadCreate also fires when the bot merely gains access to an existing
+    // thread (e.g. it gets added to a private thread).
+    if (!newlyCreated) return;
+    const actorId = thread.ownerId ?? await actorFromAudit('thread.create', thread.guild, AuditLogEvent.ThreadCreate, thread.id);
     await recordEvent({ guildId: thread.guild.id, eventKey: 'thread.create', actorId, targetId: thread.id, channelId: thread.parentId, summary: `Creato il thread ${thread.name}.`, details: { name: thread.name, parentId: thread.parentId, archived: thread.archived, locked: thread.locked } });
   });
-  client.on(Events.ThreadUpdate, async (oldThread, newThread) => {
-    const actorId = await actorFromAudit(newThread.guild, AuditLogEvent.ThreadUpdate, newThread.id);
-    await recordEvent({ guildId: newThread.guild.id, eventKey: 'thread.update', actorId, targetId: newThread.id, channelId: newThread.parentId, summary: `Modificato il thread ${newThread.name}.`, details: { oldName: oldThread.name, newName: newThread.name, oldArchived: oldThread.archived, newArchived: newThread.archived, oldLocked: oldThread.locked, newLocked: newThread.locked } });
+  on(Events.ThreadUpdate, async (oldThread, newThread) => {
+    const details = threadChanges(oldThread, newThread);
+    if (!Object.keys(details).length) return;
+    const actorId = await actorFromAudit('thread.update', newThread.guild, AuditLogEvent.ThreadUpdate, newThread.id);
+    await recordEvent({ guildId: newThread.guild.id, eventKey: 'thread.update', actorId, targetId: newThread.id, channelId: newThread.parentId, summary: `Modificato il thread ${newThread.name}.`, details });
   });
-  client.on(Events.ThreadDelete, async (thread) => {
-    const actorId = await actorFromAudit(thread.guild, AuditLogEvent.ThreadDelete, thread.id);
+  on(Events.ThreadDelete, async (thread) => {
+    const actorId = await actorFromAudit('thread.delete', thread.guild, AuditLogEvent.ThreadDelete, thread.id);
     await recordEvent({ guildId: thread.guild.id, eventKey: 'thread.delete', actorId, targetId: thread.id, channelId: thread.parentId, summary: `Eliminato il thread ${thread.name}.`, details: { name: thread.name, parentId: thread.parentId } });
   });
 
-  client.on(Events.ThreadMembersUpdate, async (addedMembers, removedMembers, thread) => {
+  on(Events.ThreadMembersUpdate, async (addedMembers, removedMembers, thread) => {
     await recordEvent({
       guildId: thread.guild.id,
       eventKey: 'thread.members_update',
@@ -612,8 +607,7 @@ export function registerHandlers(client: Client) {
     });
   });
 
-
-  client.on(Events.ThreadListSync, async (threads, guild) => {
+  on(Events.ThreadListSync, async (threads, guild) => {
     await recordEvent({
       guildId: guild.id,
       eventKey: 'thread.list_sync',
@@ -623,7 +617,7 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.ThreadMemberUpdate, async (oldMember, newMember) => {
+  on(Events.ThreadMemberUpdate, async (oldMember, newMember) => {
     const thread = newMember.thread;
     await recordEvent({
       guildId: thread.guild.id,
@@ -636,54 +630,66 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.GuildEmojiCreate, async (emoji) => {
-    const actorId = await actorFromAudit(emoji.guild, AuditLogEvent.EmojiCreate, emoji.id);
+  on(Events.GuildEmojiCreate, async (emoji) => {
+    const actorId = await actorFromAudit('emoji.create', emoji.guild, AuditLogEvent.EmojiCreate, emoji.id);
     await recordEvent({ guildId: emoji.guild.id, eventKey: 'emoji.create', actorId, targetId: emoji.id, summary: `Creata l'emoji ${emoji.name ?? emoji.id}.`, details: { name: emoji.name, animated: emoji.animated, url: emoji.imageURL() } });
   });
-  client.on(Events.GuildEmojiUpdate, async (oldEmoji, newEmoji) => {
-    const actorId = await actorFromAudit(newEmoji.guild, AuditLogEvent.EmojiUpdate, newEmoji.id);
+  on(Events.GuildEmojiUpdate, async (oldEmoji, newEmoji) => {
+    if (oldEmoji.name === newEmoji.name) return;
+    const actorId = await actorFromAudit('emoji.update', newEmoji.guild, AuditLogEvent.EmojiUpdate, newEmoji.id);
     await recordEvent({ guildId: newEmoji.guild.id, eventKey: 'emoji.update', actorId, targetId: newEmoji.id, summary: `Modificata l'emoji ${newEmoji.name ?? newEmoji.id}.`, details: { oldName: oldEmoji.name, newName: newEmoji.name, url: newEmoji.imageURL() } });
   });
-  client.on(Events.GuildEmojiDelete, async (emoji) => {
-    const actorId = await actorFromAudit(emoji.guild, AuditLogEvent.EmojiDelete, emoji.id);
+  on(Events.GuildEmojiDelete, async (emoji) => {
+    const actorId = await actorFromAudit('emoji.delete', emoji.guild, AuditLogEvent.EmojiDelete, emoji.id);
     await recordEvent({ guildId: emoji.guild.id, eventKey: 'emoji.delete', actorId, targetId: emoji.id, summary: `Eliminata l'emoji ${emoji.name ?? emoji.id}.`, details: { name: emoji.name } });
   });
 
-  client.on(Events.GuildStickerCreate, async (sticker) => {
-    const actorId = await actorFromAudit(sticker.guild!, AuditLogEvent.StickerCreate, sticker.id);
-    await recordEvent({ guildId: sticker.guild!.id, eventKey: 'sticker.create', actorId, targetId: sticker.id, summary: `Creato lo sticker ${sticker.name}.`, details: { name: sticker.name, description: sticker.description } });
+  on(Events.GuildStickerCreate, async (sticker) => {
+    const guild = sticker.guild;
+    if (!guild) return;
+    const actorId = await actorFromAudit('sticker.create', guild, AuditLogEvent.StickerCreate, sticker.id);
+    await recordEvent({ guildId: guild.id, eventKey: 'sticker.create', actorId, targetId: sticker.id, summary: `Creato lo sticker ${sticker.name}.`, details: { name: sticker.name, description: sticker.description } });
   });
-  client.on(Events.GuildStickerUpdate, async (oldSticker, newSticker) => {
-    const guild = newSticker.guild!;
-    const actorId = await actorFromAudit(guild, AuditLogEvent.StickerUpdate, newSticker.id);
-    await recordEvent({ guildId: guild.id, eventKey: 'sticker.update', actorId, targetId: newSticker.id, summary: `Modificato lo sticker ${newSticker.name}.`, details: { oldName: oldSticker.name, newName: newSticker.name, description: newSticker.description } });
+  on(Events.GuildStickerUpdate, async (oldSticker, newSticker) => {
+    const guild = newSticker.guild;
+    if (!guild) return;
+    const details: Record<string, unknown> = {};
+    addChangedPair(details, 'oldName', 'newName', oldSticker.name, newSticker.name);
+    addChangedPair(details, 'oldDescription', 'newDescription', oldSticker.description, newSticker.description);
+    addChangedPair(details, 'oldTags', 'newTags', oldSticker.tags, newSticker.tags);
+    if (!Object.keys(details).length) return;
+    const actorId = await actorFromAudit('sticker.update', guild, AuditLogEvent.StickerUpdate, newSticker.id);
+    await recordEvent({ guildId: guild.id, eventKey: 'sticker.update', actorId, targetId: newSticker.id, summary: `Modificato lo sticker ${newSticker.name}.`, details });
   });
-  client.on(Events.GuildStickerDelete, async (sticker) => {
-    const guild = sticker.guild!;
-    const actorId = await actorFromAudit(guild, AuditLogEvent.StickerDelete, sticker.id);
+  on(Events.GuildStickerDelete, async (sticker) => {
+    const guild = sticker.guild;
+    if (!guild) return;
+    const actorId = await actorFromAudit('sticker.delete', guild, AuditLogEvent.StickerDelete, sticker.id);
     await recordEvent({ guildId: guild.id, eventKey: 'sticker.delete', actorId, targetId: sticker.id, summary: `Eliminato lo sticker ${sticker.name}.`, details: { name: sticker.name } });
   });
 
-  client.on(Events.InviteCreate, async (invite) => {
+  on(Events.InviteCreate, async (invite) => {
     if (!invite.guild) return;
-    const actorId = await actorFromAudit(invite.guild as any, AuditLogEvent.InviteCreate, invite.code);
-    await recordEvent({ guildId: invite.guild.id, eventKey: 'invite.create', actorId: actorId ?? invite.inviterId, targetId: invite.code, channelId: invite.channelId, summary: `Creato l'invito ${invite.code}.`, details: { code: invite.code, inviterId: invite.inviterId, maxAge: invite.maxAge, maxUses: invite.maxUses, temporary: invite.temporary } });
+    // The Gateway already says who created the invite; the Audit Log is only a
+    // fallback for invites created by integrations without an inviter.
+    const actorId = invite.inviterId ?? await actorFromAudit('invite.create', client.guilds.cache.get(invite.guild.id), AuditLogEvent.InviteCreate, invite.code);
+    await recordEvent({ guildId: invite.guild.id, eventKey: 'invite.create', actorId, targetId: invite.code, channelId: invite.channelId, summary: `Creato l'invito ${invite.code}.`, details: { code: invite.code, inviterId: invite.inviterId, maxAge: invite.maxAge, maxUses: invite.maxUses, temporary: invite.temporary } });
   });
-  client.on(Events.InviteDelete, async (invite) => {
+  on(Events.InviteDelete, async (invite) => {
     if (!invite.guild) return;
-    const actorId = await actorFromAudit(invite.guild as any, AuditLogEvent.InviteDelete, invite.code);
+    const actorId = await actorFromAudit('invite.delete', client.guilds.cache.get(invite.guild.id), AuditLogEvent.InviteDelete, invite.code);
     await recordEvent({ guildId: invite.guild.id, eventKey: 'invite.delete', actorId, targetId: invite.code, channelId: invite.channelId, summary: `Eliminato l'invito ${invite.code}.`, details: { code: invite.code } });
   });
 
-  client.on(Events.WebhooksUpdate, async (channel) => {
+  on(Events.WebhooksUpdate, async (channel) => {
     await recordEvent({ guildId: channel.guild.id, eventKey: 'webhook.update', channelId: channel.id, summary: `Sono cambiati i webhook di ${channel.name}.`, details: { channelName: channel.name } });
   });
 
-  client.on(Events.GuildIntegrationsUpdate, async (guild) => {
+  on(Events.GuildIntegrationsUpdate, async (guild) => {
     await recordEvent({ guildId: guild.id, eventKey: 'integration.update', targetId: guild.id, summary: 'Le integrazioni del server sono cambiate.', details: {} });
   });
 
-  client.on(Events.GuildAvailable, async (guild) => {
+  on(Events.GuildAvailable, async (guild) => {
     if (await isGuildInstallBlocked(guild.id)) {
       await leaveGuild(guild, 'blocked-guild').catch(() => null);
       return;
@@ -692,103 +698,125 @@ export function registerHandlers(client: Client) {
     await recordEvent({ guildId: guild.id, eventKey: 'guild.available', targetId: guild.id, summary: `Il server ${guild.name} è tornato disponibile.`, details: {} });
   });
 
-  client.on(Events.GuildUnavailable, async (guild) => {
-    await ensureGuild(guild);
-    await recordEvent({ guildId: guild.id, eventKey: 'guild.unavailable', targetId: guild.id, summary: `Il server ${guild.name} è temporaneamente non disponibile.`, details: {} });
+  on(Events.GuildUnavailable, async (guild) => {
+    const exists = await prisma.guildSettings.findUnique({ where: { guildId: guild.id }, select: { guildId: true } });
+    if (!exists) return;
+    await recordEvent({ guildId: guild.id, eventKey: 'guild.unavailable', targetId: guild.id, summary: `Il server ${guild.name ?? guild.id} è temporaneamente non disponibile.`, details: {} });
   });
 
-  client.on(Events.GuildDelete, async (guild) => {
+  on(Events.GuildDelete, async (guild) => {
     if (await isGuildInstallBlocked(guild.id)) return;
-    await ensureGuild(guild);
-    await recordEvent({ guildId: guild.id, eventKey: 'guild.remove', targetId: guild.id, summary: `Il bot non ha più accesso al server ${guild.name}.`, details: {} });
+    const exists = await prisma.guildSettings.findUnique({ where: { guildId: guild.id }, select: { guildId: true } });
+    if (!exists) return;
+    await recordEvent({ guildId: guild.id, eventKey: 'guild.remove', targetId: guild.id, summary: `Il bot non ha più accesso al server ${guild.name ?? guild.id}.`, details: {} });
   });
 
-  client.on(Events.GuildUpdate, async (oldGuild, newGuild) => {
-    const actorId = await actorFromAudit(newGuild, AuditLogEvent.GuildUpdate, newGuild.id);
+  on(Events.GuildUpdate, async (oldGuild, newGuild) => {
+    const details = guildChanges(oldGuild, newGuild);
+    if (!Object.keys(details).length) return;
     await ensureGuild(newGuild);
-    await recordEvent({ guildId: newGuild.id, eventKey: 'guild.update', actorId, targetId: newGuild.id, summary: `Le impostazioni del server ${newGuild.name} sono cambiate.`, details: { oldName: oldGuild.name, newName: newGuild.name, oldIcon: oldGuild.iconURL(), newIcon: newGuild.iconURL(), oldBanner: oldGuild.bannerURL(), newBanner: newGuild.bannerURL(), oldVerificationLevel: oldGuild.verificationLevel, newVerificationLevel: newGuild.verificationLevel } });
+    const actorId = await actorFromAudit('guild.update', newGuild, AuditLogEvent.GuildUpdate, newGuild.id);
+    await recordEvent({ guildId: newGuild.id, eventKey: 'guild.update', actorId, targetId: newGuild.id, summary: `Le impostazioni del server ${newGuild.name} sono cambiate.`, details });
   });
 
-  client.on(Events.GuildScheduledEventCreate, async (event) => {
-    const actorId = await actorFromAudit(event.guild!, AuditLogEvent.GuildScheduledEventCreate, event.id);
+  on(Events.GuildScheduledEventCreate, async (event) => {
+    if (!event.guildId) return;
+    const actorId = event.creatorId ?? await actorFromAudit('scheduled.create', event.guild, AuditLogEvent.GuildScheduledEventCreate, event.id);
     await recordEvent({ guildId: event.guildId, eventKey: 'scheduled.create', actorId, targetId: event.id, channelId: event.channelId, summary: `Creato l'evento ${event.name}.`, details: { name: event.name, description: event.description, scheduledStartAt: event.scheduledStartAt, scheduledEndAt: event.scheduledEndAt } });
   });
-  client.on(Events.GuildScheduledEventUpdate, async (oldEvent, newEvent) => {
-    const actorId = await actorFromAudit(newEvent.guild!, AuditLogEvent.GuildScheduledEventUpdate, newEvent.id);
-    await recordEvent({ guildId: newEvent.guildId, eventKey: 'scheduled.update', actorId, targetId: newEvent.id, channelId: newEvent.channelId, summary: `Modificato l'evento ${newEvent.name}.`, details: { oldName: oldEvent?.name, newName: newEvent.name, status: newEvent.status, scheduledStartAt: newEvent.scheduledStartAt } });
+  on(Events.GuildScheduledEventUpdate, async (oldEvent, newEvent) => {
+    if (!newEvent.guildId) return;
+    const details: Record<string, unknown> = {};
+    addChangedPair(details, 'oldName', 'newName', oldEvent?.name ?? null, newEvent.name);
+    addChangedPair(details, 'oldDescription', 'newDescription', oldEvent?.description ?? null, newEvent.description);
+    addChangedPair(details, 'oldStatus', 'newStatus', oldEvent?.status ?? null, newEvent.status);
+    addChangedPair(details, 'oldChannelId', 'newChannelId', oldEvent?.channelId ?? null, newEvent.channelId);
+    addChangedPair(details, 'oldStartAt', 'newStartAt', oldEvent?.scheduledStartAt?.toISOString() ?? null, newEvent.scheduledStartAt?.toISOString() ?? null);
+    addChangedPair(details, 'oldEndAt', 'newEndAt', oldEvent?.scheduledEndAt?.toISOString() ?? null, newEvent.scheduledEndAt?.toISOString() ?? null);
+    // userCount-only refreshes are not edits.
+    if (!Object.keys(details).length) return;
+    const actorId = await actorFromAudit('scheduled.update', newEvent.guild, AuditLogEvent.GuildScheduledEventUpdate, newEvent.id);
+    await recordEvent({ guildId: newEvent.guildId, eventKey: 'scheduled.update', actorId, targetId: newEvent.id, channelId: newEvent.channelId, summary: `Modificato l'evento ${newEvent.name}.`, details });
   });
-  client.on(Events.GuildScheduledEventDelete, async (event) => {
-    const actorId = await actorFromAudit(event.guild!, AuditLogEvent.GuildScheduledEventDelete, event.id);
+  on(Events.GuildScheduledEventDelete, async (event) => {
+    if (!event.guildId) return;
+    const actorId = await actorFromAudit('scheduled.delete', event.guild, AuditLogEvent.GuildScheduledEventDelete, event.id);
     await recordEvent({ guildId: event.guildId, eventKey: 'scheduled.delete', actorId, targetId: event.id, summary: `Eliminato l'evento ${event.name}.`, details: { name: event.name } });
   });
 
-  client.on(Events.GuildScheduledEventUserAdd, async (event, user) => {
+  on(Events.GuildScheduledEventUserAdd, async (event, user) => {
+    if (!event.guildId) return;
     await recordEvent({ guildId: event.guildId, eventKey: 'scheduled.user_add', actorId: user.id, targetId: event.id, channelId: event.channelId, summary: `${user.tag} ha mostrato interesse per ${event.name}.`, details: { eventName: event.name, actorBot: user.bot } });
   });
 
-  client.on(Events.GuildScheduledEventUserRemove, async (event, user) => {
+  on(Events.GuildScheduledEventUserRemove, async (event, user) => {
+    if (!event.guildId) return;
     await recordEvent({ guildId: event.guildId, eventKey: 'scheduled.user_remove', actorId: user.id, targetId: event.id, channelId: event.channelId, summary: `${user.tag} ha rimosso l’interesse per ${event.name}.`, details: { eventName: event.name, actorBot: user.bot } });
   });
 
-  client.on(Events.AutoModerationRuleCreate, async (rule) => {
+  on(Events.AutoModerationRuleCreate, async (rule) => {
     await recordEvent({ guildId: rule.guild.id, eventKey: 'automod.rule_create', actorId: rule.creatorId, targetId: rule.id, summary: `Creata la regola AutoMod ${rule.name}.`, details: { name: rule.name, enabled: rule.enabled, eventType: rule.eventType, triggerType: rule.triggerType } });
   });
-  client.on(Events.AutoModerationRuleUpdate, async (oldRule, newRule) => {
-    const actorId = await actorFromAudit(newRule.guild, AuditLogEvent.AutoModerationRuleUpdate, newRule.id);
-    await recordEvent({ guildId: newRule.guild.id, eventKey: 'automod.rule_update', actorId, targetId: newRule.id, summary: `Modificata la regola AutoMod ${newRule.name}.`, details: { oldName: oldRule?.name ?? null, newName: newRule.name, enabled: newRule.enabled } });
+  on(Events.AutoModerationRuleUpdate, async (oldRule, newRule) => {
+    const actorId = await actorFromAudit('automod.rule_update', newRule.guild, AuditLogEvent.AutoModerationRuleUpdate, newRule.id);
+    await recordEvent({ guildId: newRule.guild.id, eventKey: 'automod.rule_update', actorId, targetId: newRule.id, summary: `Modificata la regola AutoMod ${newRule.name}.`, details: { oldName: oldRule?.name ?? null, newName: newRule.name, oldEnabled: oldRule?.enabled ?? null, newEnabled: newRule.enabled } });
   });
-  client.on(Events.AutoModerationRuleDelete, async (rule) => {
-    const actorId = await actorFromAudit(rule.guild, AuditLogEvent.AutoModerationRuleDelete, rule.id);
+  on(Events.AutoModerationRuleDelete, async (rule) => {
+    const actorId = await actorFromAudit('automod.rule_delete', rule.guild, AuditLogEvent.AutoModerationRuleDelete, rule.id);
     await recordEvent({ guildId: rule.guild.id, eventKey: 'automod.rule_delete', actorId, targetId: rule.id, summary: `Eliminata la regola AutoMod ${rule.name}.`, details: { name: rule.name } });
   });
-  client.on(Events.AutoModerationActionExecution, async (execution) => {
+  on(Events.AutoModerationActionExecution, async (execution) => {
     const settings = await getGuildSettings(execution.guild.id);
     await recordEvent({ guildId: execution.guild.id, eventKey: 'automod.action', actorId: execution.userId, targetId: execution.ruleId, channelId: execution.channelId, summary: 'È stata eseguita un’azione AutoMod.', details: { action: execution.action, ruleId: execution.ruleId, ruleTriggerType: execution.ruleTriggerType, matchedKeyword: execution.matchedKeyword, matchedContent: settings?.storeMessageContent ? execution.matchedContent : null, content: settings?.storeMessageContent ? execution.content : null } });
   });
 
-  client.on(Events.StageInstanceCreate, async (stage) => {
-    const actorId = await actorFromAudit(stage.guild!, AuditLogEvent.StageInstanceCreate, stage.id);
+  on(Events.StageInstanceCreate, async (stage) => {
+    if (!stage.guildId) return;
+    const actorId = await actorFromAudit('stage.create', stage.guild, AuditLogEvent.StageInstanceCreate, stage.id);
     await recordEvent({ guildId: stage.guildId, eventKey: 'stage.create', actorId, targetId: stage.id, channelId: stage.channelId, summary: 'È stata aperta una Stage.', details: { topic: stage.topic, privacyLevel: stage.privacyLevel } });
   });
-  client.on(Events.StageInstanceUpdate, async (oldStage, newStage) => {
-    const actorId = await actorFromAudit(newStage.guild!, AuditLogEvent.StageInstanceUpdate, newStage.id);
+  on(Events.StageInstanceUpdate, async (oldStage, newStage) => {
+    if (!newStage.guildId) return;
+    const actorId = await actorFromAudit('stage.update', newStage.guild, AuditLogEvent.StageInstanceUpdate, newStage.id);
     await recordEvent({ guildId: newStage.guildId, eventKey: 'stage.update', actorId, targetId: newStage.id, channelId: newStage.channelId, summary: 'È stata modificata una Stage.', details: { oldTopic: oldStage?.topic ?? null, newTopic: newStage.topic, privacyLevel: newStage.privacyLevel } });
   });
-  client.on(Events.StageInstanceDelete, async (stage) => {
-    const actorId = await actorFromAudit(stage.guild!, AuditLogEvent.StageInstanceDelete, stage.id);
+  on(Events.StageInstanceDelete, async (stage) => {
+    if (!stage.guildId) return;
+    const actorId = await actorFromAudit('stage.delete', stage.guild, AuditLogEvent.StageInstanceDelete, stage.id);
     await recordEvent({ guildId: stage.guildId, eventKey: 'stage.delete', actorId, targetId: stage.id, channelId: stage.channelId, summary: 'È stata chiusa una Stage.', details: { topic: stage.topic } });
   });
 
-  client.on(Events.GuildSoundboardSoundCreate, async (sound) => {
-    const actorId = await actorFromAudit(sound.guild, AuditLogEvent.SoundboardSoundCreate, sound.soundId);
+  on(Events.GuildSoundboardSoundCreate, async (sound) => {
+    if (!sound.guildId) return;
+    const actorId = sound.user?.id ?? await actorFromAudit('soundboard.create', sound.guild, AuditLogEvent.SoundboardSoundCreate, sound.soundId);
     await recordEvent({ guildId: sound.guildId, eventKey: 'soundboard.create', actorId, targetId: sound.soundId, summary: `Creato il suono ${sound.name}.`, details: { name: sound.name, volume: sound.volume, emoji: sound.emoji?.toString() ?? null, url: sound.url } });
   });
 
-  client.on(Events.GuildSoundboardSoundUpdate, async (oldSound, newSound) => {
-    const actorId = await actorFromAudit(newSound.guild, AuditLogEvent.SoundboardSoundUpdate, newSound.soundId);
+  on(Events.GuildSoundboardSoundUpdate, async (oldSound, newSound) => {
+    if (!newSound.guildId) return;
+    const actorId = await actorFromAudit('soundboard.update', newSound.guild, AuditLogEvent.SoundboardSoundUpdate, newSound.soundId);
     await recordEvent({ guildId: newSound.guildId, eventKey: 'soundboard.update', actorId, targetId: newSound.soundId, summary: `Modificato il suono ${newSound.name}.`, details: { oldName: oldSound?.name ?? null, newName: newSound.name, oldVolume: oldSound?.volume ?? null, newVolume: newSound.volume, emoji: newSound.emoji?.toString() ?? null } });
   });
 
-  client.on(Events.GuildSoundboardSoundDelete, async (sound) => {
+  on(Events.GuildSoundboardSoundDelete, async (sound) => {
     const item = sound as any;
     const guild = item.guild;
     const guildId = item.guildId ?? guild?.id ?? null;
     if (!guild || !guildId) return;
-    const actorId = await actorFromAudit(guild, AuditLogEvent.SoundboardSoundDelete, String(item.soundId));
-    await recordEvent({ guildId, eventKey: 'soundboard.delete', actorId, targetId: String(item.soundId), summary: `Eliminato il suono ${item.name}.`, details: { name: item.name } });
+    const actorId = await actorFromAudit('soundboard.delete', guild, AuditLogEvent.SoundboardSoundDelete, String(item.soundId));
+    await recordEvent({ guildId, eventKey: 'soundboard.delete', actorId, targetId: String(item.soundId), summary: `Eliminato il suono ${item.name ?? item.soundId}.`, details: { name: item.name ?? null } });
   });
 
-  client.on(Events.GuildSoundboardSoundsUpdate, async (sounds, guild) => {
+  on(Events.GuildSoundboardSoundsUpdate, async (sounds, guild) => {
     await recordEvent({ guildId: guild.id, eventKey: 'soundboard.sync', targetId: guild.id, summary: 'L’elenco soundboard del server è stato aggiornato.', details: { count: sounds.size, soundIds: [...sounds.keys()] } });
   });
 
-
-  client.on(Events.ApplicationCommandPermissionsUpdate, async (data) => {
+  on(Events.ApplicationCommandPermissionsUpdate, async (data) => {
     await recordEvent({
       guildId: data.guildId,
       eventKey: 'application.permissions_update',
       targetId: data.id,
-      summary: 'Sono cambiati i permessi di un comando o entita applicazione.',
+      summary: 'Sono cambiati i permessi di un comando o entità applicazione.',
       details: {
         applicationId: data.applicationId,
         commandOrEntityId: data.id,
@@ -797,7 +825,7 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.InteractionCreate, async (interaction) => {
+  on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.guildId || interaction.user.id === client.user?.id) return;
 
     if (interaction.isChatInputCommand()) {
@@ -815,7 +843,7 @@ export function registerHandlers(client: Client) {
           commandId: interaction.commandId,
           source: 'direct',
           actorBot: interaction.user.bot,
-          actorRoleIds: (interaction.member as any)?.roles?.cache ? [...(interaction.member as any).roles.cache.keys()] : []
+          actorRoleIds: roleIds(interaction.member)
         }
       });
       return;
@@ -833,12 +861,19 @@ export function registerHandlers(client: Client) {
         kind: interaction.type,
         customId: item.customId ?? null,
         actorBot: interaction.user.bot,
-        actorRoleIds: (interaction.member as any)?.roles?.cache ? [...(interaction.member as any).roles.cache.keys()] : []
+        actorRoleIds: roleIds(interaction.member)
       }
     });
   });
 
-  client.on(Events.UserUpdate, async (oldUser, newUser) => {
+  on(Events.UserUpdate, async (oldUser, newUser) => {
+    // Without the cached previous profile every field would look changed.
+    if (oldUser.partial) return;
+    const details: Record<string, unknown> = {};
+    addChangedPair(details, 'oldUsername', 'newUsername', oldUser.username, newUser.username);
+    addChangedPair(details, 'oldGlobalName', 'newGlobalName', oldUser.globalName, newUser.globalName);
+    addChangedPair(details, 'oldAvatar', 'newAvatar', oldUser.avatarURL(), newUser.avatarURL());
+    if (!Object.keys(details).length) return;
     for (const guild of client.guilds.cache.values()) {
       const member = guild.members.cache.get(newUser.id);
       if (!member) continue;
@@ -848,12 +883,12 @@ export function registerHandlers(client: Client) {
         actorId: newUser.id,
         targetId: newUser.id,
         summary: `Il profilo Discord di ${newUser.tag} è cambiato.`,
-        details: { oldUsername: oldUser.username, newUsername: newUser.username, oldAvatar: oldUser.avatarURL(), newAvatar: newUser.avatarURL(), actorBot: newUser.bot, actorRoleIds: roleIds(member) }
+        details: { ...details, actorBot: newUser.bot, actorRoleIds: roleIds(member) }
       });
     }
   });
 
-  client.on(Events.GuildAuditLogEntryCreate, async (entry, guild) => {
+  on(Events.GuildAuditLogEntryCreate, async (entry, guild) => {
     if (entry.executorId === client.user?.id) return;
     await recordEvent({
       guildId: guild.id,
@@ -865,7 +900,7 @@ export function registerHandlers(client: Client) {
     });
   });
 
-  client.on(Events.PresenceUpdate, async (oldPresence, newPresence) => {
+  on(Events.PresenceUpdate, async (oldPresence, newPresence) => {
     const guild = newPresence.guild;
     if (!guild) return;
     const settings = await getGuildSettings(guild.id);
@@ -873,14 +908,14 @@ export function registerHandlers(client: Client) {
     await recordEvent({ guildId: guild.id, eventKey: 'presence.update', actorId: newPresence.userId, targetId: newPresence.userId, summary: `Presenza modificata per ${newPresence.user?.tag ?? newPresence.userId}.`, details: { oldStatus: oldPresence?.status ?? null, newStatus: newPresence.status, activities: newPresence.activities.map((a) => ({ name: a.name, type: a.type, state: a.state })) } });
   });
 
-  client.on(Events.TypingStart, async (typing) => {
+  on(Events.TypingStart, async (typing) => {
     if (!typing.guild) return;
     const settings = await getGuildSettings(typing.guild.id);
     if (!settings?.typingLoggingEnabled || typing.user.id === client.user?.id) return;
-    await recordEvent({ guildId: typing.guild.id, eventKey: 'typing.start', actorId: typing.user.id, channelId: typing.channel.id, summary: `${typing.user.tag} ha iniziato a scrivere.`, details: { actorBot: typing.user.bot } });
+    await recordEvent({ guildId: typing.guild.id, eventKey: 'typing.start', actorId: typing.user.id, channelId: typing.channel.id, summary: `${typing.user.tag ?? typing.user.id} ha iniziato a scrivere.`, details: { actorBot: typing.user.bot ?? false } });
   });
 
-  client.on(Events.Raw, async (packet) => {
+  const handleRaw = async (packet: any) => {
     const guildId = packet?.d?.guild_id as string | undefined;
     if (!guildId) return;
     if (packet.t === 'MESSAGE_CREATE' && packet.d?.author?.id === client.user?.id) return;
@@ -894,5 +929,8 @@ export function registerHandlers(client: Client) {
       data = redacted;
     }
     await recordEvent({ guildId, eventKey: 'raw.gateway', actorId: packet.d?.user_id ?? packet.d?.author?.id ?? null, targetId: packet.d?.id ?? null, channelId: packet.d?.channel_id ?? null, summary: `Gateway event ${packet.t ?? 'UNKNOWN'}.`, details: { opcode: packet.op, type: packet.t, sequence: packet.s, data } });
+  };
+  client.on(Events.Raw, (packet: any) => {
+    handleRaw(packet).catch((error: unknown) => report(Events.Raw, error));
   });
 }

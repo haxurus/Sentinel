@@ -34,7 +34,17 @@ const blocked: Array<[string, string]> = [
   ['PATCH', '/guilds/123456789012345678/auto-moderation/rules/234567890123456789'],
   ['DELETE', '/guilds/123456789012345678/auto-moderation/rules/234567890123456789'],
   ['PUT', '/channels/123456789012345678/pins/234567890123456789'],
-  ['POST', '/guilds/123456789012345678/invites']
+  ['POST', '/guilds/123456789012345678/invites'],
+  ['POST', '/channels/123456789012345678/invites'],
+  ['PUT', '/channels/123456789012345678/messages/234567890123456789/reactions/%F0%9F%91%8D/@me'],
+  ['POST', '/channels/123456789012345678/messages/234567890123456789/crosspost'],
+  ['POST', '/channels/123456789012345678/threads'],
+  ['PATCH', '/channels/123456789012345678/messages/234567890123456789'],
+  ['POST', '/interactions/123456789012345678/token/callback'],
+  ['PATCH', '/users/@me'],
+  ['DELETE', '/guilds/123456789012345678'],
+  ['POST', '/api/v10/channels/123456789012345678/messages/bulk-delete'],
+  ['', '/channels/123456789012345678/messages']
 ];
 
 for (const [method, route] of allowed) {
