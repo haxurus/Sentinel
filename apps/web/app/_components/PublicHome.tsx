@@ -1,228 +1,312 @@
-import { LanguageSwitcher } from './LanguageSwitcher';
+import { Icon, type IconName } from './Brand';
+import { SiteFooter, SiteHeader } from './SiteChrome';
 import type { Locale } from '../i18n';
+
+
+type StreamRow = { time: string; key: string; text: string; state: 'sent' | 'stored' | 'filtered' };
 
 const copy = {
   it: {
-    nav: { features: 'Funzioni', how: 'Come funziona', signIn: 'Accedi', add: 'Aggiungi Sentinel' },
+    nav: { features: 'Funzioni', pipeline: 'Pipeline', security: 'Sicurezza', signIn: 'Accedi', add: 'Aggiungi a Discord' },
     hero: {
-      line1: 'Il bot di audit e logging che tiene traccia di ciò che succede nel tuo server Discord.',
-      line2: 'Configura cosa registrare, dove inviarlo e consulta tutto dalla dashboard.',
+      kicker: 'Audit e logging per Discord',
+      title: ['Ogni azione', 'sul tuo server,', 'registrata.'],
+      text: 'Sentinel osserva ban, ruoli, permessi, messaggi e canali, conserva uno storico cifrato e consegna ogni evento nel canale giusto. Tu decidi cosa registrare e dove.',
       dashboard: 'Apri la dashboard',
-      add: 'Aggiungi Sentinel a Discord',
-      preview: 'Anteprima di Sentinel',
-      removed: 'Utente rimosso dal server',
-      role: 'Permessi del ruolo modificati',
-      deleted: 'Messaggio eliminato nel canale',
-      recorded: 'registrato',
-      routing: 'Routing attivo',
-      history: 'Storico protetto'
+      add: 'Aggiungi Sentinel',
+      stream: 'flusso audit',
+      live: 'in ascolto',
+      states: { sent: 'inviato', stored: 'archiviato', filtered: 'filtrato' },
+      rows: [
+        ['20:41:18', 'moderation.ban', 'mod.luca → spam_bot · motivo: phishing', 'sent'],
+        ['20:39:52', 'role.update', '@Staff · +Gestisci messaggi', 'sent'],
+        ['20:38:04', 'channel.update', '#annunci · permessi @everyone modificati', 'sent'],
+        ['20:33:51', 'message.delete', '#generale · messaggio di giulia.r', 'stored'],
+        ['20:31:07', 'member.join', 'nuovo_utente · account creato 2 giorni fa', 'filtered']
+      ] as const,
+      footer: ['76 eventi', 'consegna ok', 'storico cifrato']
     },
+    stats: [
+      ['76', 'tipi di evento Discord'],
+      ['AES-256', 'cifratura dello storico'],
+      ['4', 'livelli di accesso RBAC'],
+      ['0', 'permessi di moderazione richiesti']
+    ],
     features: {
-      kicker: 'FUNZIONI',
-      title: 'Più di un semplice canale di log.',
-      intro: 'Sentinel separa acquisizione, conservazione e invio su Discord: puoi tenere uno storico completo senza dover pubblicare ogni singolo evento.',
+      kicker: 'Funzioni',
+      title: 'Più di un canale di log.',
+      intro: 'Acquisizione, conservazione e invio sono separati: puoi tenere uno storico completo senza pubblicare ogni singolo evento.',
       cards: [
-        ['Moderazione', 'Audit delle azioni importanti', 'Join, leave, kick, ban, ruoli, canali, permessi, webhook, AutoMod, Stage e Audit Log Discord in un unico storico.'],
-        ['Messaggi', 'Contesto quando serve', 'Registra creazioni, modifiche, eliminazioni, allegati e snapshot, con controlli separati per acquisizione e pubblicazione.'],
-        ['Routing', 'Ogni evento nel posto giusto', 'Decidi quali eventi conservare, quali inviare su Discord e in quale canale recapitarli, senza trasformare il server in rumore.'],
-        ['Ricerca', 'Uno storico consultabile', 'Filtra gli eventi per server, attore, target, canale e intervallo temporale; esporta i dati quando hai bisogno di analizzarli.'],
-        ['Accessi', 'Dashboard con ruoli', 'Il pannello usa Discord OAuth2 e controlli RBAC per separare visualizzazione, moderazione e amministrazione.'],
-        ['Sicurezza', 'Pensato per stare isolato', 'Secret separati, database con ruoli distinti, Redis privato, reti Docker segmentate e cifratura AES-256-GCM dei dati sensibili.']
+        { icon: 'shield', kicker: 'Moderazione', title: 'Chi ha fatto cosa', text: 'Kick, ban, timeout, ruoli, permessi, webhook e AutoMod, con l’autore ricavato dall’Audit Log di Discord.' },
+        { icon: 'message', kicker: 'Messaggi', title: 'Il contesto resta', text: 'Modifiche ed eliminazioni con il testo originale e gli allegati, grazie agli snapshot cifrati.' },
+        { icon: 'route', kicker: 'Routing', title: 'Ogni evento al suo posto', text: 'Un canale per i ban, uno per i messaggi, menzioni solo dove servono. Filtri per utenti, ruoli e canali.' },
+        { icon: 'search', kicker: 'Storico', title: 'Cerca ed esporta', text: 'Filtra per evento, autore, target, canale e periodo. Esporta in JSON quando devi analizzare un incidente.' },
+        { icon: 'users', kicker: 'Accessi', title: 'Dashboard con ruoli', text: 'Login con Discord e livelli Viewer, Moderator, Admin e Owner verificati in tempo reale sul server.' },
+        { icon: 'clock', kicker: 'Retention', title: 'Conservi solo il necessario', text: 'Retention globale o per singolo evento e cancellazione dei dati di un utente su richiesta.' }
+      ]
+    },
+    pipeline: {
+      kicker: 'Pipeline',
+      title: 'Dall’evento al canale, senza perdere nulla.',
+      steps: [
+        { icon: 'bolt', title: 'Gateway Discord', text: 'Il bot riceve l’evento e lo arricchisce con l’autore dall’Audit Log.' },
+        { icon: 'database', title: 'Storico cifrato', text: 'L’evento viene salvato prima dell’invio: un errore di consegna non cancella nulla.' },
+        { icon: 'sliders', title: 'Filtri e routing', text: 'Si applicano canale di destinazione, eccezioni, menzioni e personalizzazione dell’embed.' },
+        { icon: 'message', title: 'Canale di log', text: 'L’embed arriva nel canale scelto; i tentativi falliti restano visibili nella dashboard.' }
       ]
     },
     how: {
-      kicker: 'COME FUNZIONA',
-      title: 'Dal server alla dashboard in tre passaggi.',
+      kicker: 'Come iniziare',
+      title: 'Operativo in tre passaggi.',
       steps: [
-        ['Aggiungi il bot', 'Autorizza Sentinel sul server con i permessi strettamente necessari alle funzioni che vuoi usare.'],
-        ['Accedi con Discord', 'La dashboard riconosce i server disponibili e applica i livelli di accesso configurati.'],
-        ['Configura i logger', 'Scegli eventi, destinazioni, retention e dettagli da conservare. Le modifiche restano tracciate nel pannello.']
+        ['Aggiungi il bot', 'Autorizza Sentinel con i soli permessi di lettura e invio log: nessun permesso di moderazione.'],
+        ['Accedi con Discord', 'La dashboard mostra i server che puoi gestire e applica i tuoi livelli di accesso.'],
+        ['Scegli cosa registrare', 'Attiva i logger, scegli i canali e la retention. Ogni modifica al pannello resta tracciata.']
       ]
     },
-    cta: { title: 'Porta ordine nei log del tuo server.', text: 'Aggiungi il bot, accedi con Discord e configura il primo logger dalla dashboard.', add: 'Aggiungi Sentinel' },
-    footer: { text: 'Logging e auditing self-hosted per server Discord, con storico ricercabile e configurazione web.', add: 'Aggiungi il bot' }
+    security: {
+      kicker: 'Sicurezza',
+      title: 'Progettato per non poter fare danni.',
+      text: 'Un bot di log vede molto. Sentinel è costruito perché, anche se compromesso, non possa moderare né esfiltrare facilmente.',
+      items: [
+        ['Sola lettura', 'Una policy interna blocca ban, kick, modifiche a ruoli, canali e messaggi, indipendentemente dai permessi Discord.'],
+        ['Dati cifrati', 'Contenuti, allegati e dettagli degli eventi sono cifrati con AES-256-GCM nel database.'],
+        ['Segreti separati', 'Il token del bot non arriva mai al pannello web; ogni servizio ha le sue credenziali.'],
+        ['Database a privilegi minimi', 'Il bot non può leggere sessioni né audit del pannello; ruoli Postgres distinti per API e bot.'],
+        ['Rete segmentata', 'Database e Redis non sono esposti; ogni container vede solo i servizi che gli servono.']
+      ]
+    },
+    cta: { title: 'Porta ordine nei log del tuo server.', text: 'Aggiungi il bot, accedi con Discord e attiva il primo logger in pochi minuti.' },
+    footer: 'Logging e auditing self-hosted per server Discord.'
   },
   en: {
-    nav: { features: 'Features', how: 'How it works', signIn: 'Sign in', add: 'Add Sentinel' },
+    nav: { features: 'Features', pipeline: 'Pipeline', security: 'Security', signIn: 'Sign in', add: 'Add to Discord' },
     hero: {
-      line1: 'The audit and logging bot that keeps track of what happens on your Discord server.',
-      line2: 'Choose what to record, where to send it, and review everything from the dashboard.',
+      kicker: 'Audit & logging for Discord',
+      title: ['Every action', 'on your server,', 'on the record.'],
+      text: 'Sentinel watches bans, roles, permissions, messages and channels, keeps an encrypted history and delivers every event to the right channel. You decide what gets recorded and where.',
       dashboard: 'Open dashboard',
-      add: 'Add Sentinel to Discord',
-      preview: 'Sentinel preview',
-      removed: 'User removed from the server',
-      role: 'Role permissions updated',
-      deleted: 'Message deleted in the channel',
-      recorded: 'recorded',
-      routing: 'Routing active',
-      history: 'History protected'
+      add: 'Add Sentinel',
+      stream: 'audit stream',
+      live: 'listening',
+      states: { sent: 'sent', stored: 'stored', filtered: 'filtered' },
+      rows: [
+        ['20:41:18', 'moderation.ban', 'mod.luke → spam_bot · reason: phishing', 'sent'],
+        ['20:39:52', 'role.update', '@Staff · +Manage Messages', 'sent'],
+        ['20:38:04', 'channel.update', '#announcements · @everyone permissions changed', 'sent'],
+        ['20:33:51', 'message.delete', '#general · message by julia.r', 'stored'],
+        ['20:31:07', 'member.join', 'new_user · account created 2 days ago', 'filtered']
+      ] as const,
+      footer: ['76 events', 'delivery ok', 'encrypted history']
     },
+    stats: [
+      ['76', 'Discord event types'],
+      ['AES-256', 'history encryption'],
+      ['4', 'RBAC access levels'],
+      ['0', 'moderation permissions required']
+    ],
     features: {
-      kicker: 'FEATURES',
+      kicker: 'Features',
       title: 'More than a log channel.',
-      intro: 'Sentinel separates collection, storage and Discord delivery, so you can keep a complete history without publishing every single event.',
+      intro: 'Collection, storage and delivery are separate, so you can keep a complete history without publishing every single event.',
       cards: [
-        ['Moderation', 'Audit important actions', 'Joins, leaves, kicks, bans, roles, channels, permissions, webhooks, AutoMod, Stage and Discord Audit Log in one history.'],
-        ['Messages', 'Context when you need it', 'Record creations, edits, deletions, attachments and snapshots, with separate controls for collection and publishing.'],
-        ['Routing', 'Every event in the right place', 'Choose which events to keep, which ones to send to Discord and which channel should receive them, without flooding the server.'],
-        ['Search', 'A searchable history', 'Filter events by server, actor, target, channel and time range, then export data when you need deeper analysis.'],
-        ['Access', 'Role-aware dashboard', 'The panel uses Discord OAuth2 and RBAC controls to separate viewing, moderation and administration.'],
-        ['Security', 'Built to stay isolated', 'Separate secrets, distinct database roles, private Redis, segmented Docker networks and AES-256-GCM protection for sensitive data.']
+        { icon: 'shield', kicker: 'Moderation', title: 'Who did what', text: 'Kicks, bans, timeouts, roles, permissions, webhooks and AutoMod, with the moderator resolved from Discord’s Audit Log.' },
+        { icon: 'message', kicker: 'Messages', title: 'Context survives', text: 'Edits and deletions with the original text and attachments, thanks to encrypted snapshots.' },
+        { icon: 'route', kicker: 'Routing', title: 'Every event in its place', text: 'One channel for bans, one for messages, mentions only where needed. Filters for users, roles and channels.' },
+        { icon: 'search', kicker: 'History', title: 'Search and export', text: 'Filter by event, actor, target, channel and time range. Export to JSON when investigating an incident.' },
+        { icon: 'users', kicker: 'Access', title: 'Role-aware dashboard', text: 'Discord sign-in with Viewer, Moderator, Admin and Owner levels verified live against the server.' },
+        { icon: 'clock', kicker: 'Retention', title: 'Keep only what you need', text: 'Global or per-event retention, plus deletion of a user’s data on request.' }
+      ]
+    },
+    pipeline: {
+      kicker: 'Pipeline',
+      title: 'From event to channel, nothing lost.',
+      steps: [
+        { icon: 'bolt', title: 'Discord Gateway', text: 'The bot receives the event and resolves the actor from the Audit Log.' },
+        { icon: 'database', title: 'Encrypted history', text: 'The event is stored before delivery: a failed send never deletes anything.' },
+        { icon: 'sliders', title: 'Filters & routing', text: 'Destination channel, exceptions, mentions and embed customisation are applied.' },
+        { icon: 'message', title: 'Log channel', text: 'The embed lands in the chosen channel; failed attempts stay visible in the dashboard.' }
       ]
     },
     how: {
-      kicker: 'HOW IT WORKS',
-      title: 'From server to dashboard in three steps.',
+      kicker: 'Getting started',
+      title: 'Up and running in three steps.',
       steps: [
-        ['Add the bot', 'Authorize Sentinel with only the permissions required for the features you want to use.'],
-        ['Sign in with Discord', 'The dashboard detects available servers and applies the configured access levels.'],
-        ['Configure loggers', 'Choose events, destinations, retention and stored details. Panel changes remain audited.']
+        ['Add the bot', 'Authorise Sentinel with read and log-delivery permissions only: no moderation rights.'],
+        ['Sign in with Discord', 'The dashboard lists the servers you can manage and applies your access level.'],
+        ['Choose what to record', 'Enable loggers, pick channels and retention. Every panel change is audited.']
       ]
     },
-    cta: { title: 'Bring order to your server logs.', text: 'Add the bot, sign in with Discord and configure your first logger from the dashboard.', add: 'Add Sentinel' },
-    footer: { text: 'Self-hosted logging and auditing for Discord servers, with searchable history and web configuration.', add: 'Add the bot' }
+    security: {
+      kicker: 'Security',
+      title: 'Built so it cannot do damage.',
+      text: 'A logging bot sees a lot. Sentinel is designed so that, even if compromised, it cannot moderate and cannot easily exfiltrate.',
+      items: [
+        ['Read-only', 'An internal policy blocks bans, kicks and changes to roles, channels and messages, regardless of Discord permissions.'],
+        ['Encrypted data', 'Message content, attachments and event details are encrypted with AES-256-GCM at rest.'],
+        ['Separated secrets', 'The bot token never reaches the web panel; every service has its own credentials.'],
+        ['Least-privilege database', 'The bot cannot read sessions or panel audit; distinct Postgres roles for API and bot.'],
+        ['Segmented network', 'Database and Redis are never exposed; each container only reaches what it needs.']
+      ]
+    },
+    cta: { title: 'Bring order to your server logs.', text: 'Add the bot, sign in with Discord and enable your first logger in minutes.' },
+    footer: 'Self-hosted logging and auditing for Discord servers.'
   }
 } as const;
 
 export default function PublicHome({ locale }: { locale: Locale }) {
   const c = copy[locale];
-  const home = `/${locale}`;
   const dashboard = `/${locale}/dashboard`;
+  const invite = `/backend/bot/invite?lang=${locale}`;
+  const rows = c.hero.rows as readonly (readonly [string, string, string, StreamRow['state']])[];
 
   return (
     <main className="public-site" lang={locale}>
-      <header className="site-header">
-        <div className="site-container site-nav">
-          <a className="site-brand" href={home} aria-label="Sentinel - Home">
-            <span className="site-brand-mark" aria-hidden="true">S</span>
-            <span>Sentinel</span>
-          </a>
+      <SiteHeader
+        locale={locale}
+        itHref="/it"
+        enHref="/en"
+        links={[
+          { href: '#features', label: c.nav.features },
+          { href: '#pipeline', label: c.nav.pipeline },
+          { href: '#security', label: c.nav.security }
+        ]}
+        actions={<>
+          <a className="button button-ghost" href={dashboard}>{c.nav.signIn}</a>
+          <a className="button button-primary" href={invite}>{c.nav.add}</a>
+        </>}
+      />
 
-          <nav className="site-nav-links" aria-label={locale === 'it' ? 'Navigazione principale' : 'Main navigation'}>
-            <a href="#features">{c.nav.features}</a>
-            <a href="#how-it-works">{c.nav.how}</a>
-            <a href={dashboard}>Dashboard</a>
-          </nav>
-
-          <LanguageSwitcher locale={locale} itHref="/it" enHref="/en" />
-
-          <div className="site-nav-actions">
-            <a className="site-button site-button-ghost site-nav-dashboard" href={dashboard}>{c.nav.signIn}</a>
-            <a className="site-button site-button-primary site-nav-invite" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>
+      <section className="hero">
+        <div className="site-container hero-grid">
+          <div className="hero-copy">
+            <span className="kicker">{c.hero.kicker}</span>
+            <h1>{c.hero.title.map((line) => <span key={line}>{line}</span>)}</h1>
+            <p>{c.hero.text}</p>
+            <div className="hero-actions">
+              <a className="button button-primary button-lg" href={invite}>{c.hero.add}<Icon name="arrowRight" size={16} /></a>
+              <a className="button button-secondary button-lg" href={dashboard}>{c.hero.dashboard}</a>
+            </div>
           </div>
 
-          <details className="site-mobile-menu">
-            <summary aria-label={locale === 'it' ? 'Apri menu' : 'Open menu'}><span /><span /><span /></summary>
-            <div>
-              <a href="#features">{c.nav.features}</a>
-              <a href="#how-it-works">{c.nav.how}</a>
-              <a href={dashboard}>Dashboard</a>
-              <LanguageSwitcher locale={locale} itHref="/it" enHref="/en" mobile />
-              <a className="site-button site-button-primary" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>
+          <div className="stream" aria-label={c.hero.stream}>
+            <div className="stream-top">
+              <span className="mono">sentinel://{c.hero.stream}</span>
+              <span className="live"><i />{c.hero.live}</span>
             </div>
-          </details>
+            <ol className="stream-rows">
+              {rows.map(([time, key, text, state]) => (
+                <li key={key + time}>
+                  <time className="mono">{time}</time>
+                  <div><strong className="mono">{key}</strong><span>{text}</span></div>
+                  <span className={`state state-${state}`}>{c.hero.states[state]}</span>
+                </li>
+              ))}
+            </ol>
+            <div className="stream-bottom mono">
+              {c.hero.footer.map((item) => <span key={item}>{item}</span>)}
+            </div>
+          </div>
         </div>
-      </header>
 
-      <section className="site-hero">
-        <div className="site-container site-hero-grid">
-          <div className="site-hero-copy">
-            <h1>Sentinel</h1>
-            <p className="site-hero-description">
-              <span>{c.hero.line1}</span>
-              <span>{c.hero.line2}</span>
-            </p>
-            <div className="site-hero-actions">
-              <a className="site-button site-button-secondary" href={dashboard}>{c.hero.dashboard}</a>
-              <a className="site-button site-button-primary" href={`/backend/bot/invite?lang=${locale}`}>{c.hero.add}</a>
-            </div>
-          </div>
-
-          <div className="site-console" aria-label={c.hero.preview}>
-            <div className="site-console-top">
-              <span>sentinel / audit stream</span>
-              <span className="site-live"><i /> LIVE</span>
-            </div>
-            <div className="site-console-event">
-              <span className="site-event-time">20:41:18</span>
-              <div><strong>member.ban</strong><p>{c.hero.removed}</p></div>
-              <span className="site-event-state">{c.hero.recorded}</span>
-            </div>
-            <div className="site-console-event">
-              <span className="site-event-time">20:38:04</span>
-              <div><strong>role.update</strong><p>{c.hero.role}</p></div>
-              <span className="site-event-state">{c.hero.recorded}</span>
-            </div>
-            <div className="site-console-event">
-              <span className="site-event-time">20:33:51</span>
-              <div><strong>message.delete</strong><p>{c.hero.deleted}</p></div>
-              <span className="site-event-state">{c.hero.recorded}</span>
-            </div>
-            <div className="site-console-footer">
-              <span>{c.hero.routing}</span>
-              <span>{c.hero.history}</span>
-            </div>
-          </div>
+        <div className="site-container stat-strip">
+          {c.stats.map(([value, label]) => (
+            <div key={label}><strong>{value}</strong><span>{label}</span></div>
+          ))}
         </div>
       </section>
 
-      <section className="site-section" id="features">
+      <section className="section" id="features">
         <div className="site-container">
-          <div className="site-section-head">
-            <div><span className="site-kicker">{c.features.kicker}</span><h2>{c.features.title}</h2></div>
+          <div className="section-head">
+            <span className="kicker">{c.features.kicker}</span>
+            <h2>{c.features.title}</h2>
             <p>{c.features.intro}</p>
           </div>
-          <div className="site-feature-grid">
-            {c.features.cards.map(([kicker, title, text]) => (
-              <article className="site-feature-card" key={title}>
-                <span>{kicker}</span><h3>{title}</h3><p>{text}</p>
+          <div className="feature-grid">
+            {c.features.cards.map((card) => (
+              <article className="feature" key={card.title}>
+                <div className="feature-icon"><Icon name={card.icon} size={20} /></div>
+                <span className="feature-kicker">{card.kicker}</span>
+                <h3>{card.title}</h3>
+                <p>{card.text}</p>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="site-section site-section-alt" id="how-it-works">
+      <section className="section section-alt" id="pipeline">
         <div className="site-container">
-          <div className="site-section-head">
-            <div><span className="site-kicker">{c.how.kicker}</span><h2>{c.how.title}</h2></div>
+          <div className="section-head">
+            <span className="kicker">{c.pipeline.kicker}</span>
+            <h2>{c.pipeline.title}</h2>
           </div>
-          <div className="site-steps">
-            {c.how.steps.map(([title, text], index) => (
-              <article key={title}><span>{String(index + 1).padStart(2, '0')}</span><h3>{title}</h3><p>{text}</p></article>
+          <ol className="pipeline">
+            {c.pipeline.steps.map((step, index) => (
+              <li key={step.title}>
+                <div className="pipeline-node"><Icon name={step.icon} size={20} /><span className="mono">{String(index + 1).padStart(2, '0')}</span></div>
+                <h3>{step.title}</h3>
+                <p>{step.text}</p>
+              </li>
             ))}
+          </ol>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="site-container steps-layout">
+          <div className="section-head">
+            <span className="kicker">{c.how.kicker}</span>
+            <h2>{c.how.title}</h2>
+          </div>
+          <ol className="steps">
+            {c.how.steps.map(([title, text], index) => (
+              <li key={title}>
+                <span className="step-index mono">{String(index + 1).padStart(2, '0')}</span>
+                <div><h3>{title}</h3><p>{text}</p></div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <section className="section section-alt" id="security">
+        <div className="site-container security-layout">
+          <div className="section-head">
+            <span className="kicker">{c.security.kicker}</span>
+            <h2>{c.security.title}</h2>
+            <p>{c.security.text}</p>
+          </div>
+          <dl className="security-list">
+            {c.security.items.map(([title, text]) => (
+              <div key={title}><dt><Icon name="check" size={16} />{title}</dt><dd>{text}</dd></div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+      <section className="section cta-section">
+        <div className="site-container cta">
+          <div><h2>{c.cta.title}</h2><p>{c.cta.text}</p></div>
+          <div className="cta-actions">
+            <a className="button button-primary button-lg" href={invite}>{c.hero.add}<Icon name="arrowRight" size={16} /></a>
+            <a className="button button-secondary button-lg" href={dashboard}>{c.hero.dashboard}</a>
           </div>
         </div>
       </section>
 
-
-      <section className="site-cta-section">
-        <div className="site-container site-cta-card">
-          <div><span className="site-kicker">SENTINEL</span><h2>{c.cta.title}</h2><p>{c.cta.text}</p></div>
-          <div className="site-cta-actions">
-            <a className="site-button site-button-secondary" href={dashboard}>Dashboard</a>
-            <a className="site-button site-button-primary" href={`/backend/bot/invite?lang=${locale}`}>{c.cta.add}</a>
-          </div>
+      <SiteFooter locale={locale}>
+        <div className="footer-main">
+          <p>{c.footer}</p>
+          <nav>
+            <a href="#features">{c.nav.features}</a>
+            <a href={dashboard}>Dashboard</a>
+            <a href={invite}>{c.nav.add}</a>
+            <a href="https://github.com/haxurus/Sentinel" target="_blank" rel="noreferrer">GitHub</a>
+          </nav>
         </div>
-      </section>
-
-      <footer className="site-footer">
-        <div className="site-container">
-          <div className="site-footer-shell">
-            <div className="site-footer-brand"><strong>Sentinel</strong><p>{c.footer.text}</p></div>
-            <div className="site-footer-links">
-              <a href="#features">{c.nav.features}</a>
-              <a href={dashboard}>Dashboard</a>
-              <a href={`/backend/bot/invite?lang=${locale}`}>{c.footer.add}</a>
-              <a href="https://github.com/haxurus/Sentinel" target="_blank" rel="noreferrer">GitHub</a>
-            </div>
-          </div>
-          <div className="site-footer-bottom">
-            <span>Sentinel © 2026 · Made with 💚 by Haxurus</span>
-            <span>Discord Audit &amp; Logging</span>
-          </div>
-        </div>
-      </footer>
+      </SiteFooter>
     </main>
   );
 }

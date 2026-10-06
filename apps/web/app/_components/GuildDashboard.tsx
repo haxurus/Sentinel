@@ -1,12 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Icon } from './Brand';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { localizeCategory, localizeEvent, type Locale } from '../i18n';
 
 type Settings = {
   guildId: string;
   guildName: string;
+  iconUrl: string | null;
   defaultLogChannelId: string | null;
   timezone: string;
   locale: string;
@@ -346,24 +348,49 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
 
   if (!settings) return <main className="loading">{L('Caricamento pannello…', 'Loading dashboard…')}</main>;
 
+  const tabs = [
+    { key: 'overview' as const, icon: 'grid' as const, label: L('Panoramica', 'Overview'), description: L('Attività recente e impostazioni principali del server.', 'Recent activity and the server’s main settings.') },
+    { key: 'events' as const, icon: 'sliders' as const, label: 'Logger', description: L('Scegli cosa registrare, cosa inviare su Discord e dove.', 'Choose what to record, what to send to Discord and where.') },
+    { key: 'history' as const, icon: 'search' as const, label: L('Storico', 'History'), description: L('Cerca negli eventi registrati ed esportali.', 'Search recorded events and export them.') },
+    ...(canAdmin ? [{ key: 'admin' as const, icon: 'key' as const, label: L('Amministrazione', 'Administration'), description: L('Accessi al pannello, registro delle modifiche e privacy.', 'Panel access, change log and privacy.') }] : [])
+  ];
+  const current = tabs.find((item) => item.key === tab) ?? tabs[0]!;
+
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div className="topbar-left"><a className="back" href={`/${locale}/dashboard`}>←</a><div><p className="eyebrow">SERVER</p><h1>{settings.guildName}</h1></div></div>
-        <div className="topbar-actions">
-          <LanguageSwitcher locale={locale} itHref={`/it/dashboard/${guildId}`} enHref={`/en/dashboard/${guildId}`} compact />
-          <div className={`status-pill ${settings.premiumEnabled ? 'premium-status' : ''}`}><span className="status-dot" /> {settings.premiumEnabled ? 'Premium' : L('Audit attivo', 'Audit active')}</div>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <a className="sidebar-back" href={`/${locale}/dashboard`}><Icon name="arrowLeft" size={14} />{L('Tutti i server', 'All servers')}</a>
+        <div className="sidebar-guild">
+          {settings.iconUrl ? <img src={settings.iconUrl} alt="" /> : <div className="guild-placeholder">{settings.guildName.slice(0, 1)}</div>}
+          <div>
+            <strong title={settings.guildName}>{settings.guildName}</strong>
+            <span className={`tag ${settings.premiumEnabled ? 'tag-premium' : ''}`}>{settings.premiumEnabled ? 'Premium' : 'Free'}</span>
+          </div>
         </div>
-      </header>
+        <nav className="sidebar-nav" aria-label={L('Sezioni', 'Sections')}>
+          {tabs.map((item) => (
+            <button key={item.key} className={tab === item.key ? 'active' : ''} aria-current={tab === item.key ? 'page' : undefined} onClick={() => setTab(item.key)}>
+              <Icon name={item.icon} size={17} />{item.label}
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-foot">
+          <div className="sidebar-access"><span>{L('Il tuo accesso', 'Your access')}</span><strong className="mono">{access}</strong></div>
+          <LanguageSwitcher locale={locale} itHref={`/it/dashboard/${guildId}`} enHref={`/en/dashboard/${guildId}`} compact />
+        </div>
+      </aside>
 
-      <nav className="tabs">
-        <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>{L('Panoramica', 'Overview')}</button>
-        <button className={tab === 'events' ? 'active' : ''} onClick={() => setTab('events')}>Logger</button>
-        <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>{L('Storico', 'History')}</button>
-        {canAdmin && <button className={tab === 'admin' ? 'active' : ''} onClick={() => setTab('admin')}>{L('Amministrazione', 'Administration')}</button>}
-      </nav>
+      {status && <div className="toast" role="status">{status}</div>}
 
-      {status && <div className="toast">{status}</div>}
+      <main className="workspace">
+        <header className="workspace-head">
+          <div>
+            <span className="kicker">{settings.guildName}</span>
+            <h1>{current.label}</h1>
+            <p>{current.description}</p>
+          </div>
+          <div className="live-pill"><i />{L('Audit attivo', 'Audit active')}</div>
+        </header>
 
       <section className="content">
         {!canAdmin && <div className="notice">{L('Accesso pannello:', 'Panel access:')} <strong>{access}</strong>. {L('Le impostazioni sono in sola lettura.', 'Settings are read-only.')}</div>}
@@ -372,8 +399,8 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
             <div className="stat-card"><span>{L('Eventi oggi', 'Events today')}</span><strong>{stats?.today ?? 0}</strong></div>
             <div className="stat-card"><span>{L('Ultime 24 ore', 'Last 24 hours')}</span><strong>{stats?.last24h ?? 0}</strong></div>
             <div className="stat-card"><span>{L('Snapshot messaggi', 'Message snapshots')}</span><strong>{stats?.snapshots ?? 0}</strong></div>
-            <div className="stat-card"><span>Retention</span><strong>{settings.defaultRetentionDays}g</strong></div>
-            <div className="stat-card"><span>{L('Problemi invio 24h', 'Delivery issues 24h')}</span><strong>{stats?.deliveryIssues ?? 0}</strong></div>
+            <div className="stat-card"><span>Retention</span><strong>{settings.defaultRetentionDays}<small>{L(' giorni', ' days')}</small></strong></div>
+            <div className={`stat-card ${stats?.deliveryIssues ? 'stat-alert' : ''}`}><span>{L('Problemi invio 24h', 'Delivery issues 24h')}</span><strong>{stats?.deliveryIssues ?? 0}</strong></div>
           </div>
 
           <div className="two-col">
@@ -466,7 +493,7 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
 
         {tab === 'history' && <>
           <div className="toolbar"><input placeholder={L('Cerca nel riepilogo…', 'Search summaries…')} value={historyText} onChange={(e) => setHistoryText(e.target.value)} /><select value={historyEvent} onChange={(e) => setHistoryEvent(e.target.value)}><option value="">{L('Tutti gli eventi', 'All events')}</option>{routes.map(({ event }) => <option key={event.key} value={event.key}>{localizeEvent(event, locale).label}</option>)}</select>{canModerate && <a className="button-link" href={`/backend/api/guilds/${guildId}/export${historyEvent ? `?eventKey=${encodeURIComponent(historyEvent)}` : ''}`}>{L('Esporta JSON', 'Export JSON')}</a>}</div>
-          <div className="history-list">{history.map((item) => <article key={item.id} className="history-item"><div><span className="event-key">{item.eventKey} · {item.dispatchState}</span><time>{formatDate(item.createdAt)}</time></div><strong>{item.summary}</strong><p>{item.actorId ? `${L('Autore', 'Actor')}: ${item.actorId}` : ''}{item.channelId ? ` · ${L('Canale', 'Channel')}: ${item.channelId}` : ''}</p><details><summary>{L('Dettagli', 'Details')}</summary>{item.dispatchError && <p>{L('Errore invio', 'Delivery error')}: {item.dispatchError}</p>}<pre>{JSON.stringify(item.details, null, 2)}</pre></details></article>)}</div>
+          <div className="history-list">{history.map((item) => <article key={item.id} className="history-item"><div><span className="history-meta"><span className="event-key">{item.eventKey}</span><span className={`state state-${item.dispatchState.toLowerCase()}`}>{item.dispatchState.replace(/_/g, ' ').toLowerCase()}</span></span><time className="mono">{formatDate(item.createdAt)}</time></div><strong>{item.summary}</strong><p>{item.actorId ? `${L('Autore', 'Actor')}: ${item.actorId}` : ''}{item.channelId ? ` · ${L('Canale', 'Channel')}: ${item.channelId}` : ''}</p><details><summary>{L('Dettagli', 'Details')}</summary>{item.dispatchError && <p>{L('Errore invio', 'Delivery error')}: {item.dispatchError}</p>}<pre>{JSON.stringify(item.details, null, 2)}</pre></details></article>)}</div>
           {!historyLoading && !history.length && <div className="notice">{L('Nessun evento trovato.', 'No events found.')}</div>}
           {historyPage < historyPages && <div className="toolbar"><button disabled={historyLoading} onClick={() => setHistoryPage((page) => page + 1)}>{historyLoading ? L('Caricamento…', 'Loading…') : L('Carica altri', 'Load more')}</button></div>}
         </>}
@@ -479,7 +506,8 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
           </div>
         </>}
       </section>
-    </main>
+      </main>
+    </div>
   );
 }
 
