@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { LanguageSwitcher } from './LanguageSwitcher';
+import { SiteHeader } from './SiteChrome';
 import type { Locale } from '../i18n';
 
 type Guild = {
@@ -226,101 +226,104 @@ export default function SuperConsole({ locale }: { locale: Locale }) {
 
   return (
     <main className="public-site super-console" lang={locale}>
-      <header className="site-header">
-        <div className="site-container site-nav">
-          <a className="site-brand" href={`/${locale}`} aria-label="Sentinel - Home">
-            <span className="site-brand-mark" aria-hidden="true">S</span><span>Sentinel</span>
-          </a>
-          <nav className="site-nav-links"><a href={`/${locale}/dashboard`}>{c.dashboard}</a></nav>
-          <LanguageSwitcher locale={locale} itHref="/it/super" enHref="/en/super" />
-        </div>
-      </header>
+      <SiteHeader
+        locale={locale}
+        itHref="/it/super"
+        enHref="/en/super"
+        links={[{ href: `/${locale}/dashboard`, label: c.dashboard }]}
+      />
 
-      <section className="super-shell">
+      <section className="page">
         <div className="site-container">
-          <div className="super-head">
-            <span className="site-kicker">{c.kicker}</span>
-            <h1>{c.title}</h1>
-            <p>{c.intro}</p>
+          <div className="page-head">
+            <div>
+              <span className="kicker kicker-danger">{c.kicker}</span>
+              <h1>{c.title}</h1>
+              <p>{c.intro}</p>
+            </div>
           </div>
 
           {status && <div className="notice">{status}</div>}
-          {error && <div className="notice">{error}</div>}
-          {!data && !error && <div className="super-panel">{c.loading}</div>}
+          {error && <div className="notice notice-error">{error}</div>}
+          {!data && !error && <div className="card">{c.loading}</div>}
 
           {data && <>
-            <section className="super-panel">
-              <div className="super-panel-head">
-                <div><span className="site-kicker">DISCORD</span><h2>{c.liveServers}</h2><p>{c.liveServersText}</p></div>
-                <strong>{data.guilds.length}</strong>
+            <div className="metric-row">
+              <div className="metric"><span>{c.liveServers}</span><strong>{data.guilds.length}</strong></div>
+              <div className="metric"><span>{c.premium}</span><strong>{data.guilds.filter((guild) => guild.premiumEnabled).length}</strong></div>
+              <div className="metric"><span>{c.blacklist}</span><strong>{data.blocks.length}</strong></div>
+              <div className="metric"><span>{c.audit}</span><strong>{data.audit.length}</strong></div>
+            </div>
+
+            <section className="card">
+              <div className="card-head">
+                <div><span className="kicker">Discord</span><h2>{c.liveServers}</h2><p>{c.liveServersText}</p></div>
               </div>
-              {!data.guilds.length && <div className="super-empty">{c.noServers}</div>}
-              <div className="super-guild-list">
+              {!data.guilds.length && <div className="empty">{c.noServers}</div>}
+              <div className="table-list">
                 {data.guilds.map((guild) => (
                   <article className="super-guild" key={guild.id}>
                     <div className="super-guild-identity">
                       {guild.iconUrl ? <img src={guild.iconUrl} alt="" /> : <div className="guild-placeholder">{guild.name.slice(0, 1)}</div>}
-                      <div><strong>{guild.name}</strong><span>{guild.id}</span></div>
+                      <div><strong>{guild.name}</strong><span className="mono">{guild.id}</span></div>
                     </div>
                     <div className="super-guild-meta">
                       <span>{c.owner}: {guild.ownerTag || guild.ownerId}</span>
                       <span>{guild.memberCount.toLocaleString(locale === 'it' ? 'it-IT' : 'en-US')} {c.members}</span>
-                      <span className={`super-plan-badge ${guild.premiumEnabled ? 'is-premium' : ''}`}>{guild.premiumEnabled ? c.premium : c.free}</span>
                     </div>
+                    <span className={`tag ${guild.premiumEnabled ? 'tag-premium' : ''}`}>{guild.premiumEnabled ? c.premium : c.free}</span>
                     <div className="super-guild-actions">
-                      <button className={`site-button ${guild.premiumEnabled ? 'site-button-secondary' : 'super-premium-button'}`} onClick={() => setPremium(guild, !guild.premiumEnabled)}>{guild.premiumEnabled ? c.disablePremium : c.enablePremium}</button>
-                      <button className="site-button site-button-secondary" onClick={() => leave(guild)}>{c.leave}</button>
-                      <button className="site-button super-danger" onClick={() => blockGuild(guild)}>{c.blockLeave}</button>
+                      <button className={`button button-sm ${guild.premiumEnabled ? 'button-secondary' : 'button-premium'}`} onClick={() => setPremium(guild, !guild.premiumEnabled)}>{guild.premiumEnabled ? c.disablePremium : c.enablePremium}</button>
+                      <button className="button button-sm button-secondary" onClick={() => leave(guild)}>{c.leave}</button>
+                      <button className="button button-sm button-danger" onClick={() => blockGuild(guild)}>{c.blockLeave}</button>
                     </div>
                   </article>
                 ))}
               </div>
             </section>
 
-            <section className="super-panel">
-              <div className="super-panel-head">
-                <div><span className="site-kicker">POLICY</span><h2>{c.blacklist}</h2><p>{c.blacklistText}</p></div>
-                <strong>{data.blocks.length}</strong>
+            <section className="card">
+              <div className="card-head">
+                <div><span className="kicker">Policy</span><h2>{c.blacklist}</h2><p>{c.blacklistText}</p></div>
               </div>
 
-              <div className="super-block-forms">
+              <div className="block-forms">
                 <div>
                   <label>{c.userId}<input value={userId} onChange={(e) => setUserId(e.target.value.trim())} inputMode="numeric" placeholder="123456789012345678" /></label>
                   <label>{c.reason}<input value={userReason} onChange={(e) => setUserReason(e.target.value)} maxLength={500} /></label>
-                  <button className="site-button site-button-secondary" onClick={() => block('USER', userId, userReason)}>{c.blockUser}</button>
+                  <button className="button button-secondary" onClick={() => block('USER', userId, userReason)}>{c.blockUser}</button>
                 </div>
                 <div>
                   <label>{c.guildId}<input value={guildId} onChange={(e) => setGuildId(e.target.value.trim())} inputMode="numeric" placeholder="123456789012345678" /></label>
                   <label>{c.reason}<input value={guildReason} onChange={(e) => setGuildReason(e.target.value)} maxLength={500} /></label>
-                  <button className="site-button super-danger" onClick={() => block('GUILD', guildId, guildReason)}>{c.blockGuild}</button>
+                  <button className="button button-danger" onClick={() => block('GUILD', guildId, guildReason)}>{c.blockGuild}</button>
                 </div>
               </div>
 
-              {!data.blocks.length && <div className="super-empty">{c.noBlocks}</div>}
-              <div className="super-block-list">
+              {!data.blocks.length && <div className="empty">{c.noBlocks}</div>}
+              <div className="table-list">
                 {data.blocks.map((block) => (
-                  <div className="super-block-row" key={block.id}>
-                    <div><strong>{block.kind === 'USER' ? c.user : c.guild} · {block.subjectId}</strong><span>{block.reason || '—'} · {fmt(block.createdAt)}</span></div>
-                    <span className="super-block-badge">{c.blocked}</span>
-                    <button className="site-button site-button-secondary" onClick={() => unblock(block)}>{c.unblock}</button>
+                  <div className="block-row" key={block.id}>
+                    <div><strong>{block.kind === 'USER' ? c.user : c.guild} · <span className="mono">{block.subjectId}</span></strong><span>{block.reason || '—'} · {fmt(block.createdAt)}</span></div>
+                    <span className="tag tag-danger">{c.blocked}</span>
+                    <button className="button button-sm button-secondary" onClick={() => unblock(block)}>{c.unblock}</button>
                   </div>
                 ))}
               </div>
             </section>
 
-            <section className="super-panel">
-              <div className="super-panel-head">
-                <div><span className="site-kicker">AUDIT</span><h2>{c.audit}</h2><p>{c.auditText}</p></div>
-                <strong>{data.audit.length}</strong>
+            <section className="card">
+              <div className="card-head">
+                <div><span className="kicker">Audit</span><h2>{c.audit}</h2><p>{c.auditText}</p></div>
               </div>
-              {!data.audit.length && <div className="super-empty">{c.noAudit}</div>}
-              <div className="super-audit-list">
+              {!data.audit.length && <div className="empty">{c.noAudit}</div>}
+              <div className="log-table">
                 {data.audit.map((item) => (
-                  <div className="super-audit-row" key={item.id}>
-                    <strong>{item.action}</strong>
-                    <span>{item.subjectType ? `${item.subjectType} · ${item.subjectId}` : '—'}</span>
+                  <div className="log-row" key={item.id}>
+                    <strong className="mono">{item.action}</strong>
+                    <span>{item.subjectType ? <>{item.subjectType} · <span className="mono">{item.subjectId}</span></> : '—'}</span>
                     <span>{item.username}</span>
-                    <time>{fmt(item.createdAt)}</time>
+                    <time className="mono">{fmt(item.createdAt)}</time>
                   </div>
                 ))}
               </div>

@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LanguageSwitcher } from './LanguageSwitcher';
+import { Icon } from './Brand';
+import { SiteFooter, SiteHeader } from './SiteChrome';
 import type { Locale } from '../i18n';
 
 type Guild = {
@@ -88,71 +89,66 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
 
   return (
     <main className="public-site dashboard-landing" lang={locale}>
-      <header className="site-header">
-        <div className="site-container site-nav">
-          <a className="site-brand" href={home} aria-label="Sentinel - Home">
-            <span className="site-brand-mark" aria-hidden="true">S</span><span>Sentinel</span>
-          </a>
-          <nav className="site-nav-links" aria-label={locale === 'it' ? 'Navigazione dashboard' : 'Dashboard navigation'}>
-            <a href={home}>Home</a>
-            <a href={`${home}#features`}>{c.nav.features}</a>
-            {me?.superAdmin && <a href={`/${locale}/super`}>{c.superConsole}</a>}
-          </nav>
-          <LanguageSwitcher locale={locale} itHref="/it/dashboard" enHref="/en/dashboard" />
-          <div className="site-nav-actions">
-            <a className="site-button site-button-primary" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>
-          </div>
-          <details className="site-mobile-menu">
-            <summary aria-label={locale === 'it' ? 'Apri menu' : 'Open menu'}><span /><span /><span /></summary>
-            <div>
-              <a href={home}>Home</a>
-              <a href={`${home}#features`}>{c.nav.features}</a>
-              {me?.superAdmin && <a href={`/${locale}/super`}>{c.superConsole}</a>}
-                <LanguageSwitcher locale={locale} itHref="/it/dashboard" enHref="/en/dashboard" mobile />
-              <a className="site-button site-button-primary" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>
-            </div>
-          </details>
-        </div>
-      </header>
+      <SiteHeader
+        locale={locale}
+        itHref="/it/dashboard"
+        enHref="/en/dashboard"
+        links={[
+          { href: home, label: 'Home' },
+          ...(me?.superAdmin ? [{ href: `/${locale}/super`, label: c.superConsole }] : [])
+        ]}
+        actions={<a className="button button-primary" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>}
+      />
 
-      <section className="dashboard-access">
+      <section className="page">
         <div className="site-container">
-          <div className="dashboard-access-head">
-            <div><span className="site-kicker">{c.kicker}</span><h1>{c.title}</h1><p>{c.intro}</p></div>
-            {me && <div className="dashboard-user-actions">
-              {me.superAdmin && <a className="site-button site-button-secondary" href={`/${locale}/super`}>{c.superConsole}</a>}
-              <div className="dashboard-user">{me.avatarUrl && <img src={me.avatarUrl} alt="" />}<div><span>{c.connected}</span><strong>{me.username}</strong></div></div>
+          <div className="page-head">
+            <div>
+              <span className="kicker">{c.kicker}</span>
+              <h1>{c.title}</h1>
+              <p>{c.intro}</p>
+            </div>
+            {me && <div className="user-card">
+              {me.avatarUrl ? <img src={me.avatarUrl} alt="" /> : <div className="avatar-fallback">{me.username.slice(0, 1)}</div>}
+              <div><span>{c.connected}</span><strong>{me.username}</strong></div>
             </div>}
           </div>
 
-          {loading && <div className="dashboard-auth-card"><span className="site-kicker">{c.session}</span><h2>{c.checking}</h2><p>{c.checkingText}</p></div>}
+          {loading && <div className="card skeleton-card"><span className="kicker">{c.session}</span><h2>{c.checking}</h2><p>{c.checkingText}</p></div>}
 
           {!loading && error && (
-            <div className="dashboard-auth-grid">
-              <div className="dashboard-auth-card">
-                <span className="site-kicker">{c.loginKicker}</span><h2>{c.loginTitle}</h2><p>{error}</p>
-                <a className="site-button site-button-primary" href={`/backend/auth/discord?lang=${locale}`}>{c.loginButton}</a>
+            <div className="auth-grid">
+              <div className="card card-feature">
+                <span className="kicker">{c.loginKicker}</span>
+                <h2>{c.loginTitle}</h2>
+                <p>{error}</p>
+                <a className="button button-primary button-lg" href={`/backend/auth/discord?lang=${locale}`}>{c.loginButton}<Icon name="arrowRight" size={16} /></a>
               </div>
-              <div className="dashboard-auth-card dashboard-auth-card-secondary">
-                <span className="site-kicker">{c.newServer}</span><h2>{c.noBotTitle}</h2><p>{c.noBotText}</p>
-                <a className="site-button site-button-secondary" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>
+              <div className="card">
+                <span className="kicker">{c.newServer}</span>
+                <h2>{c.noBotTitle}</h2>
+                <p>{c.noBotText}</p>
+                <a className="button button-secondary button-lg" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>
               </div>
             </div>
           )}
 
           {!loading && !error && (
-            <div className="dashboard-server-panel">
-              <div className="dashboard-server-head">
-                <div><span className="site-kicker">{c.serverKicker}</span><h2>{c.choose}</h2></div>
-                <a className="site-button site-button-secondary" href={`/backend/bot/invite?lang=${locale}`}>{c.addServer}</a>
+            <div className="card">
+              <div className="card-head">
+                <div><span className="kicker">{c.serverKicker}</span><h2>{c.choose}</h2></div>
+                <a className="button button-secondary" href={`/backend/bot/invite?lang=${locale}`}><Icon name="plus" size={16} />{c.addServer.replace(/^\+\s*/, '')}</a>
               </div>
               {!guilds.length && <div className="notice">{c.empty}</div>}
               <div className="guild-grid">
                 {guilds.map((guild) => (
                   <a className="guild-card" href={`/${locale}/dashboard/${guild.guildId}`} key={guild.guildId}>
                     {guild.iconUrl ? <img src={guild.iconUrl} alt="" /> : <div className="guild-placeholder">{guild.guildName.slice(0, 1)}</div>}
-                    <div><strong>{guild.guildName}</strong><span>{guild.defaultLogChannelId ? c.configured : c.setup}</span></div>
-                    <span className="arrow">→</span>
+                    <div>
+                      <strong>{guild.guildName}</strong>
+                      <span className={guild.defaultLogChannelId ? 'tag tag-ok' : 'tag tag-warn'}>{guild.defaultLogChannelId ? c.configured : c.setup}</span>
+                    </div>
+                    <Icon name="arrowRight" size={18} />
                   </a>
                 ))}
               </div>
@@ -161,14 +157,7 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
         </div>
       </section>
 
-      <footer className="site-footer dashboard-footer">
-        <div className="site-container">
-          <div className="site-footer-bottom">
-            <span>Sentinel © 2026 · Made with 💚 by Haxurus</span>
-            <a href={home}>{c.back}</a>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter locale={locale} />
     </main>
   );
 }

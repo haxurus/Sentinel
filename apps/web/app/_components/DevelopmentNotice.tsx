@@ -26,26 +26,18 @@ export default function DevelopmentNotice({ locale }: { locale: Locale }) {
   const c = copy[locale];
   return (
     <main className="public-site development-page" lang={locale}>
-      <header className="site-header">
-        <div className="site-container site-nav">
-          <a className="site-brand" href={`/${locale}`} aria-label="Sentinel - Home">
-            <span className="site-brand-mark" aria-hidden="true">S</span>
-            <span>Sentinel</span>
-          </a>
-          <LanguageSwitcher locale={locale} itHref="/it/development" enHref="/en/development" />
-        </div>
-      </header>
+      <SiteHeader locale={locale} itHref="/it/development" enHref="/en/development" />
       <section className="development-hero">
         <div className="site-container development-card">
-          <span className="site-kicker">{c.kicker}</span>
+          <span className="kicker">{c.kicker}</span>
           <h1>{c.title}</h1>
           <p>{c.text}</p>
           <p>{c.detail}</p>
           <div className="development-actions">
-            <a className="site-button site-button-primary" href="https://github.com/haxurus/Sentinel" target="_blank" rel="noreferrer">{c.github}</a>
-            <a className="site-button site-button-secondary" href="https://github.com/haxurus/Sentinel/fork" target="_blank" rel="noreferrer">{c.fork}</a>
+            <a className="button button-primary button-lg" href="https://github.com/haxurus/Sentinel" target="_blank" rel="noreferrer">{c.github}</a>
+            <a className="button button-secondary button-lg" href="https://github.com/haxurus/Sentinel/fork" target="_blank" rel="noreferrer">{c.fork}</a>
           </div>
-          <a className="development-home-link" href={`/${locale}`}>← {c.home}</a>
+          <a className="development-home-link" href={`/${locale}`}><Icon name="arrowLeft" size={14} /> {c.home}</a>
         </div>
       </section>
     </main>
