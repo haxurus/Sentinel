@@ -26,7 +26,7 @@ Dispatcher
 Discord channel
 ```
 
-The event is stored before delivery to Discord. `captureEnabled` controls collection into the database, while `enabled` separately controls delivery to the Discord channel. An error or rate limit while sending the embed does not lose history: BullMQ retries with backoff. `LogEvent.dispatchState` stores the delivery outcome for diagnostics from the dashboard. Each `LogRoute` can also override retention, embed appearance, and visibility of the main fields.
+The event is stored before delivery to Discord. `captureEnabled` controls collection into the database, while `enabled` separately controls delivery to the Discord channel. An error or rate limit while sending the embed does not lose history: BullMQ retries transient failures with backoff, while permanent Discord errors (missing access, unknown channel) are recorded immediately without retries. Embeds are trimmed to Discord's size limits before sending, and a log is never delivered to a channel outside the guild it came from. `LogEvent.dispatchState` stores the delivery outcome for diagnostics from the dashboard. Each `LogRoute` can also override retention, embed appearance, and visibility of the main fields.
 
 ## Dashboard
 
@@ -46,10 +46,10 @@ Fastify API
 ## Security
 
 - Random 256-bit session token.
-- Only the SHA-256 hash of the session token is stored in the database.
+- Only an HMAC-SHA256 of the session token (keyed with `SESSION_SECRET`) is stored in the database; a new login rotates the session.
 - HttpOnly, SameSite=Lax, and Secure cookies in production.
 - OAuth2 `state` protection against login CSRF.
-- API rate limiting.
+- API rate limiting per session (per client IP for anonymous requests).
 - Security headers through Helmet.
 - Authorization is enforced by the backend on every request, not only by the UI.
 - IP addresses in the dashboard audit log are hashed with a server-side key.
