@@ -1,4 +1,5 @@
-import { LanguageSwitcher } from './LanguageSwitcher';
+import { Icon } from './Brand';
+import { SiteHeader } from './SiteChrome';
 import type { Locale } from '../i18n';
 
 const copy = {
