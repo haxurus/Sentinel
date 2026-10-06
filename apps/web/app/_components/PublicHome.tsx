@@ -7,7 +7,7 @@ type StreamRow = { time: string; key: string; text: string; state: 'sent' | 'sto
 
 const copy = {
   it: {
-    nav: { features: 'Funzioni', pipeline: 'Pipeline', security: 'Sicurezza', signIn: 'Accedi', add: 'Aggiungi a Discord' },
+    nav: { features: 'Funzioni', pipeline: 'Pipeline', security: 'Sicurezza', openSource: 'Open source', signIn: 'Accedi', add: 'Aggiungi a Discord' },
     hero: {
       kicker: 'Audit e logging per Discord',
       title: ['Ogni azione', 'sul tuo server,', 'registrata.'],
@@ -76,11 +76,24 @@ const copy = {
         ['Rete segmentata', 'Database e Redis non sono esposti; ogni container vede solo i servizi che gli servono.']
       ]
     },
+    openSource: {
+      kicker: 'Open source',
+      title: 'Il codice è aperto. Controllalo.',
+      text: 'Un bot che legge il tuo server deve potersi verificare. Tutto il codice di Sentinel, dal bot alla dashboard fino agli script di deploy, è pubblico su GitHub con licenza AGPL-3.0.',
+      badge: 'Open source · AGPL-3.0',
+      points: [
+        ['code', 'Leggi ogni riga', 'Verifica da solo cosa registra il bot, come cifra i dati e quali azioni Discord può compiere.'],
+        ['database', 'Ospitalo tu', 'Fai un fork e avvia la tua istanza con Docker sulla tua infrastruttura: i dati restano tuoi.'],
+        ['fork', 'Contribuisci', 'Segnala problemi o proponi modifiche. Chi offre una versione modificata come servizio deve pubblicarne il codice.']
+      ],
+      repo: 'Vedi il codice su GitHub',
+      fork: 'Fai un fork'
+    },
     cta: { title: 'Porta ordine nei log del tuo server.', text: 'Aggiungi il bot, accedi con Discord e attiva il primo logger in pochi minuti.' },
     footer: 'Logging e auditing self-hosted per server Discord.'
   },
   en: {
-    nav: { features: 'Features', pipeline: 'Pipeline', security: 'Security', signIn: 'Sign in', add: 'Add to Discord' },
+    nav: { features: 'Features', pipeline: 'Pipeline', security: 'Security', openSource: 'Open source', signIn: 'Sign in', add: 'Add to Discord' },
     hero: {
       kicker: 'Audit & logging for Discord',
       title: ['Every action', 'on your server,', 'on the record.'],
@@ -149,6 +162,19 @@ const copy = {
         ['Segmented network', 'Database and Redis are never exposed; each container only reaches what it needs.']
       ]
     },
+    openSource: {
+      kicker: 'Open source',
+      title: 'The code is open. Check it.',
+      text: 'A bot that reads your server should be verifiable. All of Sentinel — bot, dashboard and deployment scripts — is public on GitHub under the AGPL-3.0 licence.',
+      badge: 'Open source · AGPL-3.0',
+      points: [
+        ['code', 'Read every line', 'See for yourself what the bot records, how it encrypts data and which Discord actions it can take.'],
+        ['database', 'Host it yourself', 'Fork it and run your own instance with Docker on your infrastructure: your data stays yours.'],
+        ['fork', 'Contribute', 'Report issues or propose changes. Anyone offering a modified version as a service must publish its source.']
+      ],
+      repo: 'View the code on GitHub',
+      fork: 'Fork it'
+    },
     cta: { title: 'Bring order to your server logs.', text: 'Add the bot, sign in with Discord and enable your first logger in minutes.' },
     footer: 'Self-hosted logging and auditing for Discord servers.'
   }
@@ -158,6 +184,7 @@ export default function PublicHome({ locale }: { locale: Locale }) {
   const c = copy[locale];
   const dashboard = `/${locale}/dashboard`;
   const invite = `/backend/bot/invite?lang=${locale}`;
+  const repo = 'https://github.com/haxurus/Sentinel';
   const rows = c.hero.rows as readonly (readonly [string, string, string, StreamRow['state']])[];
 
   return (
@@ -169,7 +196,8 @@ export default function PublicHome({ locale }: { locale: Locale }) {
         links={[
           { href: '#features', label: c.nav.features },
           { href: '#pipeline', label: c.nav.pipeline },
-          { href: '#security', label: c.nav.security }
+          { href: '#security', label: c.nav.security },
+          { href: '#open-source', label: c.nav.openSource }
         ]}
         actions={<>
           <a className="button button-ghost" href={dashboard}>{c.nav.signIn}</a>
@@ -187,6 +215,7 @@ export default function PublicHome({ locale }: { locale: Locale }) {
               <a className="button button-primary button-lg" href={invite}>{c.hero.add}<Icon name="arrowRight" size={16} /></a>
               <a className="button button-secondary button-lg" href={dashboard}>{c.hero.dashboard}</a>
             </div>
+            <a className="oss-badge" href={repo} target="_blank" rel="noreferrer"><Icon name="github" size={15} />{c.openSource.badge}<Icon name="arrowRight" size={13} /></a>
           </div>
 
           <div className="stream" aria-label={c.hero.stream}>
@@ -286,6 +315,29 @@ export default function PublicHome({ locale }: { locale: Locale }) {
         </div>
       </section>
 
+      <section className="section" id="open-source">
+        <div className="site-container oss-layout">
+          <div className="section-head">
+            <span className="kicker">{c.openSource.kicker}</span>
+            <h2>{c.openSource.title}</h2>
+            <p>{c.openSource.text}</p>
+            <div className="oss-actions">
+              <a className="button button-primary button-lg" href={repo} target="_blank" rel="noreferrer"><Icon name="github" size={17} />{c.openSource.repo}</a>
+              <a className="button button-secondary button-lg" href={`${repo}/fork`} target="_blank" rel="noreferrer"><Icon name="fork" size={16} />{c.openSource.fork}</a>
+            </div>
+          </div>
+          <div className="oss-card">
+            <a className="oss-repo mono" href={repo} target="_blank" rel="noreferrer"><Icon name="github" size={16} />github.com/haxurus/Sentinel</a>
+            <ul>
+              {c.openSource.points.map(([icon, title, text]) => (
+                <li key={title}><span className="feature-icon"><Icon name={icon as IconName} size={18} /></span><div><h3>{title}</h3><p>{text}</p></div></li>
+              ))}
+            </ul>
+            <span className="oss-license mono">AGPL-3.0-only</span>
+          </div>
+        </div>
+      </section>
+
       <section className="section cta-section">
         <div className="site-container cta">
           <div><h2>{c.cta.title}</h2><p>{c.cta.text}</p></div>
@@ -303,7 +355,7 @@ export default function PublicHome({ locale }: { locale: Locale }) {
             <a href="#features">{c.nav.features}</a>
             <a href={dashboard}>Dashboard</a>
             <a href={invite}>{c.nav.add}</a>
-            <a href="https://github.com/haxurus/Sentinel" target="_blank" rel="noreferrer">GitHub</a>
+            <a href={repo} target="_blank" rel="noreferrer">{c.openSource.badge}</a>
           </nav>
         </div>
       </SiteFooter>

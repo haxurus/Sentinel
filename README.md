@@ -1,130 +1,112 @@
 # Sentinel
 
-Sentinel is a self-hosted logging and auditing system for Discord with an administrative web dashboard. It records events available through the Discord Gateway/REST/Audit Log, keeps a searchable history, and can publish logs to configurable Discord channels.
+[![CI](https://github.com/haxurus/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/haxurus/Sentinel/actions/workflows/ci.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-f5a524)](LICENSE)
 
-> Production repository. No Discord token, database password, encryption key, or application secret must ever be stored on GitHub.
+**Audit and logging for Discord servers, built to be verifiable.**
 
-## Components
+Sentinel watches what happens on a Discord server — bans, kicks, role and permission changes, edited and deleted messages, channels, invites, AutoMod and more — keeps an encrypted, searchable history and delivers each event to the log channel you choose. Everything is configured from a web dashboard.
 
-- `apps/bot` - Discord Gateway, message snapshots, recorder, dispatcher, and internal RPC.
-- `apps/api` - Discord OAuth2, RBAC, configuration, search, export, and retention.
-- `apps/web` - Next.js dashboard.
-- `packages/db` - Prisma/PostgreSQL and migrations.
-- `packages/shared` - shared event catalog.
-- `deploy` - production Compose and edge configuration.
-- `ops` - VPS installation, restricted deployment, and rollback.
-- `security` - firewall rules and additional hardening.
+- **Hosted instance:** [sentinel.haxurus.com](https://sentinel.haxurus.com) (installation currently limited to the project owner)
+- **Self-hosting:** fork this repository and run it with Docker on your own infrastructure
+- **Open source:** the bot, the API, the dashboard and the deployment scripts are all in this repository under the [AGPL-3.0](LICENSE) licence
 
-## Main features
+> No Discord token, database password, encryption key or other secret is ever stored in this repository.
 
-Sentinel includes **75 configurable event types**, including:
+## Contents
 
-- member join, leave, kick, ban, unban, and member updates;
-- message create/edit/delete and bulk delete;
-- message snapshots, attachments, and metadata;
-- reactions and polls;
-- voice state and effects exposed by Discord;
-- roles, channels, permission overwrites, and pins;
-- threads/forums, emoji, stickers, and soundboard;
-- invites, webhooks, and integrations;
-- server updates, scheduled events, AutoMod, and Stage;
-- interactions and application command permissions;
-- Discord Audit Log;
-- optional presence, typing, and raw Gateway events;
-- bot system events.
+- [Features](#features)
+- [How it works](#how-it-works)
+- [Security model](#security-model)
+- [Repository layout](#repository-layout)
+- [Local development](#local-development)
+- [Self-hosting and deployment](#self-hosting-and-deployment)
+- [Discord application setup](#discord-application-setup)
+- [Super console and Premium](#super-console-and-premium)
+- [Discord limitations](#discord-limitations)
+- [Licence and contributing](#licence-and-contributing)
 
-Each logger separates **collection** from **Discord delivery**, so an event can be kept in history without producing messages in log channels.
+## Features
 
-## Security
+**76 event types**, each with its own logger:
 
-The current version applies a zero-trust/least-privilege model:
+| Area | Events |
+|---|---|
+| Members & moderation | join, leave, kick, ban, unban, nickname/role/timeout/boost changes, profile updates |
+| Messages | create, edit (with previous content), delete (with snapshot), bulk delete, polls, reactions |
+| Server structure | channels and permission overwrites, roles (permission diff), threads/forums, pins, invites, webhooks, integrations, server settings |
+| Voice & activity | join, leave, move, mute/deaf/stream/video, Stage, scheduled events, soundboard, voice effects |
+| Content | emoji, stickers |
+| Automation & apps | AutoMod rules and actions, slash commands, application command permissions, Discord Audit Log |
+| System & advanced | bot ready/errors/warnings, optional presence, typing and raw Gateway capture |
 
-- the Discord token is available only to the bot process;
-- the API does not have the bot token;
-- the frontend has no application secrets;
-- runtime secrets are stored in root-only files on the VPS;
-- sensitive application data is encrypted with AES-256-GCM;
-- separate PostgreSQL users are used for API and bot;
-- Redis is private and authenticated;
-- Docker networks are segmented;
-- container filesystems are read-only, non-root where applicable, with `cap_drop: ALL` and CPU/RAM/PID limits;
-- secure cookies, CSRF Origin checks, CSP, HSTS, rate limiting, and input validation;
-- no Docker socket is mounted;
-- API/bot egress is separated and blocked from reaching host/LAN networks by the firewall;
-- GitHub deployment uses a dedicated SSH account that **does not have an administrative shell** and can run only `deploy`, `rollback`, and `status` through a root-owned wrapper.
+**Per-logger control**
 
-Details: [`docs/SECURITY.md`](docs/SECURITY.md).
+- *Collection* (store in history) and *delivery* (post to Discord) are independent: keep a full history without flooding channels.
+- Destination channel, custom title/footer/colour/thumbnail, role mentions, retention override.
+- Exceptions by user, role and channel; optional "ignore bots".
+- The moderator behind an action is resolved from the Discord Audit Log.
+- Noise is filtered at the source: role reordering, link-preview refreshes, unchanged updates and pre-existing threads are not logged.
 
-## Discord capability policy
+**Dashboard**
 
-The bot process applies a runtime allowlist to Discord REST requests. Discord permissions assigned to the bot role **are not considered sufficient authorization** to perform a mutation.
+- Discord sign-in, access levels **Owner / Admin / Moderator / Viewer** verified live against the server, role-based access mapping.
+- Overview with daily volume and delivery issues, logger configuration grouped by area, searchable and paginated history with delivery state per event, JSON export (decrypted, streamed).
+- Panel audit log, per-user data deletion, English and Italian interface, per-server embed language.
 
-Allowed:
-
-- REST reads (`GET`), including channels, messages, members, roles, and Audit Log;
-- receiving Gateway events;
-- sending logs through `POST /channels/:channelId/messages`, including embeds;
-- leaving a server through `DELETE /users/@me/guilds/:guildId`, used by the super console and blacklist enforcement.
-
-Any other Discord `POST`, `PUT`, `PATCH`, or `DELETE` mutation is blocked by the process before reaching Discord. This includes, among other things:
-
-- bans, kicks, timeouts, and member changes;
-- message deletion or bulk delete;
-- channel and role creation/modification/deletion;
-- permission overwrites;
-- server setting changes;
-- webhook creation/modification/deletion;
-- administrative AutoMod operations.
-
-The bot build also runs `policy:check`, which tests allowed/blocked cases and rejects obvious bypasses such as direct Discord REST access, direct HTTP calls to the Discord API, or known high-level mutation methods.
-
-## GitHub CI/CD -> VPS
-
-Production deployment does not run `git pull` as root and does not build code on the VPS.
+## How it works
 
 ```text
-Pull Request
-    |
-    v
-GitHub CI -> Docker build
-
-merge/push main
-    |
-    v
-GitHub Actions
-    |
-    +--> build runtime image
-    +--> build migration image
-    +--> SBOM + provenance
-    +--> push GHCR
-    |
-    v
-SSH with dedicated key and forced-command
-    |
-    v
-/srv/docker/sentinel
-    |
-    +--> pre-deploy DB backup
-    +--> pull images by SHA-256 digest
-    +--> migration
-    +--> start stack
-    +--> health check
-    +--> app rollback if required
+Discord Gateway ──► bot handlers ──► LogEvent (PostgreSQL, encrypted details)
+                         │                    │
+                         └─► message snapshot  ▼
+                                        BullMQ queue (Redis)
+                                              │
+                                              ▼
+                     dispatcher: route lookup ─► filters ─► embed (size-safe) ─► Discord channel
 ```
 
-Application secrets **never pass through GitHub Actions**. GitHub only needs the VPS SSH deployment credentials, stored in the protected `production` environment.
+Events are stored **before** delivery: a Discord outage or a missing permission never loses history. Every event records its delivery outcome (`SENT`, `FILTERED`, `CHANNEL_UNAVAILABLE`, `FAILED`, …), visible in the dashboard. Permanent Discord errors are not retried; transient ones are retried with backoff.
 
-Full guide: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+```text
+Browser ──► Next.js (web) ──/backend/*──► Fastify API ──► PostgreSQL
+                                              │
+                                              └─internal RPC─► bot (live Discord permissions)
+```
+
+More: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+## Security model
+
+A logging bot sees a lot, so Sentinel is designed to limit what a compromised component could do.
+
+- **Read-only Discord capability policy.** The bot process allows only REST reads, posting log messages and leaving a server. Bans, kicks, timeouts, role/channel/message changes, webhooks and AutoMod changes are blocked in-process, regardless of the permissions given to the bot role. A build-time check (`policy:check`) rejects code that tries to bypass it.
+- **Separated secrets.** The Discord token exists only in the bot container; the web container has no application secrets; secrets live in root-only files on the host.
+- **Encryption at rest.** Message content, attachments, embeds and event details are encrypted with AES-256-GCM.
+- **Least-privilege database.** Distinct PostgreSQL roles for API and bot; the bot cannot read sessions, panel audit or super-admin tables. CI verifies these grants on every change.
+- **Isolation.** Segmented Docker networks, private authenticated Redis, read-only non-root containers with `cap_drop: ALL` and resource limits, no Docker socket, egress blocked towards host/LAN.
+- **Web hardening.** HttpOnly/Secure session cookies (HMAC-hashed in the database, rotated on login), OAuth `state`, Origin-based CSRF checks, strict CSP, per-session rate limiting, input validation, guild ownership checks on every channel/role ID.
+- **Restricted deployment.** GitHub Actions reaches the VPS through a dedicated SSH key with a forced command that can only run `deploy`, `rollback` and `status`; images are deployed by immutable SHA-256 digest.
+
+Details: [`docs/SECURITY.md`](docs/SECURITY.md). To report a vulnerability, see [`SECURITY.md`](SECURITY.md).
+
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `apps/bot` | Discord Gateway client, handlers, recorder, dispatcher, capability policy, internal RPC |
+| `apps/api` | Fastify API: OAuth2, sessions, RBAC, configuration, history, export, super console |
+| `apps/web` | Next.js dashboard and public site |
+| `packages/db` | Prisma schema and migrations (PostgreSQL) |
+| `packages/shared` | Event catalog shared by bot, API and web |
+| `deploy` | Production Compose file, edge Nginx config, database role hardening |
+| `ops` | VPS installer, restricted deploy wrapper, SSH forced-command entrypoint |
+| `security` | Host firewall rules |
+| `docs` | Architecture, security, deployment and validation guides |
 
 ## Local development
 
-Requirements:
-
-- Node.js 22+
-- Docker + Docker Compose
-- a Discord test application
-
-The project uses npm workspaces.
+Requirements: Node.js 22+, Docker with Compose, a Discord test application.
 
 ```bash
 npm ci
@@ -133,123 +115,75 @@ npm run build
 npm test
 ```
 
-For the local/hardened Compose setup:
+Full local stack with the same hardening as production:
 
 ```bash
 cp .env.example .env
 mkdir -p secrets
-# Populate the secrets as described in secrets/README.md
+# create the secret files described in secrets/README.md
 docker compose up -d --build
 ```
 
-## Discord Developer Portal
+## Self-hosting and deployment
 
-Privileged Gateway Intents used by the project:
-
-- Server Members Intent
-- Presence Intent, if the presence logger is enabled
-- Message Content Intent, if message content should be retained
-
-Production OAuth2 redirect:
+Production runs as immutable Docker images built by GitHub Actions; nothing is built or `git pull`ed on the server.
 
 ```text
-https://<sentinel-hostname>/backend/auth/discord/callback
+pull request ──► CI: build + typecheck, unit tests, migrations on PostgreSQL,
+                     database privilege checks, Compose/Nginx validation, image build
+
+merge to main ──► same CI ──► build & push images (SBOM + provenance) to GHCR
+              ──► SSH forced command on the VPS:
+                    disk-space guard ─► database backup ─► pull by digest ─► migrate
+                    ─► start ─► health checks ─► automatic rollback on failure
+                    ─► prune images older than the previous release
 ```
 
-Recommended bot permissions, without `Administrator`:
+Step-by-step guide (VPS install, reverse proxy, OAuth, GitHub secrets, rollback): [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). What CI verifies: [`docs/VALIDATION.md`](docs/VALIDATION.md).
 
-- View Channels
-- Send Messages
-- Embed Links
-- Read Message History
-- View Audit Log
-
-Add only the additional permissions strictly required by the features that are actually enabled.
-
-## Private installations during development
-
-The hosted instance can restrict bot installation to an allowlist of Discord User IDs through:
-
-```env
-INVITE_ALLOWED_USER_IDS=123456789012345678
-```
-
-The install button requires Discord identification first. Users who are not in the allowlist are redirected to a page explaining that the project is still under development and linking to the repository/fork.
-
-This website-side protection **does not replace** Discord's bot setting: during development, also set **Public Bot = OFF** in the Developer Portal and **Installation > Install Link = None**, so an unauthorized user cannot bypass the website by manually building an OAuth URL.
-
-## Super console
-
-The hosted instance includes a global super console reserved for the instance owner. Access control is enforced server-side against the Discord session.
-
-Recommended explicit configuration:
-
-```env
-SUPER_ADMIN_USER_ID=123456789012345678
-```
-
-For compatibility with existing private installations, if `SUPER_ADMIN_USER_ID` is empty and `INVITE_ALLOWED_USER_IDS` contains **exactly one** ID, that account is used as the super admin. If the allowlist contains multiple accounts without an explicit super admin, the super console remains disabled.
-
-The super console allows you to:
-
-- view the live list of servers where the bot is connected;
-- make the bot leave a server;
-- blacklist servers, with immediate removal and automatic rejection on future joins;
-- blacklist Discord User IDs from the hosted installation flow;
-- remove entries from the blacklist;
-- review a separate audit log of super-admin actions.
-
-Super-console APIs always require the super-admin session; hiding the frontend link is not used as a security control.
-
-## Premium and high-volume loggers
-
-Servers are Free by default. Premium status can be changed only from the global super console.
-
-Catalog events marked as `noisy` / **HIGH VOLUME** can be collected or sent to Discord only when `GuildSettings.premiumEnabled = true`.
-
-Enforcement is applied at multiple layers:
-
-- the dashboard disables high-volume logger controls on Free servers;
-- the API rejects with `PREMIUM_REQUIRED` any attempt to enable collection or delivery of a `noisy` event on a Free server;
-- the recorder does not persist `noisy` events for Free servers;
-- the dispatcher does not send any `noisy` events that remain queued after Premium is disabled;
-- disabling Premium from the super console immediately turns off all `noisy` loggers, as well as Presence, Typing, and raw Gateway logging.
-
-Re-enabling Premium **does not automatically re-enable** high-volume loggers: they must be enabled manually from the server dashboard.
-
-## Database and retention
-
-- PostgreSQL stores configuration, events, snapshots, and dashboard audit data.
-- Redis/BullMQ manages the Discord delivery queue.
-- Production migrations use `prisma migrate deploy`.
-- Default retention: 30 days, configurable.
-- Dashboard sessions expire after 8 hours.
-
-Migrations must be **backward-compatible** with at least one previous release to keep application rollback safe. Destructive removals must be performed in a later release.
-
-## Discord limitations
-
-Sentinel can record only what Discord makes available to the bot through Gateway, REST, and Audit Log with the granted intents and permissions. It cannot read private DMs between users, know what a person is viewing in the client, or automatically record voice conversation audio through normal Gateway events.
-
-## Operations
-
-Production status from the VPS:
+Useful commands on the VPS:
 
 ```bash
 sudo /usr/local/sbin/sentinel-deploy status
-```
-
-Manual rollback:
-
-```bash
 sudo /usr/local/sbin/sentinel-deploy rollback
 ```
 
-Alternatively, the GitHub Actions **Rollback production** workflow is available.
+Rollback is also available as the **Rollback production** GitHub Actions workflow. Migrations must stay backward-compatible with the previous release (expand/contract) so that rollback remains safe.
 
-## Documentation
+## Discord application setup
 
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
-- [`docs/SECURITY.md`](docs/SECURITY.md)
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- [`docs/VALIDATION.md`](docs/VALIDATION.md)
+Privileged Gateway intents — enable all three: the bot requests them at login and Discord rejects the connection if any is disabled, even when the related loggers are off.
+
+- **Server Members Intent**
+- **Message Content Intent**
+- **Presence Intent**
+
+Bot permissions (no `Administrator`): View Channels, Send Messages, Embed Links, Read Message History, View Audit Log.
+
+OAuth2 redirect URL:
+
+```text
+https://<your-hostname>/backend/auth/discord/callback
+```
+
+To restrict who can install a hosted instance, set `INVITE_ALLOWED_USER_IDS` and also disable **Public Bot** and the default install link in the Developer Portal: the website check alone cannot stop a manually built OAuth URL.
+
+## Super console and Premium
+
+The instance owner (`SUPER_ADMIN_USER_ID`) has a global console to see connected servers, make the bot leave a server, blacklist servers or users, toggle Premium and review an audit log of these actions. Access is enforced by the API, not by hiding links.
+
+High-volume loggers (message creation, reactions, presence, typing, raw Gateway, …) are available only on Premium servers. The restriction is enforced by the dashboard, the API, the recorder and the dispatcher; disabling Premium turns them off immediately and re-enabling it does not turn them back on automatically.
+
+## Discord limitations
+
+Sentinel records only what Discord exposes to the bot through the Gateway, REST and Audit Log with the granted intents and permissions. It cannot read private DMs between users, see what someone is viewing, or record voice audio. Attributing an action to a moderator relies on the Audit Log and may be missing when Discord does not provide an entry. Attachments are referenced by their Discord URL, not downloaded.
+
+## Licence and contributing
+
+Sentinel is free software released under the **GNU Affero General Public License v3.0 only** — see [`LICENSE`](LICENSE).
+
+You may use, study, modify and self-host it. If you run a modified version as a service that other people use over a network, the AGPL requires you to offer them the corresponding source code of your version.
+
+Issues and pull requests are welcome. Every pull request runs the full CI; changes to `deploy/`, `ops/`, `security/`, `.github/workflows/` and database migrations receive a manual review.
+
+Copyright © 2026 Haxurus.

@@ -187,16 +187,36 @@ If the package must remain private, log in to GHCR once on the VPS with a **read
 
 After completing the previous steps, a push/merge to `main` starts:
 
-1. runtime build;
-2. migration image build;
+1. the full CI pipeline (`verify`): build and typecheck, unit tests, migrations and database privilege checks on a fresh PostgreSQL, Compose/Nginx validation, image build and smoke test — nothing below runs if it fails;
+2. runtime and migration image builds;
 3. BuildKit SBOM and provenance;
 4. push to GHCR;
-5. deployment of immutable digests;
-6. pre-deploy DB backup if a database already exists;
-7. migration;
-8. health checks for API, bot, web, and edge.
+5. deployment of immutable digests through the restricted SSH command, which:
+   - refuses to start if less than 3 GiB are free on `/var/lib/docker` (it first tries to prune old Sentinel images below 5 GiB);
+   - takes a pre-deploy database backup if a database already exists;
+   - pulls the images, runs migrations and database role hardening, starts the stack;
+   - waits for API, bot, web and edge health checks;
+   - removes Sentinel images that belong neither to the current nor to the previous release.
 
 If services do not become healthy within the expected window, the script attempts to restore the previous application image.
+
+> Pruning matters: every release pulls 1-2 GB of images. On 2026-10-06 images that were never removed filled the disk and stopped PostgreSQL.
+
+## Updating the VPS infrastructure files
+
+Files under `deploy/`, `ops/` and `security/` are installed by hand and are **not** updated by the application deploy. After a reviewed change, either re-run the installer from an up-to-date checkout:
+
+```bash
+sudo ./ops/install-vps.sh /path/to/sentinel_deploy.pub
+```
+
+or update a single file pinned to a commit and verify it before installing, for example the deploy wrapper:
+
+```bash
+curl -fsSL -o /tmp/sentinel-deploy https://raw.githubusercontent.com/haxurus/Sentinel/<commit-sha>/ops/sentinel-deploy
+sha256sum /tmp/sentinel-deploy   # compare with: git show <commit-sha>:ops/sentinel-deploy | sha256sum
+sudo install -o root -g root -m 755 /tmp/sentinel-deploy /usr/local/sbin/sentinel-deploy
+```
 
 ## 9. Rollback
 
@@ -234,7 +254,7 @@ with root-only permissions and a local retention of 14 days.
 Protect `main` in GitHub settings:
 
 - require Pull Requests;
-- require the `CI / validate` check;
+- require the `CI / Typecheck, tests and migrations` and `CI / Compose and container images` checks;
 - block force-pushes and branch deletion;
 - require review conversations to be resolved;
 - keep CODEOWNERS/review for sensitive changes.
