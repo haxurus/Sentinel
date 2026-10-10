@@ -10,12 +10,13 @@ import {
   type PartialMessage
 } from 'discord.js';
 import { prisma } from '@sentinel/db';
-import { ensureGuild, getGuildSettings, isGuildInstallBlocked, isUserInstallBlocked, snapshotMessage } from './store.js';
+import { ensureGuild, getGuildSettings, installApproval, isGuildInstallBlocked, isUserInstallBlocked, snapshotMessage } from './store.js';
 import { recordEvent, shouldCapture } from './recorder.js';
 import { findRecentAuditEntry, jsonSafe, redactSecrets } from './utils.js';
 import { decryptText, redactText, unprotectJson } from './security.js';
 import { leaveGuild } from './discord-actions.js';
 import { logger } from './logger.js';
+import type { StatusNotifier } from './status.js';
 import {
   addChangedPair,
   guildChanges,
@@ -69,7 +70,7 @@ const commandPath = (interaction: any) => {
   return '/' + [interaction.commandName, group, subcommand].filter(Boolean).join(' ');
 };
 
-export function registerHandlers(client: Client) {
+export function registerHandlers(client: Client, status: StatusNotifier) {
   // Every handler is async: without this wrapper a single failure (database
   // hiccup, missing partial) becomes an anonymous unhandled rejection.
   const report = (event: string, error: unknown) => {
@@ -82,21 +83,63 @@ export function registerHandlers(client: Client) {
     });
   };
 
+  // Servers the bot just left on purpose: their GuildDelete is not news.
+  const intentionalLeaves = new Set<string>();
+  const leaveRejected = async (guild: Guild, reason: 'blocked-guild' | 'blocked-installer' | 'not-approved', installerId: string | null) => {
+    intentionalLeaves.add(guild.id);
+    setTimeout(() => intentionalLeaves.delete(guild.id), 120_000).unref();
+    await leaveGuild(guild, reason).catch(() => null);
+    const why = {
+      'blocked-guild': 'il server è in blacklist',
+      'blocked-installer': 'chi ha aggiunto il bot è in blacklist',
+      'not-approved': 'server non approvato per la beta'
+    }[reason];
+    status.notify({
+      level: 'warn',
+      title: 'Installazione rifiutata',
+      description: `Sentinel è uscito da **${guild.name}**: ${why}.`,
+      fields: [
+        { name: 'Server', value: `${guild.name}\n\`${guild.id}\`` },
+        { name: 'Membri', value: String(guild.memberCount) },
+        { name: 'Aggiunto da', value: installerId ? `<@${installerId}>\n\`${installerId}\`` : 'sconosciuto' }
+      ]
+    });
+  };
+
   on(Events.GuildCreate, async (guild) => {
     if (await isGuildInstallBlocked(guild.id)) {
-      await leaveGuild(guild, 'blocked-guild').catch(() => null);
+      await leaveRejected(guild, 'blocked-guild', null);
       return;
     }
 
     const installer = client.user
       ? await findRecentAuditEntry(guild, AuditLogEvent.BotAdd, client.user.id, 20_000)
       : null;
-    if (installer?.executorId && await isUserInstallBlocked(installer.executorId)) {
-      await leaveGuild(guild, 'blocked-installer').catch(() => null);
+    const installerId = installer?.executorId ?? null;
+    if (installerId && await isUserInstallBlocked(installerId)) {
+      await leaveRejected(guild, 'blocked-installer', installerId);
+      return;
+    }
+
+    // Fail closed: without an approval (or a verifiable installer that may
+    // install anywhere) the bot does not stay, even if Public Bot is on.
+    const approval = await installApproval(guild.id, installerId);
+    if (!approval) {
+      await leaveRejected(guild, 'not-approved', installerId);
       return;
     }
 
     await ensureGuild(guild);
+    status.notify({
+      level: 'ok',
+      title: 'Sentinel aggiunto a un server',
+      fields: [
+        { name: 'Server', value: `${guild.name}\n\`${guild.id}\`` },
+        { name: 'Membri', value: String(guild.memberCount) },
+        { name: 'Aggiunto da', value: installerId ? `<@${installerId}>\n\`${installerId}\`` : 'sconosciuto' },
+        { name: 'Autorizzazione', value: approval }
+      ]
+    });
   });
 
   on(Events.GuildMemberAdd, async (member) => {
@@ -705,6 +748,13 @@ export function registerHandlers(client: Client) {
   });
 
   on(Events.GuildDelete, async (guild) => {
+    if (!intentionalLeaves.delete(guild.id)) {
+      status.notify({
+        level: 'info',
+        title: 'Sentinel rimosso da un server',
+        fields: [{ name: 'Server', value: `${guild.name ?? 'sconosciuto'}\n\`${guild.id}\`` }]
+      });
+    }
     if (await isGuildInstallBlocked(guild.id)) return;
     const exists = await prisma.guildSettings.findUnique({ where: { guildId: guild.id }, select: { guildId: true } });
     if (!exists) return;

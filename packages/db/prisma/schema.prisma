@@ -22,7 +22,16 @@ model GuildSettings {
   rawGatewayEnabled       Boolean  @default(false)
   presenceLoggingEnabled  Boolean  @default(false)
   typingLoggingEnabled    Boolean  @default(false)
+  // Legacy mirror of "any paid plan", kept in sync for rollback safety.
   premiumEnabled          Boolean  @default(false)
+  planTier                String    @default("FREE")
+  planBilling             String?
+  planExpiresAt           DateTime?
+  planCouponCode          String?
+  planNote                String?
+  planUpdatedAt           DateTime?
+  brandNickname           String?
+  brandBannerSet          Boolean   @default(false)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
@@ -182,4 +191,74 @@ model SuperAdminAudit {
 
   @@index([createdAt(sort: Desc)])
   @@index([subjectType, subjectId, createdAt(sort: Desc)])
+}
+
+// Singleton (id = 1): instance-wide settings managed from the super console.
+model InstanceConfig {
+  id             Int      @id @default(1)
+  waitlistOpen   Boolean  @default(false)
+  contactEmail   String?
+  contactDiscord String?
+  contactUrl     String?
+  updatedAt      DateTime @updatedAt
+}
+
+// Singleton (id = 1): where the bot posts its own status notifications.
+model StatusChannel {
+  id              Int      @id @default(1)
+  guildId         String
+  channelId       String
+  updatedByUserId String
+  updatedAt       DateTime @updatedAt
+}
+
+model WaitlistEntry {
+  id               String    @id @default(cuid())
+  userId           String
+  username         String
+  guildId          String
+  guildName        String?
+  memberCount      Int
+  note             String?
+  status           String    @default("PENDING")
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([userId, guildId])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([guildId])
+}
+
+// Who may install the hosted bot: USER grants may add it anywhere, GUILD
+// grants allow one specific server (an approved waitlist request).
+model InstallGrant {
+  id              String   @id @default(cuid())
+  kind            String
+  subjectId       String
+  source          String
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  @@unique([kind, subjectId])
+}
+
+model Coupon {
+  id              String    @id @default(cuid())
+  code            String    @unique
+  description     String?
+  percentOff      Int?
+  amountOffCents  Int?
+  tiers           String[]  @default([])
+  billing         String    @default("ANY")
+  maxRedemptions  Int?
+  redemptions     Int       @default(0)
+  validFrom       DateTime?
+  validUntil      DateTime?
+  active          Boolean   @default(true)
+  public          Boolean   @default(false)
+  createdByUserId String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }

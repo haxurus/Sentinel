@@ -8,7 +8,8 @@ const allowed: Array<[string, string]> = [
   ['GET', '/guilds/123456789012345678/audit-logs'],
   ['GET', '/guilds/123456789012345678/members/234567890123456789'],
   ['POST', '/channels/123456789012345678/messages'],
-  ['DELETE', '/users/@me/guilds/123456789012345678']
+  ['DELETE', '/users/@me/guilds/123456789012345678'],
+  ['PATCH', '/guilds/123456789012345678/members/@me']
 ];
 
 const blocked: Array<[string, string]> = [
@@ -42,6 +43,9 @@ const blocked: Array<[string, string]> = [
   ['PATCH', '/channels/123456789012345678/messages/234567890123456789'],
   ['POST', '/interactions/123456789012345678/token/callback'],
   ['PATCH', '/users/@me'],
+  ['PATCH', '/guilds/123456789012345678/members/@me/nick'],
+  ['PUT', '/guilds/123456789012345678/members/@me'],
+  ['DELETE', '/guilds/123456789012345678/members/@me'],
   ['DELETE', '/guilds/123456789012345678'],
   ['POST', '/api/v10/channels/123456789012345678/messages/bulk-delete'],
   ['', '/channels/123456789012345678/messages']
@@ -49,6 +53,18 @@ const blocked: Array<[string, string]> = [
 
 for (const [method, route] of allowed) {
   evaluateDiscordCapability(method, route);
+}
+evaluateDiscordCapability('PATCH', '/guilds/123456789012345678/members/@me', { nick: 'Sentinel', banner: null });
+
+// The own-profile route must never carry moderation fields.
+for (const body of [{ roles: [] }, { mute: true }, { deaf: true }, { channel_id: null }, { communication_disabled_until: '2030-01-01' }, { nick: 'x', roles: [] }, 'nick=x', null]) {
+  let denied = false;
+  try {
+    evaluateDiscordCapability('PATCH', '/guilds/123456789012345678/members/@me', body);
+  } catch {
+    denied = true;
+  }
+  if (!denied) throw new Error(`Capability policy unexpectedly allowed own-profile body ${JSON.stringify(body)}`);
 }
 
 for (const [method, route] of blocked) {

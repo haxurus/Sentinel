@@ -3,7 +3,7 @@ import type { Client } from 'discord.js';
 export type DiscordCapabilityDecision = {
   method: string;
   route: string;
-  capability: 'read' | 'send-log-message' | 'leave-guild';
+  capability: 'read' | 'send-log-message' | 'leave-guild' | 'edit-own-profile';
 };
 
 export class DiscordCapabilityViolation extends Error {
@@ -22,6 +22,11 @@ export class DiscordCapabilityViolation extends Error {
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const CHANNEL_MESSAGE_ROUTE = /^\/channels\/\d{17,20}\/messages$/;
 const LEAVE_GUILD_ROUTE = /^\/users\/@me\/guilds\/\d{17,20}$/;
+// The bot's own member profile in one server (nickname and banner for the
+// Brand plan). Only these cosmetic fields may be sent: roles, mute, deaf,
+// channel moves and timeouts live on /members/:userId and stay blocked.
+const OWN_MEMBER_ROUTE = /^\/guilds\/\d{17,20}\/members\/@me$/;
+const OWN_PROFILE_FIELDS = new Set(['nick', 'banner']);
 
 function normalizeMethod(value: unknown) {
   return String(value ?? '').trim().toUpperCase();
@@ -44,7 +49,13 @@ export function normalizeDiscordRoute(value: unknown) {
   return route;
 }
 
-export function evaluateDiscordCapability(methodValue: unknown, routeValue: unknown): DiscordCapabilityDecision {
+function ownProfileBodyAllowed(body: unknown) {
+  if (body === undefined) return true;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  return Object.keys(body).every((key) => OWN_PROFILE_FIELDS.has(key));
+}
+
+export function evaluateDiscordCapability(methodValue: unknown, routeValue: unknown, body?: unknown): DiscordCapabilityDecision {
   const method = normalizeMethod(methodValue);
   const route = normalizeDiscordRoute(routeValue);
 
@@ -56,6 +67,10 @@ export function evaluateDiscordCapability(methodValue: unknown, routeValue: unkn
 
   if (method === 'DELETE' && LEAVE_GUILD_ROUTE.test(route)) {
     return { method, route, capability: 'leave-guild' };
+  }
+
+  if (method === 'PATCH' && OWN_MEMBER_ROUTE.test(route) && ownProfileBodyAllowed(body)) {
+    return { method, route, capability: 'edit-own-profile' };
   }
 
   throw new DiscordCapabilityViolation(method || '<unknown>', route);
@@ -70,9 +85,9 @@ export function installDiscordCapabilityPolicy(client: Client, onBlocked?: Block
   if (rest[policyMarker]) return;
   Object.defineProperty(rest, policyMarker, { value: true, configurable: false, enumerable: false });
 
-  const check = (method: unknown, route: unknown) => {
+  const check = (method: unknown, route: unknown, body?: unknown) => {
     try {
-      return evaluateDiscordCapability(method, route);
+      return evaluateDiscordCapability(method, route, body);
     } catch (error) {
       const violation = error instanceof DiscordCapabilityViolation
         ? error
@@ -89,7 +104,7 @@ export function installDiscordCapabilityPolicy(client: Client, onBlocked?: Block
     if (typeof rest[methodName] !== 'function') continue;
     const original = rest[methodName].bind(rest);
     rest[methodName] = (options: any) => {
-      check(options?.method ?? 'GET', options?.fullRoute ?? options?.route ?? '');
+      check(options?.method ?? 'GET', options?.fullRoute ?? options?.route ?? '', options?.body);
       return original(options);
     };
   }
@@ -100,8 +115,8 @@ export function installDiscordCapabilityPolicy(client: Client, onBlocked?: Block
   for (const methodName of ['post', 'put', 'patch', 'delete'] as const) {
     if (typeof rest[methodName] !== 'function') continue;
     const original = rest[methodName].bind(rest);
-    rest[methodName] = (route: unknown, options?: unknown) => {
-      check(methodName.toUpperCase(), route);
+    rest[methodName] = (route: unknown, options?: any) => {
+      check(methodName.toUpperCase(), route, options?.body);
       return original(route, options);
     };
   }

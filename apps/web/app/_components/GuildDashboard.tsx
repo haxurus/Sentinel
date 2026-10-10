@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from './Brand';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { localizeCategory, localizeEvent, type Locale } from '../i18n';
+import { TIER_ORDER, formatLimit, formatNumber, limitLabels, planErrorMessage, tierLabel, tierShort, type Plan, type PlanTier } from './plans';
 
 type Settings = {
   guildId: string;
@@ -57,6 +58,20 @@ type PanelAudit = { id: string; username: string; userId: string; action: string
 type AccessLevel = 'VIEWER' | 'MODERATOR' | 'ADMIN' | 'OWNER';
 type AccessBinding = { id: string; discordRoleId: string; accessLevel: 'VIEWER' | 'MODERATOR' | 'ADMIN' };
 type LoggerMacro = { key: string; label: string; description: string; categories: string[] };
+type PlanInfo = {
+  tier: PlanTier;
+  effectiveTier: PlanTier;
+  expiresAt: string | null;
+  billing: string | null;
+  plan: Plan;
+  usage: { eventsToday: number; logChannels: number; roleBindings: number };
+  branding: { nickname: string | null; bannerSet: boolean };
+  eventTiers: { TIER1: string[]; TIER2: string[] };
+};
+
+const tierIndex = (tier: PlanTier) => TIER_ORDER.indexOf(tier);
+const requiredTier = (plan: PlanInfo | null, eventKey: string): PlanTier =>
+  plan?.eventTiers.TIER2.includes(eventKey) ? 'TIER2' : plan?.eventTiers.TIER1.includes(eventKey) ? 'TIER1' : 'FREE';
 
 const textChannelTypes = new Set([0, 2, 5]);
 
@@ -94,13 +109,13 @@ const LOGGER_MACROS: LoggerMacro[] = [
   {
     key: 'system',
     label: 'Sistema & avanzato',
-    description: 'Stato del bot, warning, errori e diagnostica Gateway avanzata.',
+    description: 'Disponibilità del server e diagnostica Gateway avanzata.',
     categories: ['Sistema', 'Avanzato']
   }
 ];
 
 class ApiError extends Error {
-  constructor(readonly code: string, readonly status: number) {
+  constructor(readonly code: string, readonly status: number, readonly body: Record<string, unknown> = {}) {
     super(code);
   }
 }
@@ -108,16 +123,20 @@ class ApiError extends Error {
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { error?: unknown };
-    throw new ApiError(typeof body.error === 'string' ? body.error : `HTTP_${response.status}`, response.status);
+    const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+    throw new ApiError(typeof body.error === 'string' ? body.error : `HTTP_${response.status}`, response.status, body);
   }
   return response.json() as Promise<T>;
 }
 
 const errorMessage = (error: unknown, locale: Locale) => {
   const code = error instanceof ApiError ? error.code : 'NETWORK_ERROR';
+  const plan = error instanceof ApiError ? planErrorMessage(error.body as { error?: string; limit?: string; max?: number; required?: string }, locale) : null;
+  if (plan) return plan;
   const it: Record<string, string> = {
-    PREMIUM_REQUIRED: 'Questa funzione richiede Premium.',
+    PREMIUM_REQUIRED: 'Questa funzione richiede un piano superiore.',
+    BRANDING_MISSING_PERMISSION: 'Il bot non ha il permesso “Cambia nickname” in questo server.',
+    BRANDING_FAILED: 'Discord ha rifiutato la modifica del profilo del bot.',
     UNKNOWN_GUILD_REFERENCE: 'Canale o ruolo non trovato in questo server.',
     INVALID_BODY: 'Valore non valido.',
     FORBIDDEN: 'Permessi insufficienti.',
@@ -126,7 +145,9 @@ const errorMessage = (error: unknown, locale: Locale) => {
     DISCORD_RESOURCES_FAILED: 'Impossibile verificare i dati su Discord.'
   };
   const en: Record<string, string> = {
-    PREMIUM_REQUIRED: 'This feature requires Premium.',
+    PREMIUM_REQUIRED: 'This feature requires a higher plan.',
+    BRANDING_MISSING_PERMISSION: 'The bot lacks the “Change Nickname” permission in this server.',
+    BRANDING_FAILED: 'Discord rejected the bot profile change.',
     UNKNOWN_GUILD_REFERENCE: 'Channel or role not found in this server.',
     INVALID_BODY: 'Invalid value.',
     FORBIDDEN: 'Insufficient permissions.',
@@ -163,13 +184,14 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
       server: { label: 'Server & structure', description: 'Channels, roles, invites, webhooks, integrations and server settings.' },
       voice: { label: 'Voice & activity', description: 'Voice channels, Stage, scheduled events and soundboard.' },
       content: { label: 'Content & customization', description: 'Emoji, stickers and other custom server elements.' },
-      system: { label: 'System & advanced', description: 'Bot status, warnings, errors and advanced Gateway diagnostics.' },
+      system: { label: 'System & advanced', description: 'Server availability and advanced Gateway diagnostics.' },
       other: { label: 'Other loggers', description: 'Events not yet assigned to a macro category.' }
     };
     return english[macro.key] ?? { label: macro.label, description: macro.description };
   };
   const [tab, setTab] = useState<'overview' | 'events' | 'history' | 'admin'>('overview');
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [plan, setPlan] = useState<PlanInfo | null>(null);
   const [routes, setRoutes] = useState<RouteRow[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -196,7 +218,10 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
     statusTimer.current = window.setTimeout(() => setStatus(''), duration);
   }, []);
 
+  const loadPlan = useCallback(() => api<PlanInfo>(`/backend/api/guilds/${guildId}/plan`).then(setPlan).catch(() => null), [guildId]);
+
   const load = async () => {
+    void loadPlan();
     const [s, r, resources, st, ac] = await Promise.all([
       api<Settings>(`/backend/api/guilds/${guildId}/settings`),
       api<RouteRow[]>(`/backend/api/guilds/${guildId}/routes`),
@@ -273,6 +298,9 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
   }, [routes, filter, locale]);
   const textChannels = channels.filter((c) => textChannelTypes.has(c.type));
   const canAdmin = access === 'ADMIN' || access === 'OWNER';
+  const tier: PlanTier = plan?.effectiveTier ?? 'FREE';
+  const maxRetention = plan?.plan.limits.retentionDays ?? 3650;
+  const advancedAllowed = tierIndex(tier) >= tierIndex('TIER2');
   const canModerate = canAdmin || access === 'MODERATOR';
   const formatDate = (value: string) => {
     try {
@@ -291,6 +319,7 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
       // edited at the same time keep their local value.
       setSettings((current) => current ? { ...current, ...Object.fromEntries(Object.keys(patch).map((key) => [key, saved[key as keyof Settings]])) } : saved);
       if ('defaultRetentionDays' in patch) setRetentionDraft(String(saved.defaultRetentionDays));
+      if ('defaultLogChannelId' in patch) void loadPlan();
       flash(L('Impostazioni salvate.', 'Settings saved.'));
     } catch (error) {
       setSettings((current) => current ? { ...current, ...Object.fromEntries(Object.keys(patch).map((key) => [key, previous[key as keyof Settings]])) } : current);
@@ -313,6 +342,7 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
     try {
       const saved = await api<Route>(`/backend/api/guilds/${guildId}/routes/${encodeURIComponent(eventKey)}`, { method: 'PUT', body: JSON.stringify(patch) });
       setRoutes((current) => current.map((row) => row.event.key === eventKey ? { ...row, route: saved } : row));
+      if ('destinationChannelId' in patch) void loadPlan();
       flash(L('Logger aggiornato.', 'Logger updated.'), 1400);
     } catch (error) {
       setRoutes((current) => current.map((row) => row.event.key === eventKey ? { ...row, route: previous } : row));
@@ -338,9 +368,9 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
   const commitRetention = () => {
     if (!settings) return;
     const value = Math.round(Number(retentionDraft));
-    if (!Number.isFinite(value) || value < 1 || value > 3650) {
+    if (!Number.isFinite(value) || value < 1 || value > maxRetention) {
       setRetentionDraft(String(settings.defaultRetentionDays));
-      flash(L('La retention deve essere tra 1 e 3650 giorni.', 'Retention must be between 1 and 3650 days.'), 3000);
+      flash(L(`La retention deve essere tra 1 e ${maxRetention} giorni con il tuo piano.`, `Retention must be between 1 and ${maxRetention} days on your plan.`), 3000);
       return;
     }
     if (value !== settings.defaultRetentionDays) saveSettings({ defaultRetentionDays: value });
@@ -364,7 +394,7 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
           {settings.iconUrl ? <img src={settings.iconUrl} alt="" /> : <div className="guild-placeholder">{settings.guildName.slice(0, 1)}</div>}
           <div>
             <strong title={settings.guildName}>{settings.guildName}</strong>
-            <span className={`tag ${settings.premiumEnabled ? 'tag-premium' : ''}`}>{settings.premiumEnabled ? 'Premium' : 'Free'}</span>
+            <span className={`tag ${tier !== 'FREE' ? 'tag-premium' : ''}`}>{tierShort(tier)}</span>
           </div>
         </div>
         <nav className="sidebar-nav" aria-label={L('Sezioni', 'Sections')}>
@@ -403,6 +433,8 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
             <div className={`stat-card ${stats?.deliveryIssues ? 'stat-alert' : ''}`}><span>{L('Problemi invio 24h', 'Delivery issues 24h')}</span><strong>{stats?.deliveryIssues ?? 0}</strong></div>
           </div>
 
+          {plan && <PlanPanel plan={plan} locale={locale} />}
+
           <div className="two-col">
             <section className="panel">
               <div className="panel-title"><div><p className="eyebrow">{L('DESTINAZIONE', 'DESTINATION')}</p><h2>{L('Impostazioni generali', 'General settings')}</h2></div></div>
@@ -416,7 +448,7 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
                   ...textChannels.map((channel) => ({ value: channel.id, label: `#${channel.name}` }))
                 ]}
               /></label>
-              <label>{L('Retention dati', 'Data retention')}<input disabled={!canAdmin} type="number" min="1" max="3650" value={retentionDraft} onChange={(e) => setRetentionDraft(e.target.value)} onBlur={commitRetention} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
+              <label>{L('Retention dati', 'Data retention')} <small className="field-help">{L(`max ${maxRetention} giorni`, `max ${maxRetention} days`)}</small><input disabled={!canAdmin} type="number" min="1" max={maxRetention} value={retentionDraft} onChange={(e) => setRetentionDraft(e.target.value)} onBlur={commitRetention} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></label>
               <div className="inline-fields"><label>{L('Fuso orario', 'Timezone')}<input disabled={!canAdmin} value={settings.timezone} placeholder="Europe/Rome" onChange={(e) => setSettings({ ...settings, timezone: e.target.value })} onBlur={() => saveSettings({ timezone: settings.timezone.trim() })} /></label><label>{L('Lingua embed', 'Embed language')}<select disabled={!canAdmin} value={settings.locale === 'it' ? 'it' : 'en'} onChange={(e) => saveSettings({ locale: e.target.value as 'en' | 'it' })}><option value="en">English</option><option value="it">Italiano</option></select></label></div>
               <div className="inline-fields"><label>{L('Colore embed', 'Embed color')}<input disabled={!canAdmin} type="color" value={settings.embedColor} onChange={(e) => saveSettings({ embedColor: e.target.value }, { debounceKey: 'embedColor' })} /></label><label>Footer<input disabled={!canAdmin} value={settings.embedFooter} onChange={(e) => setSettings({ ...settings, embedFooter: e.target.value })} onBlur={() => saveSettings({ embedFooter: settings.embedFooter })} /></label></div>
             </section>
@@ -425,9 +457,9 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
               <div className="panel-title"><div><p className="eyebrow">{L('DATI', 'DATA')}</p><h2>{L('Acquisizione', 'Collection')}</h2></div></div>
               <Toggle disabled={!canAdmin} label={L('Snapshot messaggi', 'Message snapshots')} description={L('Conserva una copia per ricostruire i messaggi eliminati.', 'Keep a copy to reconstruct deleted messages.')} checked={settings.messageSnapshotEnabled} onChange={(value) => saveSettings({ messageSnapshotEnabled: value })} />
               <Toggle disabled={!canAdmin} label={L('Contenuto messaggi', 'Message content')} description={L('Salva testo ed embed negli snapshot.', 'Store text and embeds in snapshots.')} checked={settings.storeMessageContent} onChange={(value) => saveSettings({ storeMessageContent: value })} />
-              <Toggle disabled={!canAdmin || !settings.premiumEnabled} label={L('Presenze · Premium', 'Presence · Premium')} description={settings.premiumEnabled ? L('Status e attività. Può generare molti eventi.', 'Status and activity. This can generate many events.') : L('Disponibile solo sui server Premium.', 'Available only on Premium servers.')} checked={settings.presenceLoggingEnabled} onChange={(value) => saveSettings({ presenceLoggingEnabled: value })} />
-              <Toggle disabled={!canAdmin || !settings.premiumEnabled} label="Typing · Premium" description={settings.premiumEnabled ? L('Registra quando un utente inizia a scrivere.', 'Record when a user starts typing.') : L('Disponibile solo sui server Premium.', 'Available only on Premium servers.')} checked={settings.typingLoggingEnabled} onChange={(value) => saveSettings({ typingLoggingEnabled: value })} />
-              <Toggle disabled={!canAdmin || !settings.premiumEnabled} label="Gateway raw · Premium" description={settings.premiumEnabled ? L('Debug avanzato: salva eventi Gateway grezzi.', 'Advanced debug: store raw Gateway events.') : L('Disponibile solo sui server Premium.', 'Available only on Premium servers.')} checked={settings.rawGatewayEnabled} onChange={(value) => saveSettings({ rawGatewayEnabled: value })} danger />
+              <Toggle disabled={!canAdmin || !advancedAllowed} label={L('Presenze · Pro', 'Presence · Pro')} description={advancedAllowed ? L('Status e attività. Può generare molti eventi.', 'Status and activity. This can generate many events.') : L('Richiede il Livello 2 · Pro.', 'Requires Level 2 · Pro.')} checked={settings.presenceLoggingEnabled} onChange={(value) => saveSettings({ presenceLoggingEnabled: value })} />
+              <Toggle disabled={!canAdmin || !advancedAllowed} label="Typing · Pro" description={advancedAllowed ? L('Registra quando un utente inizia a scrivere.', 'Record when a user starts typing.') : L('Richiede il Livello 2 · Pro.', 'Requires Level 2 · Pro.')} checked={settings.typingLoggingEnabled} onChange={(value) => saveSettings({ typingLoggingEnabled: value })} />
+              <Toggle disabled={!canAdmin || !advancedAllowed} label="Gateway raw · Pro" description={advancedAllowed ? L('Debug avanzato: salva eventi Gateway grezzi.', 'Advanced debug: store raw Gateway events.') : L('Richiede il Livello 2 · Pro.', 'Requires Level 2 · Pro.')} checked={settings.rawGatewayEnabled} onChange={(value) => saveSettings({ rawGatewayEnabled: value })} danger />
             </section>
           </div>
 
@@ -438,7 +470,7 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
         </>}
 
         {tab === 'events' && <>
-          {!settings.premiumEnabled && <div className="notice premium-notice">{L('I logger contrassegnati ALTO VOLUME sono disponibili solo sui server Premium.', 'HIGH VOLUME loggers are available only on Premium servers.')}</div>}
+          {tier !== 'TIER2' && tier !== 'TIER3' && <div className="notice premium-notice">{L('Alcuni logger ad alto volume richiedono il Livello 1 · Plus o il Livello 2 · Pro.', 'Some high-volume loggers require Level 1 · Plus or Level 2 · Pro.')} <a className="inline-link" href={`/${locale}/pricing`}>{L('Vedi i piani', 'See plans')}</a></div>}
           <div className="toolbar logger-toolbar">
             <input placeholder={L('Cerca logger, evento o categoria…', 'Search logger, event or category…')} value={filter} onChange={(e) => setFilter(e.target.value)} />
             <button disabled={!canAdmin} onClick={() => bulk(true, false)}>{L('Invia standard', 'Enable standard')}</button>
@@ -481,7 +513,7 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
                         <span>{categoryRows.length}</span>
                       </div>
                       <div className="route-list">
-                        {categoryRows.map(({ event, route }) => <RouteEditor key={event.key} event={event} route={route} channels={textChannels} roles={roles} onSave={(patch) => void saveRoute(event.key, patch)} onSaveDebounced={(patch, key) => saveRouteDebounced(event.key, patch, key)} readOnly={!canAdmin} premiumEnabled={settings.premiumEnabled} locale={locale} />)}
+                        {categoryRows.map(({ event, route }) => <RouteEditor key={event.key} event={event} route={route} channels={textChannels} roles={roles} onSave={(patch) => void saveRoute(event.key, patch)} onSaveDebounced={(patch, key) => saveRouteDebounced(event.key, patch, key)} readOnly={!canAdmin} required={requiredTier(plan, event.key)} tier={tier} locale={locale} />)}
                       </div>
                     </section>;
                   })}
@@ -499,7 +531,8 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
         </>}
 
         {tab === 'admin' && canAdmin && <>
-          <AccessBindings guildId={guildId} roles={roles} bindings={bindings} onChange={setBindings} locale={locale} />
+          <AccessBindings guildId={guildId} roles={roles} bindings={bindings} onChange={(next) => { setBindings(next); void loadPlan(); }} locale={locale} />
+          {plan && <BrandingPanel guildId={guildId} plan={plan} locale={locale} onSaved={(branding) => setPlan({ ...plan, branding })} />}
           <div className="two-col">
             <section className="panel"><div className="panel-title"><div><p className="eyebrow">AUDIT</p><h2>{L('Modifiche dal pannello', 'Panel changes')}</h2></div></div><div className="admin-log">{panelLog.map((item) => <div key={item.id}><strong>{item.username}</strong><span>{item.action}</span><time>{formatDate(item.createdAt)}</time></div>)}</div></section>
             <section className="panel danger-panel"><div className="panel-title"><div><p className="eyebrow">PRIVACY</p><h2>{L('Cancellazione dati utente', 'User data deletion')}</h2></div></div><p className="muted">{L('Elimina snapshot ed eventi associati a uno specifico Discord User ID.', 'Delete snapshots and events associated with a specific Discord User ID.')}</p><PrivacyDelete guildId={guildId} locale={locale} onDone={() => setStatus(L('Dati utente eliminati.', 'User data deleted.'))} /></section>
@@ -606,16 +639,17 @@ function Toggle({ label, description, checked, onChange, danger, disabled }: { l
   return <div className={`toggle-row ${danger ? 'danger-toggle' : ''}`}><div><strong>{label}</strong><span>{description}</span></div><button disabled={disabled} className={`switch ${checked ? 'on' : ''}`} onClick={() => onChange(!checked)}><i /></button></div>;
 }
 
-function RouteEditor({ event, route, channels, roles, onSave, onSaveDebounced, readOnly, premiumEnabled, locale }: { event: EventDefinition; route: Route | null; channels: Channel[]; roles: Role[]; onSave: (patch: Partial<Route>) => void; onSaveDebounced: (patch: Partial<Route>, key: string) => void; readOnly?: boolean; premiumEnabled: boolean; locale: Locale }) {
+function RouteEditor({ event, route, channels, roles, onSave, onSaveDebounced, readOnly, required, tier, locale }: { event: EventDefinition; route: Route | null; channels: Channel[]; roles: Role[]; onSave: (patch: Partial<Route>) => void; onSaveDebounced: (patch: Partial<Route>, key: string) => void; readOnly?: boolean; required: PlanTier; tier: PlanTier; locale: Locale }) {
   const L = (it: string, en: string) => locale === 'it' ? it : en;
   const displayEvent = localizeEvent(event, locale);
-  const premiumLocked = Boolean(event.noisy && !premiumEnabled);
+  const premiumLocked = tierIndex(tier) < tierIndex(required);
+  const planName = tierLabel(required, locale);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState(route?.customTitle ?? '');
   useEffect(() => setTitle(route?.customTitle ?? ''), [route?.customTitle]);
   if (!route) return null;
   return <article className={`route-card ${route.enabled ? 'enabled' : ''}`}>
-    <div className="route-head"><button disabled={readOnly || premiumLocked} title={premiumLocked ? L('Richiede Premium', 'Premium required') : L('Invio Discord', 'Discord delivery')} className={`switch ${route.enabled ? 'on' : ''}`} onClick={() => onSave({ enabled: !route.enabled })}><i /></button><div className="route-name" onClick={() => setOpen(!open)}><div><strong>{displayEvent.label}</strong>{event.noisy && <span className={`badge ${premiumLocked ? 'premium-badge' : ''}`}>{premiumLocked ? L('PREMIUM · ALTO VOLUME', 'PREMIUM · HIGH VOLUME') : L('ALTO VOLUME', 'HIGH VOLUME')}</span>}{!route.captureEnabled && <span className="badge">{L('NON ACQUISITO', 'NOT COLLECTED')}</span>}</div><span>{event.key} · {displayEvent.description}</span></div><button className="chevron" onClick={() => setOpen(!open)}>{open ? '⌃' : '⌄'}</button></div>
+    <div className="route-head"><button disabled={readOnly || premiumLocked} title={premiumLocked ? L(`Richiede ${planName}`, `Requires ${planName}`) : L('Invio Discord', 'Discord delivery')} className={`switch ${route.enabled ? 'on' : ''}`} onClick={() => onSave({ enabled: !route.enabled })}><i /></button><div className="route-name" onClick={() => setOpen(!open)}><div><strong>{displayEvent.label}</strong>{event.noisy && <span className={`badge ${premiumLocked ? 'premium-badge' : ''}`}>{premiumLocked ? `${tierShort(required).toUpperCase()} · ${L('ALTO VOLUME', 'HIGH VOLUME')}` : L('ALTO VOLUME', 'HIGH VOLUME')}</span>}{!route.captureEnabled && <span className="badge">{L('NON ACQUISITO', 'NOT COLLECTED')}</span>}</div><span>{event.key} · {displayEvent.description}</span></div><button className="chevron" onClick={() => setOpen(!open)}>{open ? '⌃' : '⌄'}</button></div>
     {open && <div className="route-config">
       <label>{L('Canale destinazione', 'Destination channel')}<SearchableSelect
         disabled={readOnly}
@@ -637,9 +671,9 @@ function RouteEditor({ event, route, channels, roles, onSave, onSaveDebounced, r
           { value: '', label: L('Nessuno', 'None') },
           ...roles.map((role) => ({ value: role.id, label: `@${role.name}` }))
         ]}
-      /></label><label>{L('Retention evento', 'Event retention')}<input disabled={readOnly} type="number" min="1" max="3650" defaultValue={route.retentionDays ?? ''} placeholder="Default" onBlur={(e) => onSave({ retentionDays: e.currentTarget.value ? Number(e.currentTarget.value) : null })} /></label></div>
+      /></label><label>{L('Retention evento', 'Event retention')}<input disabled={readOnly} type="number" min="1" defaultValue={route.retentionDays ?? ''} placeholder="Default" onBlur={(e) => onSave({ retentionDays: e.currentTarget.value ? Number(e.currentTarget.value) : null })} /></label></div>
       <div className="inline-fields"><label>{L('Footer personalizzato', 'Custom footer')}<input disabled={readOnly} defaultValue={route.customFooter ?? ''} placeholder={L('Usa footer globale', 'Use global footer')} onBlur={(e) => onSave({ customFooter: e.currentTarget.value || null })} /></label><label>{L("Testo prima dell'embed", 'Text before embed')}<input disabled={readOnly} defaultValue={route.textPrefix ?? ''} placeholder={L('Opzionale', 'Optional')} onBlur={(e) => onSave({ textPrefix: e.currentTarget.value || null })} /></label><label>Thumbnail URL<input disabled={readOnly} type="url" defaultValue={route.thumbnailUrl ?? ''} placeholder="https://..." onBlur={(e) => onSave({ thumbnailUrl: e.currentTarget.value || null })} /></label></div>
-      {premiumLocked && <div className="premium-lock-note">{L('Questo logger genera un volume elevato di eventi ed è attivabile solo sui server Premium.', 'This logger generates a high volume of events and can only be enabled on Premium servers.')}</div>}
+      {premiumLocked && <div className="premium-lock-note">{L(`Questo logger genera un volume elevato di eventi ed è incluso dal piano ${planName}.`, `This logger generates a high volume of events and is included from the ${planName} plan.`)} <a className="inline-link" href={`/${locale}/pricing`}>{L('Vedi i piani', 'See plans')}</a></div>}
       <div className="mini-toggles"><label><input type="checkbox" disabled={readOnly || premiumLocked} checked={route.captureEnabled} onChange={(e) => onSave({ captureEnabled: e.target.checked })} /> {L('Acquisisci nel database', 'Collect in database')}</label><label><input type="checkbox" disabled={readOnly || premiumLocked} checked={route.enabled} onChange={(e) => onSave({ enabled: e.target.checked })} /> {L('Invia su Discord', 'Send to Discord')}</label><label><input type="checkbox" disabled={readOnly} checked={route.showTimestamp} onChange={(e) => onSave({ showTimestamp: e.target.checked })} /> Timestamp</label><label><input type="checkbox" disabled={readOnly} checked={route.showActor} onChange={(e) => onSave({ showActor: e.target.checked })} /> Actor</label><label><input type="checkbox" disabled={readOnly} checked={route.showTarget} onChange={(e) => onSave({ showTarget: e.target.checked })} /> Target</label><label><input type="checkbox" disabled={readOnly} checked={route.showChannel} onChange={(e) => onSave({ showChannel: e.target.checked })} /> {L('Canale', 'Channel')}</label><label><input type="checkbox" disabled={readOnly} checked={route.includeContent} onChange={(e) => onSave({ includeContent: e.target.checked })} /> {L('Contenuto nell’embed', 'Content in embed')}</label><label><input type="checkbox" disabled={readOnly} checked={route.includeAttachments} onChange={(e) => onSave({ includeAttachments: e.target.checked })} /> {L('Allegati nell’embed', 'Attachments in embed')}</label><label><input type="checkbox" disabled={readOnly} checked={route.ignoreBots} onChange={(e) => onSave({ ignoreBots: e.target.checked })} /> {L('Ignora bot', 'Ignore bots')}</label></div>
       <div className="ignore-fields">
         <ManualIdList
@@ -883,4 +917,141 @@ function PrivacyDelete({ guildId, onDone, locale }: { guildId: string; onDone: (
     }
   };
   return <>{error && <div className="notice">{error}</div>}<div className="danger-action"><input placeholder="Discord User ID" inputMode="numeric" value={userId} onChange={(e) => setUserId(e.target.value)} /><button onClick={submit}>{L('Elimina dati', 'Delete data')}</button></div></>;
+}
+
+function PlanPanel({ plan, locale }: { plan: PlanInfo; locale: Locale }) {
+  const L = (it: string, en: string) => locale === 'it' ? it : en;
+  const limits = plan.plan.limits;
+  const labels = limitLabels(locale);
+  const expired = plan.tier !== plan.effectiveTier;
+  const meters = [
+    { key: 'eventsPerDay' as const, used: plan.usage.eventsToday, max: limits.eventsPerDay, label: L('Eventi registrati oggi (UTC)', 'Events stored today (UTC)') },
+    { key: 'logChannels' as const, used: plan.usage.logChannels, max: limits.logChannels, label: labels.logChannels },
+    { key: 'roleBindings' as const, used: plan.usage.roleBindings, max: limits.roleBindings, label: labels.roleBindings }
+  ];
+  return (
+    <section className="panel plan-panel">
+      <div className="panel-title">
+        <div>
+          <p className="eyebrow">{L('PIANO', 'PLAN')}</p>
+          <h2>{tierLabel(plan.effectiveTier, locale)}</h2>
+        </div>
+        <a className="button button-sm button-secondary" href={`/${locale}/pricing`}>{L('Vedi i piani', 'See plans')}</a>
+      </div>
+      <p className="muted">
+        {expired
+          ? L(`Il piano ${tierLabel(plan.tier, locale)} è scaduto: valgono i limiti Free.`, `The ${tierLabel(plan.tier, locale)} plan has expired: Free limits apply.`)
+          : plan.expiresAt
+            ? L(`Valido fino al ${new Date(plan.expiresAt).toLocaleDateString('it-IT')}.`, `Valid until ${new Date(plan.expiresAt).toLocaleDateString('en-GB')}.`)
+            : plan.effectiveTier === 'FREE'
+              ? L('Piano gratuito. Per sbloccare i logger ad alto volume e alzare i limiti contattami dalla pagina prezzi.', 'Free plan. To unlock high-volume loggers and raise limits, contact me from the pricing page.')
+              : L('Piano attivo, senza scadenza.', 'Active plan, no expiry.')}
+      </p>
+      <div className="plan-meters">
+        {meters.map((meter) => {
+          const ratio = Math.min(1, meter.used / Math.max(1, meter.max));
+          return (
+            <div className={`plan-meter ${ratio >= 1 ? 'is-full' : ratio >= 0.8 ? 'is-high' : ''}`} key={meter.key}>
+              <div><span>{meter.label}</span><strong className="mono">{formatNumber(meter.used, locale)} / {formatNumber(meter.max, locale)}</strong></div>
+              <i><b style={{ width: `${Math.max(2, ratio * 100)}%` }} /></i>
+            </div>
+          );
+        })}
+      </div>
+      <dl className="plan-limits">
+        {(['retentionDays', 'filterEntries', 'mentionRoles', 'exportEvents'] as const).map((key) => (
+          <div key={key}><dt>{labels[key]}</dt><dd className="mono">{formatLimit(key, limits[key], locale)}</dd></div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+const BANNER_WIDTH = 600;
+const BANNER_HEIGHT = 240;
+// The edge proxy accepts request bodies up to 64 KB: the encoded banner must
+// fit with room to spare for the JSON wrapper.
+const BANNER_MAX_CHARS = 60_000;
+
+async function encodeBanner(file: File) {
+  const bitmap = await createImageBitmap(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = BANNER_WIDTH;
+  canvas.height = BANNER_HEIGHT;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('CANVAS_UNAVAILABLE');
+  // Cover: fill the 5:2 frame and crop the overflow from the centre.
+  const scale = Math.max(BANNER_WIDTH / bitmap.width, BANNER_HEIGHT / bitmap.height);
+  const width = bitmap.width * scale;
+  const height = bitmap.height * scale;
+  context.drawImage(bitmap, (BANNER_WIDTH - width) / 2, (BANNER_HEIGHT - height) / 2, width, height);
+  bitmap.close();
+  for (const quality of [0.86, 0.78, 0.7, 0.6, 0.5, 0.4]) {
+    const data = canvas.toDataURL('image/jpeg', quality);
+    if (data.length <= BANNER_MAX_CHARS) return data;
+  }
+  throw new Error('BANNER_TOO_LARGE');
+}
+
+function BrandingPanel({ guildId, plan, locale, onSaved }: { guildId: string; plan: PlanInfo; locale: Locale; onSaved: (branding: PlanInfo['branding']) => void }) {
+  const L = (it: string, en: string) => locale === 'it' ? it : en;
+  const allowed = plan.plan.customBranding;
+  const [nickname, setNickname] = useState(plan.branding.nickname ?? '');
+  const [banner, setBanner] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const send = async (body: { nickname?: string | null; banner?: string | null }) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const saved = await api<{ nickname: string | null; bannerSet: boolean }>(`/backend/api/guilds/${guildId}/branding`, { method: 'PUT', body: JSON.stringify(body) });
+      onSaved({ nickname: saved.nickname, bannerSet: saved.bannerSet });
+      setBanner(null);
+      setMessage({ kind: 'ok', text: L('Profilo del bot aggiornato.', 'Bot profile updated.') });
+    } catch (error) {
+      setMessage({ kind: 'error', text: errorMessage(error, locale) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      setBanner(await encodeBanner(file));
+      setMessage(null);
+    } catch {
+      setMessage({ kind: 'error', text: L('Immagine non valida o troppo complessa.', 'Invalid or overly complex image.') });
+    }
+  };
+
+  return (
+    <section className="panel branding-panel">
+      <div className="panel-title"><div><p className="eyebrow">BRAND</p><h2>{L('Nome e banner del bot', 'Bot name and banner')}</h2></div><span className="tag tag-premium">{tierLabel('TIER3', locale)}</span></div>
+      {!allowed && <p className="muted">{L('Con il Livello 3 · Brand puoi dare a Sentinel un nome e un banner personalizzati, visibili solo in questo server.', 'With Level 3 · Brand you can give Sentinel a custom name and banner, visible only in this server.')} <a className="inline-link" href={`/${locale}/pricing`}>{L('Vedi i piani', 'See plans')}</a></p>}
+      {allowed && <>
+        <p className="muted">{L('Visibili solo in questo server. Il bot deve avere il permesso “Cambia nickname”. Il banner viene ritagliato a 600×240.', 'Visible only in this server. The bot needs the “Change Nickname” permission. The banner is cropped to 600×240.')}</p>
+        {message && <div className={`notice ${message.kind === 'error' ? 'notice-error' : 'notice-ok'}`}>{message.text}</div>}
+        <div className="branding-grid">
+          <div>
+            <label>{L('Nome nel server', 'Name in this server')}<input value={nickname} maxLength={32} onChange={(e) => setNickname(e.target.value)} placeholder="Sentinel" /></label>
+            <div className="button-row">
+              <button className="button button-primary button-sm" disabled={busy || !nickname.trim()} onClick={() => send({ nickname: nickname.trim() })}>{L('Salva nome', 'Save name')}</button>
+              <button className="button button-ghost button-sm" disabled={busy || !plan.branding.nickname} onClick={() => { setNickname(''); void send({ nickname: null }); }}>{L('Ripristina', 'Reset')}</button>
+            </div>
+          </div>
+          <div>
+            <label>{L('Banner', 'Banner')}<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(e) => void pick(e.target.files?.[0])} /></label>
+            {banner && <img className="banner-preview" src={banner} alt="" />}
+            <div className="button-row">
+              <button className="button button-primary button-sm" disabled={busy || !banner} onClick={() => send({ banner })}>{L('Carica banner', 'Upload banner')}</button>
+              <button className="button button-ghost button-sm" disabled={busy || !plan.branding.bannerSet} onClick={() => void send({ banner: null })}>{L('Rimuovi banner', 'Remove banner')}</button>
+            </div>
+            {plan.branding.bannerSet && !banner && <small className="field-help">{L('Un banner personalizzato è attivo.', 'A custom banner is active.')}</small>}
+          </div>
+        </div>
+      </>}
+    </section>
+  );
 }

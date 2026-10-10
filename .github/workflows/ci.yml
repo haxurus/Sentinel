@@ -80,11 +80,15 @@ jobs:
           as_bot 'SELECT count(*) FROM "LogEvent"'
           as_bot 'SELECT count(*) FROM "MessageSnapshot"'
           as_bot 'SELECT count(*) FROM "InstallBlock"'
-          for table in PanelSession PanelAudit PanelRoleBinding SuperAdminAudit; do
+          as_bot 'SELECT count(*) FROM "InstallGrant"'
+          as_bot 'SELECT count(*) FROM "StatusChannel"'
+          for table in PanelSession PanelAudit PanelRoleBinding SuperAdminAudit InstanceConfig WaitlistEntry Coupon; do
             if as_bot "SELECT count(*) FROM \"$table\"" 2>/dev/null; then echo "sentinel_bot can read $table" >&2; exit 1; fi
           done
-          if as_bot "DELETE FROM \"InstallBlock\"" 2>/dev/null; then echo 'sentinel_bot can modify InstallBlock' >&2; exit 1; fi
-          for table in GuildSettings LogRoute LogEvent MessageSnapshot PanelAudit PanelSession PanelRoleBinding InstallBlock SuperAdminAudit; do
+          for table in InstallBlock InstallGrant StatusChannel; do
+            if as_bot "DELETE FROM \"$table\"" 2>/dev/null; then echo "sentinel_bot can modify $table" >&2; exit 1; fi
+          done
+          for table in GuildSettings LogRoute LogEvent MessageSnapshot PanelAudit PanelSession PanelRoleBinding InstallBlock SuperAdminAudit InstanceConfig StatusChannel WaitlistEntry InstallGrant Coupon; do
             as_api "SELECT count(*) FROM \"$table\""
           done
           if as_api 'CREATE TABLE ci_should_fail (id int)' 2>/dev/null; then echo 'sentinel_api can create tables' >&2; exit 1; fi

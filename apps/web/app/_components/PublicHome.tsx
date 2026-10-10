@@ -7,7 +7,7 @@ type StreamRow = { time: string; key: string; text: string; state: 'sent' | 'sto
 
 const copy = {
   it: {
-    nav: { features: 'Funzioni', pipeline: 'Pipeline', security: 'Sicurezza', openSource: 'Open source', signIn: 'Accedi', add: 'Aggiungi a Discord' },
+    nav: { features: 'Funzioni', pipeline: 'Pipeline', security: 'Sicurezza', openSource: 'Open source', pricing: 'Prezzi', beta: 'Beta', signIn: 'Accedi', add: 'Aggiungi a Discord' },
     hero: {
       kicker: 'Audit e logging per Discord',
       title: ['Ogni azione', 'sul tuo server,', 'registrata.'],
@@ -24,10 +24,10 @@ const copy = {
         ['20:33:51', 'message.delete', '#generale · messaggio di giulia.r', 'stored'],
         ['20:31:07', 'member.join', 'nuovo_utente · account creato 2 giorni fa', 'filtered']
       ] as const,
-      footer: ['76 eventi', 'consegna ok', 'storico cifrato']
+      footer: ['73 eventi', 'consegna ok', 'storico cifrato']
     },
     stats: [
-      ['76', 'tipi di evento Discord'],
+      ['73', 'tipi di evento Discord'],
       ['AES-256', 'cifratura dello storico'],
       ['4', 'livelli di accesso RBAC'],
       ['0', 'permessi di moderazione richiesti']
@@ -59,7 +59,7 @@ const copy = {
       kicker: 'Come iniziare',
       title: 'Operativo in tre passaggi.',
       steps: [
-        ['Aggiungi il bot', 'Autorizza Sentinel con i soli permessi di lettura e invio log: nessun permesso di moderazione.'],
+        ['Entra in beta e aggiungi il bot', 'Iscrivi il tuo server alla lista d’attesa; una volta approvato, autorizza Sentinel con i soli permessi di lettura e invio log.'],
         ['Accedi con Discord', 'La dashboard mostra i server che puoi gestire e applica i tuoi livelli di accesso.'],
         ['Scegli cosa registrare', 'Attiva i logger, scegli i canali e la retention. Ogni modifica al pannello resta tracciata.']
       ]
@@ -93,7 +93,7 @@ const copy = {
     footer: 'Logging e auditing self-hosted per server Discord.'
   },
   en: {
-    nav: { features: 'Features', pipeline: 'Pipeline', security: 'Security', openSource: 'Open source', signIn: 'Sign in', add: 'Add to Discord' },
+    nav: { features: 'Features', pipeline: 'Pipeline', security: 'Security', openSource: 'Open source', pricing: 'Pricing', beta: 'Beta', signIn: 'Sign in', add: 'Add to Discord' },
     hero: {
       kicker: 'Audit & logging for Discord',
       title: ['Every action', 'on your server,', 'on the record.'],
@@ -110,10 +110,10 @@ const copy = {
         ['20:33:51', 'message.delete', '#general · message by julia.r', 'stored'],
         ['20:31:07', 'member.join', 'new_user · account created 2 days ago', 'filtered']
       ] as const,
-      footer: ['76 events', 'delivery ok', 'encrypted history']
+      footer: ['73 events', 'delivery ok', 'encrypted history']
     },
     stats: [
-      ['76', 'Discord event types'],
+      ['73', 'Discord event types'],
       ['AES-256', 'history encryption'],
       ['4', 'RBAC access levels'],
       ['0', 'moderation permissions required']
@@ -145,7 +145,7 @@ const copy = {
       kicker: 'Getting started',
       title: 'Up and running in three steps.',
       steps: [
-        ['Add the bot', 'Authorise Sentinel with read and log-delivery permissions only: no moderation rights.'],
+        ['Join the beta and add the bot', 'Put your server on the waitlist; once approved, authorise Sentinel with read and log-delivery permissions only.'],
         ['Sign in with Discord', 'The dashboard lists the servers you can manage and applies your access level.'],
         ['Choose what to record', 'Enable loggers, pick channels and retention. Every panel change is audited.']
       ]
@@ -197,7 +197,9 @@ export default function PublicHome({ locale }: { locale: Locale }) {
           { href: '#features', label: c.nav.features },
           { href: '#pipeline', label: c.nav.pipeline },
           { href: '#security', label: c.nav.security },
-          { href: '#open-source', label: c.nav.openSource }
+          { href: '#open-source', label: c.nav.openSource },
+          { href: `/${locale}/pricing`, label: c.nav.pricing },
+          { href: `/${locale}/beta`, label: c.nav.beta }
         ]}
         actions={<>
           <a className="button button-ghost" href={dashboard}>{c.nav.signIn}</a>
@@ -354,6 +356,8 @@ export default function PublicHome({ locale }: { locale: Locale }) {
           <nav>
             <a href="#features">{c.nav.features}</a>
             <a href={dashboard}>Dashboard</a>
+            <a href={`/${locale}/pricing`}>{c.nav.pricing}</a>
+            <a href={`/${locale}/beta`}>{c.nav.beta}</a>
             <a href={invite}>{c.nav.add}</a>
             <a href={repo} target="_blank" rel="noreferrer">{c.openSource.badge}</a>
           </nav>

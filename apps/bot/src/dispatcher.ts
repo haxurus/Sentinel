@@ -1,7 +1,7 @@
 import { UnrecoverableError, Worker, type Job } from 'bullmq';
 import { Redis } from 'ioredis';
 import { prisma } from '@sentinel/db';
-import { eventDefinition } from '@sentinel/shared';
+import { effectiveTier, eventDefinition, requiredTierForEvent, tierAllows } from '@sentinel/shared';
 import { DiscordAPIError, EmbedBuilder, type Client } from 'discord.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
@@ -53,7 +53,7 @@ export function startDispatcher(client: Client) {
     if (route && !route.enabled) { await mark('DISABLED'); return; }
 
     const def = eventDefinition(event.eventKey);
-    if (def?.noisy && !event.guild.premiumEnabled) {
+    if (!tierAllows(effectiveTier(event.guild), requiredTierForEvent(def))) {
       await mark('PREMIUM_REQUIRED');
       return;
     }
@@ -164,4 +164,18 @@ export function startDispatcher(client: Client) {
   worker.on('error', (error) => logger.error({ error: redactText(error.message) }, 'Dispatch worker error'));
 
   return worker;
+}
+
+/**
+ * Instance status notifications (bot online, errors, servers joined or left).
+ * They go to the single channel chosen in the super console, never to the
+ * servers being logged. Like log delivery, the target must belong to the
+ * configured guild.
+ */
+export async function sendStatusMessage(client: Client, guildId: string, channelId: string, embed: EmbedBuilder) {
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) throw new Error('STATUS_GUILD_UNAVAILABLE');
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel || channel.guildId !== guild.id || !channel.isSendable()) throw new Error('STATUS_CHANNEL_UNAVAILABLE');
+  await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
 }

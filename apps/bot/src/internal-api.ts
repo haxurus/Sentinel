@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
-import type { Client } from 'discord.js';
-import { leaveGuild } from './discord-actions.js';
+import { DiscordAPIError, type Client } from 'discord.js';
+import { editOwnGuildProfile, leaveGuild } from './discord-actions.js';
+import type { StatusNotifier } from './status.js';
 
 const SNOWFLAKE = /^\d{17,20}$/;
 
@@ -11,7 +12,34 @@ function authorized(header: string | undefined, secret: string) {
   return crypto.timingSafeEqual(Buffer.from(header), Buffer.from(expected));
 }
 
-export function startInternalApi(client: Client, secret: string, port = 3002) {
+const MAX_BODY_BYTES = 128 * 1024;
+const BANNER_URI = /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
+
+class RequestError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+  }
+}
+
+async function readJson(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > MAX_BODY_BYTES) throw new RequestError(413, 'BODY_TOO_LARGE');
+    chunks.push(chunk as Buffer);
+  }
+  if (!size) return {};
+  try {
+    const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('not an object');
+    return value as Record<string, unknown>;
+  } catch {
+    throw new RequestError(400, 'INVALID_JSON');
+  }
+}
+
+export function startInternalApi(client: Client, secret: string, port = 3002, status?: StatusNotifier) {
   const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
@@ -79,6 +107,52 @@ export function startInternalApi(client: Client, secret: string, port = 3002) {
         return;
       }
 
+      match = url.pathname.match(/^\/guilds\/(\d{17,20})\/branding$/);
+      if (req.method === 'POST' && match) {
+        const guildId = match[1]!;
+        if (!client.guilds.cache.has(guildId)) throw new Error('GUILD_NOT_FOUND');
+        const body = await readJson(req);
+        const profile: { nick?: string | null; banner?: string | null } = {};
+        if ('nick' in body) {
+          if (body.nick !== null && (typeof body.nick !== 'string' || !body.nick.trim() || body.nick.length > 32)) throw new RequestError(400, 'INVALID_NICKNAME');
+          profile.nick = body.nick === null ? null : (body.nick as string).trim();
+        }
+        if ('banner' in body) {
+          if (body.banner !== null && (typeof body.banner !== 'string' || !BANNER_URI.test(body.banner))) throw new RequestError(400, 'INVALID_BANNER');
+          profile.banner = body.banner as string | null;
+        }
+        try {
+          await editOwnGuildProfile(client, guildId, profile);
+        } catch (error) {
+          if (error instanceof DiscordAPIError) {
+            res.statusCode = 502;
+            res.end(JSON.stringify({ error: 'DISCORD_REJECTED', status: error.status, code: error.code, message: error.message.slice(0, 300) }));
+            return;
+          }
+          throw error;
+        }
+        res.end(JSON.stringify({ ok: true, guildId }));
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/status/test') {
+        if (!status) throw new Error('STATUS_UNAVAILABLE');
+        status.invalidate();
+        const result = await status.deliver({
+          level: 'info',
+          title: 'Notifiche di stato attive',
+          description: 'Messaggio di prova inviato dalla super console. Qui arriveranno avvio del bot, errori e server aggiunti o rimossi.'
+        }, { force: true });
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/status/refresh') {
+        status?.invalidate();
+        res.end('{"ok":true}');
+        return;
+      }
+
       if (!['GET', 'POST'].includes(req.method ?? '')) {
         res.statusCode = 405;
         res.end('{"error":"METHOD_NOT_ALLOWED"}');
@@ -87,7 +161,7 @@ export function startInternalApi(client: Client, secret: string, port = 3002) {
       res.statusCode = 404;
       res.end('{"error":"NOT_FOUND"}');
     } catch (error) {
-      res.statusCode = 404;
+      res.statusCode = error instanceof RequestError ? error.status : 404;
       res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'INTERNAL_ERROR' }));
     }
   });
