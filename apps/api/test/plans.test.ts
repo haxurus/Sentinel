@@ -88,12 +88,12 @@ test('a downgrade switches off loggers above the plan and clamps limits', () => 
     route('role.create', { destinationChannelId: '200000000000000001' })
   ];
   const result = planAdjustments('FREE', { ...settings, defaultRetentionDays: 200, presenceLoggingEnabled: true }, routes);
-  assert.deepEqual(result.settings, { defaultRetentionDays: 30, presenceLoggingEnabled: false });
+  assert.deepEqual(result.settings, { defaultRetentionDays: 15, presenceLoggingEnabled: false });
 
   const patch = (key: string) => result.routes.find((item) => item.eventKey === key)?.data;
   assert.deepEqual(patch('message.create'), { captureEnabled: false, enabled: false });
   assert.deepEqual(patch('presence.update'), { captureEnabled: false, enabled: false });
-  assert.deepEqual(patch('moderation.ban'), { retentionDays: 30, mentionRoleIds: ['1'] });
+  assert.deepEqual(patch('moderation.ban'), { retentionDays: 15, mentionRoleIds: ['1'] });
   assert.equal(filterEntryCount(patch('message.delete') as PlanRoute), 15);
   // Free allows 3 channels: the default one plus the first two distinct ones.
   assert.equal(patch('channel.create'), undefined);
