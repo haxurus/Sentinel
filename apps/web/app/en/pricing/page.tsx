@@ -3,7 +3,7 @@ import PricingPage from '../../_components/PricingPage';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
-  title: 'Plans and pricing | Sentinel',
+  title: 'Plans and pricing',
   description: 'Sentinel plans: Free, Plus, Pro and Brand. High-volume loggers, higher limits, priority support and a custom-branded bot.',
   alternates: { canonical: '/en/pricing', languages: { it: '/it/pricing', en: '/en/pricing' } }
 };

@@ -195,7 +195,6 @@ export default function PublicHome({ locale }: { locale: Locale }) {
         enHref="/en"
         links={[
           { href: '#features', label: c.nav.features },
-          { href: '#pipeline', label: c.nav.pipeline },
           { href: '#security', label: c.nav.security },
           { href: '#open-source', label: c.nav.openSource },
           { href: `/${locale}/pricing`, label: c.nav.pricing },
