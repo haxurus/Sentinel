@@ -183,7 +183,13 @@ export async function registerBetaRoutes(app: FastifyInstance) {
       contactUrl: z.union([z.literal(''), z.string().trim().url().max(500).refine((value) => value.startsWith('https://'))]).nullable().optional()
     }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' });
-    const data = Object.fromEntries(Object.entries(parsed.data).map(([key, value]) => [key, value === '' ? null : value]));
+    const text = (value: string | null | undefined) => value === undefined ? undefined : value || null;
+    const data = {
+      waitlistOpen: parsed.data.waitlistOpen,
+      contactEmail: text(parsed.data.contactEmail),
+      contactDiscord: text(parsed.data.contactDiscord),
+      contactUrl: text(parsed.data.contactUrl)
+    };
     const config = await prisma.instanceConfig.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
     await superAdminAudit(request, session, 'instance.config', null, null, data);
     return config;
