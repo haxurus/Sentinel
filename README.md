@@ -180,8 +180,8 @@ Who may keep the bot is enforced by the bot itself: when it joins a server it st
 | Standard loggers | ✓ | ✓ | ✓ | ✓ |
 | High-volume loggers (messages, reactions, polls, interactions, Audit Log) | | ✓ | ✓ | ✓ |
 | Advanced loggers (presence, typing, raw Gateway, diagnostics) | | | ✓ | ✓ |
-| Retention | 30 days | 90 days | 365 days | 365 days |
-| Events stored per day | 2,000 | 10,000 | 50,000 | 50,000 |
+| Retention | 15 days | 30 days | 60 days | 90 days |
+| Events stored per day | 2,000 | 5,000 | 15,000 | 35,000 |
 | Log channels | 3 | 8 | 20 | 20 |
 | Priority support | | ✓ | ✓ | ✓ |
 | Custom bot name and banner in the server | | | | ✓ |

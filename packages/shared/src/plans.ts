@@ -38,9 +38,9 @@ export type PlanDefinition = {
   customBranding: boolean;
 };
 
-const PAID_LIMITS: PlanLimits = {
-  retentionDays: 365,
-  eventsPerDay: 50_000,
+const PRO_LIMITS: PlanLimits = {
+  retentionDays: 60,
+  eventsPerDay: 15_000,
   logChannels: 20,
   filterEntries: 100,
   mentionRoles: 5,
@@ -51,22 +51,22 @@ const PAID_LIMITS: PlanLimits = {
 export const PLANS: Record<PlanTier, PlanDefinition> = {
   FREE: {
     tier: 'FREE', name: 'Free', level: 0, monthlyCents: 0, yearlyCents: 0,
-    limits: { retentionDays: 30, eventsPerDay: 2_000, logChannels: 3, filterEntries: 15, mentionRoles: 1, roleBindings: 1, exportEvents: 1_000 },
+    limits: { retentionDays: 15, eventsPerDay: 2_000, logChannels: 3, filterEntries: 15, mentionRoles: 1, roleBindings: 1, exportEvents: 1_000 },
     prioritySupport: false, customBranding: false
   },
   TIER1: {
     tier: 'TIER1', name: 'Plus', level: 1, monthlyCents: 200, yearlyCents: 2_000,
-    limits: { retentionDays: 90, eventsPerDay: 10_000, logChannels: 8, filterEntries: 40, mentionRoles: 2, roleBindings: 3, exportEvents: 10_000 },
+    limits: { retentionDays: 30, eventsPerDay: 5_000, logChannels: 8, filterEntries: 40, mentionRoles: 2, roleBindings: 3, exportEvents: 10_000 },
     prioritySupport: true, customBranding: false
   },
   TIER2: {
     tier: 'TIER2', name: 'Pro', level: 2, monthlyCents: 500, yearlyCents: 5_000,
-    limits: PAID_LIMITS,
+    limits: PRO_LIMITS,
     prioritySupport: true, customBranding: false
   },
   TIER3: {
     tier: 'TIER3', name: 'Brand', level: 3, monthlyCents: 1_000, yearlyCents: 9_000,
-    limits: PAID_LIMITS,
+    limits: { ...PRO_LIMITS, retentionDays: 90, eventsPerDay: 35_000 },
     prioritySupport: true, customBranding: true
   }
 };

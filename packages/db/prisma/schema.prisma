@@ -14,7 +14,7 @@ model GuildSettings {
   defaultLogChannelId     String?
   timezone                String   @default("Europe/Rome")
   locale                  String   @default("en")
-  defaultRetentionDays    Int      @default(30)
+  defaultRetentionDays    Int      @default(15)
   embedColor              String   @default("#3f3c54")
   embedFooter             String   @default("Discord Audit")
   messageSnapshotEnabled  Boolean  @default(true)
