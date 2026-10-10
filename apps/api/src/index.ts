@@ -5,7 +5,7 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 import { prisma } from '@sentinel/db';
-import { EVENT_CATALOG } from '@sentinel/shared';
+import { EVENT_CATALOG, SETTINGS_TIER, tierAllows } from '@sentinel/shared';
 import { config } from './config.js';
 import { createSession, destroySession, getSession, isSuperAdminUserId, randomToken, requireGuild, requireSession, requireSuperAdmin, resolveGuildAccess, type OAuthGuild } from './auth.js';
 import { getBotGuilds, getGuildResources, leaveBotGuild } from './discord.js';
@@ -13,6 +13,9 @@ import { panelAudit } from './audit.js';
 import { superAdminAudit } from './super-audit.js';
 import { unprotectJson } from './security.js';
 import { exportJsonChunks, findForeignReference, isValidTimeZone, rateLimitKey } from './helpers.js';
+import { betaOverview, registerBetaRoutes } from './beta-routes.js';
+import { guildTier, sweepExpiredPlans } from './plan-service.js';
+import { filterEntryCount, logChannelSet, publicGuildSettings, requiredTierForKey } from './plan-rules.js';
 import { Readable } from 'node:stream';
 
 const app = Fastify({
@@ -87,6 +90,26 @@ const cleanupPanelAudit = async () => {
 void cleanupPanelAudit().catch(() => null);
 setInterval(() => void cleanupPanelAudit().catch(() => null), 6 * 60 * 60 * 1000).unref();
 
+// Accounts configured in the environment may add the bot to any server. They
+// are mirrored as USER grants because the bot (which enforces the beta gate
+// when it joins a server) cannot read the API configuration.
+const syncEnvironmentGrants = async () => {
+  const ids = [...new Set([...config.inviteAllowedUserIds, config.superAdminUserId].filter(Boolean))];
+  await prisma.installGrant.deleteMany({ where: { kind: 'USER', source: 'ENV', subjectId: { notIn: ids } } });
+  for (const subjectId of ids) {
+    await prisma.installGrant.upsert({
+      where: { kind_subjectId: { kind: 'USER', subjectId } },
+      update: {},
+      create: { kind: 'USER', subjectId, source: 'ENV' }
+    });
+  }
+};
+void syncEnvironmentGrants().catch((error) => app.log.error({ err: error }, 'Unable to sync install grants'));
+
+const runPlanSweep = () => sweepExpiredPlans(app.log).catch((error) => app.log.error({ err: error }, 'Plan expiry sweep failed'));
+void runPlanSweep();
+setInterval(() => void runPlanSweep(), 10 * 60 * 1000).unref();
+
 app.get('/health/live', async () => ({ ok: true, service: 'api' }));
 app.get('/health', async (_request, reply) => {
   try {
@@ -97,25 +120,50 @@ app.get('/health', async (_request, reply) => {
   }
 });
 
-const botInstallUrl = () => {
+const botInstallUrl = (guildId?: string) => {
   const url = new URL('https://discord.com/oauth2/authorize');
   url.searchParams.set('client_id', config.clientId);
   url.searchParams.set('scope', 'bot applications.commands');
-  url.searchParams.set('permissions', '85120');
+  // View Channels, Send Messages, Embed Links, Read Message History,
+  // View Audit Log, Change Nickname (Brand plan).
+  url.searchParams.set('permissions', '67194240');
+  if (guildId) {
+    url.searchParams.set('guild_id', guildId);
+    url.searchParams.set('disable_guild_select', 'true');
+  }
   return url.toString();
 };
 
-const canInstallBot = async (userId: string) => {
+/**
+ * Beta access: instance owner and allowlisted accounts may add the bot
+ * anywhere; everyone else only to servers whose waitlist request was
+ * approved. The bot enforces the same rule when it joins a server.
+ */
+const installAccess = async (userId: string) => {
   const blocked = await prisma.installBlock.findUnique({
     where: { kind_subjectId: { kind: 'USER', subjectId: userId } },
     select: { id: true }
   });
-  return !blocked && config.inviteAllowedUserIds.includes(userId);
+  if (blocked) return { anywhere: false, guildIds: [] as string[] };
+  const [grant, approved] = await Promise.all([
+    prisma.installGrant.findUnique({ where: { kind_subjectId: { kind: 'USER', subjectId: userId } }, select: { id: true } }),
+    prisma.waitlistEntry.findMany({ where: { userId, status: 'APPROVED' }, select: { guildId: true } })
+  ]);
+  return { anywhere: Boolean(grant), guildIds: approved.map((entry) => entry.guildId) };
+};
+
+const inviteRedirect = async (userId: string, uiLanguage: string, requestedGuild?: string) => {
+  const access = await installAccess(userId);
+  if (requestedGuild && (access.anywhere || access.guildIds.includes(requestedGuild))) return botInstallUrl(requestedGuild);
+  if (access.anywhere) return botInstallUrl();
+  if (access.guildIds.length === 1) return botInstallUrl(access.guildIds[0]);
+  return `${config.webUrl}/${uiLanguage}/beta`;
 };
 
 app.get('/bot/invite', async (request, reply) => {
-  const parsed = z.object({ lang: z.enum(['it', 'en']).optional() }).safeParse(request.query);
+  const parsed = z.object({ lang: z.enum(['it', 'en']).optional(), guild: snowflake.optional() }).safeParse(request.query);
   const uiLanguage = parsed.success ? (parsed.data.lang ?? 'it') : 'it';
+  const requestedGuild = parsed.success ? parsed.data.guild : undefined;
   const session = await getSession(request);
 
   if (!session) {
@@ -125,17 +173,13 @@ app.get('/bot/invite', async (request, reply) => {
     return reply.redirect(loginUrl.toString());
   }
 
-  if (!(await canInstallBot(session.userId))) {
-    return reply.redirect(`${config.webUrl}/${uiLanguage}/development`);
-  }
-
-  return reply.redirect(botInstallUrl());
+  return reply.redirect(await inviteRedirect(session.userId, uiLanguage, requestedGuild));
 });
 
 app.get('/auth/discord', async (request, reply) => {
   const authQuery = z.object({
     lang: z.enum(['it', 'en']).optional(),
-    intent: z.enum(['dashboard', 'invite']).optional()
+    intent: z.enum(['dashboard', 'invite', 'beta']).optional()
   }).safeParse(request.query);
   const uiLanguage = authQuery.success ? (authQuery.data.lang ?? 'it') : 'it';
   const authIntent = authQuery.success ? (authQuery.data.intent ?? 'dashboard') : 'dashboard';
@@ -177,7 +221,8 @@ app.get('/auth/discord/callback', async (request, reply) => {
   reply.clearCookie(languageCookieName, { path: '/', secure: config.production, sameSite: 'lax' });
 
   const intentCookieName = config.production ? '__Host-sentinel_oauth_intent' : 'sentinel_oauth_intent';
-  const authIntent = request.cookies[intentCookieName] === 'invite' ? 'invite' : 'dashboard';
+  const intentCookie = request.cookies[intentCookieName];
+  const authIntent = intentCookie === 'invite' || intentCookie === 'beta' ? intentCookie : 'dashboard';
   reply.clearCookie(intentCookieName, { path: '/', secure: config.production, sameSite: 'lax' });
 
   const redirectUri = `${config.publicBaseUrl}/auth/discord/callback`;
@@ -203,12 +248,8 @@ app.get('/auth/discord/callback', async (request, reply) => {
   const guilds = await guildResponse.json() as OAuthGuild[];
   await createSession(request, reply, user, guilds);
 
-  if (authIntent === 'invite') {
-    if (!(await canInstallBot(user.id))) {
-      return reply.redirect(`${config.webUrl}/${uiLanguage}/development`);
-    }
-    return reply.redirect(botInstallUrl());
-  }
+  if (authIntent === 'invite') return reply.redirect(await inviteRedirect(user.id, uiLanguage));
+  if (authIntent === 'beta') return reply.redirect(`${config.webUrl}/${uiLanguage}/beta`);
 
   return reply.redirect(`${config.webUrl}/${uiLanguage}/dashboard`);
 });
@@ -245,14 +286,22 @@ app.get('/api/super/overview', async (request, reply) => {
 
   const guildBlocks = new Set(blocks.filter((block) => block.kind === 'GUILD').map((block) => block.subjectId));
   const premiumMap = new Map(settingsRows.map((row) => [row.guildId, row.premiumEnabled]));
+  const beta = await betaOverview(guilds.map((guild) => guild.id));
+  const planMap = new Map(beta.plans.map((row) => [row.guildId, row]));
   return {
     guilds: guilds.map((guild) => ({
       ...guild,
       blocked: guildBlocks.has(guild.id),
-      premiumEnabled: premiumMap.get(guild.id) ?? false
+      premiumEnabled: premiumMap.get(guild.id) ?? false,
+      plan: planMap.get(guild.id) ?? null
     })),
     blocks,
-    audit: audit.map((row) => ({ ...row, details: unprotectJson(row.details) }))
+    audit: audit.map((row) => ({ ...row, details: unprotectJson(row.details) })),
+    config: beta.config,
+    statusChannel: beta.statusChannel,
+    coupons: beta.coupons,
+    planCatalog: beta.planCatalog,
+    waitlist: beta.waitlist
   };
 });
 
@@ -312,46 +361,6 @@ app.delete('/api/super/blocks/:kind/:subjectId', async (request, reply) => {
   return { ok: true };
 });
 
-app.put('/api/super/guilds/:guildId/premium', async (request, reply) => {
-  const session = await requireSuperAdmin(request, reply);
-  if (!session) return;
-  const { guildId } = request.params as { guildId: string };
-  const parsed = z.object({ premiumEnabled: z.boolean() }).safeParse(request.body);
-  if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' });
-
-  const existing = await prisma.guildSettings.findUnique({ where: { guildId }, select: { guildId: true } });
-  if (!existing) return reply.code(404).send({ error: 'GUILD_NOT_FOUND' });
-
-  const noisyKeys = EVENT_CATALOG.filter((event) => event.noisy).map((event) => event.key);
-  const premiumEnabled = parsed.data.premiumEnabled;
-
-  await prisma.$transaction([
-    prisma.guildSettings.update({
-      where: { guildId },
-      data: {
-        premiumEnabled,
-        ...(!premiumEnabled ? {
-          rawGatewayEnabled: false,
-          presenceLoggingEnabled: false,
-          typingLoggingEnabled: false
-        } : {})
-      }
-    }),
-    ...(!premiumEnabled ? [
-      prisma.logRoute.updateMany({
-        where: { guildId, eventKey: { in: noisyKeys } },
-        data: { captureEnabled: false, enabled: false }
-      })
-    ] : [])
-  ]);
-
-  await superAdminAudit(request, session, premiumEnabled ? 'premium.enable' : 'premium.disable', 'GUILD', guildId, {
-    premiumEnabled
-  });
-
-  return { ok: true, guildId, premiumEnabled };
-});
-
 app.post('/api/super/guilds/:guildId/leave', async (request, reply) => {
   const session = await requireSuperAdmin(request, reply);
   if (!session) return;
@@ -385,7 +394,7 @@ app.get('/api/guilds', async (request, reply) => {
   });
   const guildMeta = new Map(session.guilds.map((guild) => [guild.id, guild]));
   const rows = await Promise.all(installed.map(async (guild) => ({
-    ...guild,
+    ...publicGuildSettings(guild),
     oauth: guildMeta.get(guild.guildId) ?? null,
     access: await resolveGuildAccess(session, guild.guildId)
   })));
@@ -463,7 +472,8 @@ app.get('/api/guilds/:guildId/settings', async (request, reply) => {
   const { guildId } = request.params as { guildId: string };
   const session = await requireGuild(request, reply, guildId);
   if (!session) return;
-  return prisma.guildSettings.findUnique({ where: { guildId } });
+  const settings = await prisma.guildSettings.findUnique({ where: { guildId } });
+  return settings ? publicGuildSettings(settings) : null;
 });
 
 app.put('/api/guilds/:guildId/settings', async (request, reply) => {
@@ -473,21 +483,25 @@ app.put('/api/guilds/:guildId/settings', async (request, reply) => {
   const parsed = settingsSchema.safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY', details: parsed.error.flatten() });
 
-  const wantsHighVolumeAcquisition =
-    parsed.data.rawGatewayEnabled === true ||
-    parsed.data.presenceLoggingEnabled === true ||
-    parsed.data.typingLoggingEnabled === true;
-
-  if (wantsHighVolumeAcquisition) {
-    const guild = await prisma.guildSettings.findUnique({ where: { guildId }, select: { premiumEnabled: true } });
-    if (!guild?.premiumEnabled) return reply.code(403).send({ error: 'PREMIUM_REQUIRED' });
+  const { tier, limits } = await guildTier(guildId);
+  for (const [key, required] of Object.entries(SETTINGS_TIER) as Array<[keyof typeof SETTINGS_TIER, typeof SETTINGS_TIER[keyof typeof SETTINGS_TIER]]>) {
+    if (parsed.data[key] === true && !tierAllows(tier, required)) return reply.code(403).send({ error: 'PLAN_REQUIRED', required });
+  }
+  if (parsed.data.defaultRetentionDays !== undefined && parsed.data.defaultRetentionDays > limits.retentionDays) {
+    return reply.code(403).send({ error: 'PLAN_LIMIT', limit: 'retentionDays', max: limits.retentionDays });
+  }
+  if (parsed.data.defaultLogChannelId) {
+    const routes = await prisma.logRoute.findMany({ where: { guildId }, select: { destinationChannelId: true } });
+    if (logChannelSet(parsed.data.defaultLogChannelId, routes).size > limits.logChannels) {
+      return reply.code(403).send({ error: 'PLAN_LIMIT', limit: 'logChannels', max: limits.logChannels });
+    }
   }
 
   if (!(await ensureGuildReferences(request, reply, guildId, { sendableChannelIds: [parsed.data.defaultLogChannelId] }))) return;
 
   const updated = await prisma.guildSettings.update({ where: { guildId }, data: parsed.data });
   await panelAudit(request, session, guildId, 'settings.update', parsed.data);
-  return updated;
+  return publicGuildSettings(updated);
 });
 
 app.get('/api/guilds/:guildId/routes', async (request, reply) => {
@@ -508,17 +522,44 @@ app.put('/api/guilds/:guildId/routes/:eventKey', async (request, reply) => {
   const parsed = routeSchema.safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY', details: parsed.error.flatten() });
 
-  if (eventDefinition.noisy && (parsed.data.enabled === true || parsed.data.captureEnabled === true)) {
-    const guild = await prisma.guildSettings.findUnique({ where: { guildId }, select: { premiumEnabled: true } });
-    if (!guild?.premiumEnabled) return reply.code(403).send({ error: 'PREMIUM_REQUIRED' });
+  const { tier, limits } = await guildTier(guildId);
+  const required = requiredTierForKey(eventKey);
+  if ((parsed.data.enabled === true || parsed.data.captureEnabled === true) && !tierAllows(tier, required)) {
+    return reply.code(403).send({ error: 'PLAN_REQUIRED', required });
+  }
+  if (parsed.data.retentionDays && parsed.data.retentionDays > limits.retentionDays) {
+    return reply.code(403).send({ error: 'PLAN_LIMIT', limit: 'retentionDays', max: limits.retentionDays });
+  }
+  if (parsed.data.mentionRoleIds && parsed.data.mentionRoleIds.length > limits.mentionRoles) {
+    return reply.code(403).send({ error: 'PLAN_LIMIT', limit: 'mentionRoles', max: limits.mentionRoles });
   }
 
   // Only IDs added by this request are verified, so lists that still contain
   // a since-deleted channel or role can always be cleaned up.
   const current = await prisma.logRoute.findUnique({
     where: { guildId_eventKey: { guildId, eventKey } },
-    select: { ignoredChannelIds: true, ignoredRoleIds: true, mentionRoleIds: true }
+    select: { ignoredChannelIds: true, ignoredRoleIds: true, ignoredUserIds: true, mentionRoleIds: true }
   });
+  const nextFilters = {
+    ignoredUserIds: parsed.data.ignoredUserIds ?? current?.ignoredUserIds ?? [],
+    ignoredRoleIds: parsed.data.ignoredRoleIds ?? current?.ignoredRoleIds ?? [],
+    ignoredChannelIds: parsed.data.ignoredChannelIds ?? current?.ignoredChannelIds ?? []
+  };
+  const filtersChanged = parsed.data.ignoredUserIds || parsed.data.ignoredRoleIds || parsed.data.ignoredChannelIds;
+  // Removing entries is always allowed, so an over-limit list can be fixed.
+  if (filtersChanged && filterEntryCount(nextFilters) > limits.filterEntries && filterEntryCount(nextFilters) > filterEntryCount({
+    ignoredUserIds: current?.ignoredUserIds ?? [], ignoredRoleIds: current?.ignoredRoleIds ?? [], ignoredChannelIds: current?.ignoredChannelIds ?? []
+  })) {
+    return reply.code(403).send({ error: 'PLAN_LIMIT', limit: 'filterEntries', max: limits.filterEntries });
+  }
+  if (parsed.data.destinationChannelId) {
+    const [settings, routes] = await Promise.all([
+      prisma.guildSettings.findUnique({ where: { guildId }, select: { defaultLogChannelId: true } }),
+      prisma.logRoute.findMany({ where: { guildId, eventKey: { not: eventKey } }, select: { destinationChannelId: true } })
+    ]);
+    const channels = logChannelSet(settings?.defaultLogChannelId ?? null, [...routes, { destinationChannelId: parsed.data.destinationChannelId }]);
+    if (channels.size > limits.logChannels) return reply.code(403).send({ error: 'PLAN_LIMIT', limit: 'logChannels', max: limits.logChannels });
+  }
   const added = (next: string[] | undefined, previous: string[] | undefined) =>
     (next ?? []).filter((id) => !(previous ?? []).includes(id));
   const referencesValid = await ensureGuildReferences(request, reply, guildId, {
@@ -537,8 +578,8 @@ app.put('/api/guilds/:guildId/routes/:eventKey', async (request, reply) => {
     create: {
       guildId,
       eventKey,
-      captureEnabled: eventDefinition.noisy ? false : true,
-      enabled: eventDefinition.noisy ? false : true,
+      captureEnabled: !eventDefinition.noisy && tierAllows(tier, required),
+      enabled: !eventDefinition.noisy && tierAllows(tier, required),
       ...parsed.data
     }
   });
@@ -557,16 +598,13 @@ app.post('/api/guilds/:guildId/routes/bulk', async (request, reply) => {
   }).refine((value) => value.enabled !== undefined || value.captureEnabled !== undefined).safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' });
 
-  const wantsNoisyActivation =
-    parsed.data.includeNoisy &&
-    (parsed.data.enabled === true || parsed.data.captureEnabled === true);
-
-  if (wantsNoisyActivation) {
-    const guild = await prisma.guildSettings.findUnique({ where: { guildId }, select: { premiumEnabled: true } });
-    if (!guild?.premiumEnabled) return reply.code(403).send({ error: 'PREMIUM_REQUIRED' });
-  }
-
-  const keys = EVENT_CATALOG.filter((event) => parsed.data.includeNoisy || !event.noisy).map((event) => event.key);
+  // Turning loggers on only touches the ones the plan includes.
+  const activating = parsed.data.enabled === true || parsed.data.captureEnabled === true;
+  const { tier } = await guildTier(guildId);
+  const keys = EVENT_CATALOG
+    .filter((event) => parsed.data.includeNoisy || !event.noisy)
+    .filter((event) => !activating || tierAllows(tier, requiredTierForKey(event.key)))
+    .map((event) => event.key);
   const data = {
     ...(parsed.data.enabled !== undefined ? { enabled: parsed.data.enabled } : {}),
     ...(parsed.data.captureEnabled !== undefined ? { captureEnabled: parsed.data.captureEnabled } : {})
@@ -661,6 +699,9 @@ app.put('/api/guilds/:guildId/access-bindings/:roleId', async (request, reply) =
   const parsed = z.object({ accessLevel: z.enum(['VIEWER', 'MODERATOR', 'ADMIN']) }).safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' });
   if (roleId === guildId) return reply.code(400).send({ error: 'EVERYONE_ROLE_NOT_ALLOWED' });
+  const { limits } = await guildTier(guildId);
+  const others = await prisma.panelRoleBinding.count({ where: { guildId, discordRoleId: { not: roleId } } });
+  if (others >= limits.roleBindings) return reply.code(403).send({ error: 'PLAN_LIMIT', limit: 'roleBindings', max: limits.roleBindings });
   if (!(await ensureGuildReferences(request, reply, guildId, { roleIds: [roleId] }))) return;
   const binding = await prisma.panelRoleBinding.upsert({
     where: { guildId_discordRoleId: { guildId, discordRoleId: roleId } },
@@ -708,7 +749,7 @@ app.get('/api/guilds/:guildId/export', async (request, reply) => {
     ...(query.data.eventKey ? { eventKey: query.data.eventKey } : {}),
     ...((query.data.from || query.data.to) ? { createdAt: { ...(query.data.from ? { gte: query.data.from } : {}), ...(query.data.to ? { lte: query.data.to } : {}) } } : {})
   };
-  const limit = 50_000;
+  const limit = (await guildTier(guildId)).limits.exportEvents;
   const total = Math.min(await prisma.logEvent.count({ where }), limit);
   await panelAudit(request, session, guildId, 'events.export', { count: total, filters: query.data });
 
@@ -748,6 +789,8 @@ app.get('/api/guilds/:guildId/export', async (request, reply) => {
     (event) => ({ ...event, details: decrypt(event) })
   )));
 });
+
+await registerBetaRoutes(app);
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, 'Shutting down');

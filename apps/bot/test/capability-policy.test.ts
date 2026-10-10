@@ -11,6 +11,17 @@ test('only reads, log messages and guild leave are allowed', () => {
   assert.throws(() => evaluateDiscordCapability('DELETE', '/users/@me/guilds/123456789012345678/extra'), DiscordCapabilityViolation);
 });
 
+test('the bot may only edit its own cosmetic profile fields', () => {
+  const route = '/guilds/123456789012345678/members/@me';
+  assert.equal(evaluateDiscordCapability('PATCH', route, { nick: 'Audit', banner: null }).capability, 'edit-own-profile');
+  assert.equal(evaluateDiscordCapability('PATCH', route).capability, 'edit-own-profile');
+  for (const body of [{ roles: [] }, { nick: 'x', mute: true }, { communication_disabled_until: null }, 'nick=x', null, []]) {
+    assert.throws(() => evaluateDiscordCapability('PATCH', route, body), DiscordCapabilityViolation);
+  }
+  assert.throws(() => evaluateDiscordCapability('PATCH', '/guilds/123456789012345678/members/234567890123456789', { nick: 'x' }), DiscordCapabilityViolation);
+  assert.throws(() => evaluateDiscordCapability('PUT', route, { nick: 'x' }), DiscordCapabilityViolation);
+});
+
 test('installed policy guards every REST entry point', async () => {
   const calls: string[] = [];
   const rest: Record<string, (...args: any[]) => unknown> = {
@@ -31,7 +42,9 @@ test('installed policy guards every REST entry point', async () => {
   assert.throws(() => rest.put!('/guilds/123456789012345678/bans/234567890123456789'), DiscordCapabilityViolation);
   assert.throws(() => rest.delete!('/channels/123456789012345678/messages/234567890123456789'), DiscordCapabilityViolation);
   assert.throws(() => rest.patch!('/channels/123456789012345678'), DiscordCapabilityViolation);
+  assert.throws(() => rest.patch!('/guilds/123456789012345678/members/@me', { body: { roles: [] } }), DiscordCapabilityViolation);
+  assert.equal(rest.patch!('/guilds/123456789012345678/members/@me', { body: { nick: 'Audit' } }), 'ok');
 
-  assert.deepEqual(calls, ['request GET /guilds/123456789012345678', 'post /channels/123456789012345678/messages']);
-  assert.equal(blocked.length, 4);
+  assert.deepEqual(calls, ['request GET /guilds/123456789012345678', 'post /channels/123456789012345678/messages', 'patch /guilds/123456789012345678/members/@me']);
+  assert.equal(blocked.length, 5);
 });

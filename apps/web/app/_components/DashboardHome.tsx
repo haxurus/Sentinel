@@ -4,13 +4,19 @@ import { useEffect, useState } from 'react';
 import { Icon } from './Brand';
 import { SiteFooter, SiteHeader } from './SiteChrome';
 import type { Locale } from '../i18n';
+import { tierShort } from './plans';
 
 type Guild = {
   guildId: string;
   guildName: string;
   iconUrl: string | null;
   defaultLogChannelId: string | null;
+  planTier?: string;
+  planExpiresAt?: string | null;
 };
+
+const activeTier = (guild: Guild) =>
+  guild.planTier && guild.planTier !== 'FREE' && (!guild.planExpiresAt || new Date(guild.planExpiresAt).getTime() > Date.now()) ? guild.planTier : 'FREE';
 
 type Me = { username: string; avatarUrl: string | null; superAdmin: boolean };
 
@@ -38,7 +44,10 @@ const copy = {
     configured: 'Logger configurato',
     setup: 'Da configurare',
     back: 'Torna alla home',
-    superConsole: 'Super console'
+    superConsole: 'Super console',
+    beta: 'Beta',
+    pricing: 'Prezzi',
+    betaText: 'Sentinel è in beta: per aggiungerlo a un nuovo server iscriviti alla lista d’attesa.'
   },
   en: {
     nav: { features: 'Features', add: 'Add Sentinel' },
@@ -63,7 +72,10 @@ const copy = {
     configured: 'Logger configured',
     setup: 'Needs configuration',
     back: 'Back to home',
-    superConsole: 'Super console'
+    superConsole: 'Super console',
+    beta: 'Beta',
+    pricing: 'Pricing',
+    betaText: 'Sentinel is in beta: to add it to a new server, join the waitlist.'
   }
 } as const;
 
@@ -95,6 +107,8 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
         enHref="/en/dashboard"
         links={[
           { href: home, label: 'Home' },
+          { href: `/${locale}/pricing`, label: c.pricing },
+          { href: `/${locale}/beta`, label: c.beta },
           ...(me?.superAdmin ? [{ href: `/${locale}/super`, label: c.superConsole }] : [])
         ]}
         actions={<a className="button button-primary" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>}
@@ -140,13 +154,17 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
                 <a className="button button-secondary" href={`/backend/bot/invite?lang=${locale}`}><Icon name="plus" size={16} />{c.addServer.replace(/^\+\s*/, '')}</a>
               </div>
               {!guilds.length && <div className="notice">{c.empty}</div>}
+              {!me?.superAdmin && <div className="notice premium-notice">{c.betaText} <a className="inline-link" href={`/${locale}/beta`}>{c.beta}</a></div>}
               <div className="guild-grid">
                 {guilds.map((guild) => (
                   <a className="guild-card" href={`/${locale}/dashboard/${guild.guildId}`} key={guild.guildId}>
                     {guild.iconUrl ? <img src={guild.iconUrl} alt="" /> : <div className="guild-placeholder">{guild.guildName.slice(0, 1)}</div>}
                     <div>
                       <strong>{guild.guildName}</strong>
-                      <span className={guild.defaultLogChannelId ? 'tag tag-ok' : 'tag tag-warn'}>{guild.defaultLogChannelId ? c.configured : c.setup}</span>
+                      <span className="guild-card-tags">
+                        <span className={guild.defaultLogChannelId ? 'tag tag-ok' : 'tag tag-warn'}>{guild.defaultLogChannelId ? c.configured : c.setup}</span>
+                        <span className={`tag ${activeTier(guild) !== 'FREE' ? 'tag-premium' : ''}`}>{tierShort(activeTier(guild))}</span>
+                      </span>
                     </div>
                     <Icon name="arrowRight" size={18} />
                   </a>

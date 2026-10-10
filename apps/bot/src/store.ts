@@ -1,5 +1,5 @@
 import { prisma, type GuildSettings } from '@sentinel/db';
-import { EVENT_CATALOG } from '@sentinel/shared';
+import { EVENT_CATALOG, effectiveTier, planLimits } from '@sentinel/shared';
 import type { Guild, Message } from 'discord.js';
 import { encryptText, protectJson } from './security.js';
 
@@ -72,22 +72,26 @@ export async function snapshotMessage(message: Message) {
 
 export async function runRetentionCleanup() {
   const guilds = await prisma.guildSettings.findMany({
-    select: { guildId: true, defaultRetentionDays: true }
+    select: { guildId: true, defaultRetentionDays: true, planTier: true, planExpiresAt: true }
   });
 
   for (const guild of guilds) {
+    // The plan caps retention: after a downgrade older data goes away on the
+    // next run even if the stored settings still ask for more.
+    const maxDays = planLimits(effectiveTier(guild)).retentionDays;
+    const defaultDays = Math.min(guild.defaultRetentionDays, maxDays);
     const routes = await prisma.logRoute.findMany({
       where: { guildId: guild.guildId, retentionDays: { not: null } },
       select: { eventKey: true, retentionDays: true }
     });
     const overriddenKeys = routes.map((route) => route.eventKey);
-    const cutoff = new Date(Date.now() - guild.defaultRetentionDays * 86_400_000);
+    const cutoff = new Date(Date.now() - defaultDays * 86_400_000);
 
     const deletions = routes.map((route) => prisma.logEvent.deleteMany({
       where: {
         guildId: guild.guildId,
         eventKey: route.eventKey,
-        createdAt: { lt: new Date(Date.now() - (route.retentionDays ?? guild.defaultRetentionDays) * 86_400_000) }
+        createdAt: { lt: new Date(Date.now() - Math.min(route.retentionDays ?? defaultDays, maxDays) * 86_400_000) }
       }
     }));
 
@@ -121,4 +125,24 @@ export async function isUserInstallBlocked(userId: string) {
     select: { id: true }
   });
   return Boolean(block);
+}
+
+
+/**
+ * Beta gate: a server may keep the bot only if it was approved (GUILD grant,
+ * e.g. an accepted waitlist request) or the person who added the bot may
+ * install it anywhere (USER grant: instance owner and allowlisted accounts).
+ */
+export async function installApproval(guildId: string, installerId: string | null) {
+  const guildGrant = await prisma.installGrant.findUnique({
+    where: { kind_subjectId: { kind: 'GUILD', subjectId: guildId } },
+    select: { source: true }
+  });
+  if (guildGrant) return `GUILD:${guildGrant.source}`;
+  if (!installerId) return null;
+  const userGrant = await prisma.installGrant.findUnique({
+    where: { kind_subjectId: { kind: 'USER', subjectId: installerId } },
+    select: { source: true }
+  });
+  return userGrant ? `USER:${userGrant.source}` : null;
 }

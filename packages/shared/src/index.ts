@@ -79,10 +79,9 @@ export const EVENT_CATALOG: EventDefinition[] = [
   { key: 'audit.entry', category: 'Audit', label: 'Audit log Discord', description: 'Discord genera una nuova voce di Audit Log.', noisy: true },
   { key: 'presence.update', category: 'Presenza', label: 'Presenza modificata', description: 'Status o attività di un membro cambiano.', noisy: true },
   { key: 'typing.start', category: 'Presenza', label: 'Typing', description: 'Un utente inizia a scrivere.', noisy: true },
-  { key: 'raw.gateway', category: 'Avanzato', label: 'Gateway raw', description: 'Copia grezza degli eventi Gateway non normalizzati. Da usare solo per debug.', noisy: true },
-  { key: 'system.ready', category: 'Sistema', label: 'Bot avviato', description: 'Il bot completa la connessione a Discord.' },
-  { key: 'system.error', category: 'Sistema', label: 'Errore bot', description: 'Errore runtime del bot.' },
-  { key: 'system.warn', category: 'Sistema', label: 'Warning bot', description: 'Warning emesso dal client Discord.', noisy: true }
+  { key: 'raw.gateway', category: 'Avanzato', label: 'Gateway raw', description: 'Copia grezza degli eventi Gateway non normalizzati. Da usare solo per debug.', noisy: true }
 ];
 
 export const eventDefinition = (key: string) => EVENT_CATALOG.find((event) => event.key === key);
+
+export * from './plans.js';

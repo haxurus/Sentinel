@@ -10,7 +10,8 @@ import { logger } from './logger.js';
 import { ensureGuild, isGuildInstallBlocked, runRetentionCleanup } from './store.js';
 import { registerHandlers } from './handlers.js';
 import { startDispatcher } from './dispatcher.js';
-import { recordEvent } from './recorder.js';
+import { onQuotaExceeded } from './recorder.js';
+import { createStatusNotifier } from './status.js';
 import { queueConnection } from './queue.js';
 import { startInternalApi } from './internal-api.js';
 import { installDiscordCapabilityPolicy } from './capability-policy.js';
@@ -46,7 +47,18 @@ installDiscordCapabilityPolicy(client, ({ method, route }) => {
   logger.error({ method, route }, 'Blocked Discord mutation by capability policy');
 });
 
-registerHandlers(client);
+const status = createStatusNotifier(client);
+registerHandlers(client, status);
+onQuotaExceeded((guildId, limit, tier) => {
+  const guild = client.guilds.cache.get(guildId);
+  status.notify({
+    level: 'warn',
+    title: 'Quota giornaliera raggiunta',
+    description: `**${guild?.name ?? guildId}** ha superato ${limit.toLocaleString('it-IT')} eventi oggi (piano ${tier}): gli eventi successivi non vengono registrati fino a mezzanotte UTC.`,
+    fields: [{ name: 'Server', value: `\`${guildId}\`` }],
+    dedupeKey: `quota:${guildId}`
+  });
+});
 let worker: ReturnType<typeof startDispatcher> | null = null;
 let internalApi: ReturnType<typeof startInternalApi> | null = null;
 
@@ -56,7 +68,7 @@ client.once(Events.ClientReady, async (ready) => {
   // Delivery and the internal API must come up even if one guild fails to
   // initialise; otherwise a single bad row would silently stop every log.
   worker = startDispatcher(client);
-  internalApi = startInternalApi(client, config.internalApiKey, config.internalApiPort);
+  internalApi = startInternalApi(client, config.internalApiKey, config.internalApiPort, status);
 
   for (const guild of ready.guilds.cache.values()) {
     try {
@@ -66,28 +78,36 @@ client.once(Events.ClientReady, async (ready) => {
         continue;
       }
       await ensureGuild(guild);
-      await recordEvent({ guildId: guild.id, eventKey: 'system.ready', actorId: ready.user.id, summary: `Bot connesso come ${ready.user.tag}.`, details: { guildCount: ready.guilds.cache.size, botUserId: ready.user.id, actorBot: true } });
     } catch (error) {
       logger.error({ guildId: guild.id, error: errorText(error) }, 'Guild initialisation failed');
     }
   }
+  status.notify({
+    level: 'ok',
+    title: 'Sentinel online',
+    description: `Connesso a Discord come **${ready.user.tag}**.`,
+    fields: [
+      { name: 'Server', value: String(ready.guilds.cache.size) },
+      { name: 'Avvio', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
+    ]
+  });
   await runRetentionCleanup().catch((error) => logger.error({ error: errorText(error) }, 'Initial retention cleanup failed'));
 });
 
-const recordForAllGuilds = async (eventKey: 'system.warn' | 'system.error', summary: string, details: Record<string, unknown>) => {
-  for (const guild of client.guilds.cache.values()) {
-    await recordEvent({ guildId: guild.id, eventKey, summary, details }).catch(() => null);
-  }
-};
-
+// Bot health goes to the instance status channel chosen in the super
+// console, not to the servers being logged.
 client.on(Events.Warn, (warning) => {
   logger.warn({ warning: redactText(warning) }, 'Discord client warning');
-  void recordForAllGuilds('system.warn', 'Warning del client Discord.', { warning: redactText(warning) });
+  status.notify({ level: 'warn', title: 'Warning del client Discord', description: redactText(warning) });
 });
 
 client.on(Events.Error, (error) => {
   logger.error({ error: errorText(error) }, 'Discord client error');
-  void recordForAllGuilds('system.error', 'Errore del client Discord.', { message: redactText(error.message), name: error.name });
+  status.notify({ level: 'error', title: 'Errore del client Discord', description: errorText(error) });
+});
+
+client.on(Events.ShardResume, (shardId, replayed) => {
+  status.notify({ level: 'info', title: 'Connessione a Discord ripristinata', description: `Shard ${shardId}: ${replayed} eventi recuperati.`, dedupeKey: 'shard-resume' });
 });
 
 setInterval(() => {
@@ -117,6 +137,7 @@ const shutdown = async (signal: string) => {
 
 process.on('unhandledRejection', (reason) => {
   logger.error({ reason: errorText(reason) }, 'Unhandled promise rejection');
+  status.notify({ level: 'error', title: 'Errore non gestito nel bot', description: errorText(reason) });
 });
 
 process.on('uncaughtException', (error) => {
