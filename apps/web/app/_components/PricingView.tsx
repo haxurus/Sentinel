@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { Icon } from './Brand';
 import { SiteFooter, SiteHeader } from './SiteChrome';
 import ContactList from './ContactList';
+import { StructuredData } from './StructuredData';
+import { SITE_URL } from './seo';
 import type { Locale } from '../i18n';
 import { TIER_ORDER, formatLimit, formatPrice, limitLabels, promotionText, tierLabel, type PlanLimits, type PublicInfo } from './plans';
 
@@ -109,6 +111,27 @@ export default function PricingView({ locale, info }: { locale: Locale; info: Pu
 
   return (
     <main className="public-site" lang={locale}>
+      <StructuredData data={[
+        ...(info ? [{
+          '@context': 'https://schema.org',
+          '@type': 'SoftwareApplication',
+          name: 'Sentinel',
+          url: `${SITE_URL}/${locale}/pricing`,
+          applicationCategory: 'UtilitiesApplication',
+          operatingSystem: 'Discord',
+          offers: plans.flatMap((plan) => plan.tier === 'FREE'
+            ? [{ '@type': 'Offer', name: plan.name, price: '0', priceCurrency: 'EUR' }]
+            : [
+                { '@type': 'Offer', name: `${plan.name} (${c.monthly})`, price: (plan.monthlyCents / 100).toFixed(2), priceCurrency: 'EUR' },
+                { '@type': 'Offer', name: `${plan.name} (${c.yearly})`, price: (plan.yearlyCents / 100).toFixed(2), priceCurrency: 'EUR' }
+              ])
+        }] : []),
+        {
+          '@context': 'https://schema.org',
+          '@type': 'FAQPage',
+          mainEntity: c.faq.map(([question, answer]) => ({ '@type': 'Question', name: question, acceptedAnswer: { '@type': 'Answer', text: answer } }))
+        }
+      ]} />
       <SiteHeader
         locale={locale}
         itHref="/it/pricing"

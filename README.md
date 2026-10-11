@@ -1,9 +1,9 @@
-# Sentinel
+# Sentinel — Discord logging & audit log bot
 
 [![CI](https://github.com/haxurus/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/haxurus/Sentinel/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-f5a524)](LICENSE)
 
-**Audit and logging for Discord servers, built to be verifiable.**
+**An open-source Discord logging bot for audit logs, moderation logs and message logs, built to be verifiable.**
 
 Sentinel watches what happens on a Discord server — bans, kicks, role and permission changes, edited and deleted messages, channels, invites, AutoMod and more — keeps an encrypted, searchable history and delivers each event to the log channel you choose. Everything is configured from a web dashboard.
 
