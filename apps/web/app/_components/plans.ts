@@ -30,10 +30,12 @@ export type Promotion = {
   billing: string;
   validUntil: string | null;
 };
+export type MultiDiscount = { minSubscriptions: number; percentOff: number };
 export type Contacts = { email: string | null; discord: string | null; url: string | null };
 export type PublicInfo = {
   contacts: Contacts;
   plans: Plan[];
+  multiSubscriptionDiscounts: MultiDiscount[];
   eventTiers: { TIER1: string[]; TIER2: string[] };
   promotions: Promotion[];
 };
@@ -60,6 +62,12 @@ export function formatPrice(cents: number, locale: Locale) {
 }
 
 export const formatNumber = (value: number, locale: Locale) => value.toLocaleString(locale === 'it' ? 'it-IT' : 'en-US');
+
+/** Percentage for a given number of paid subscriptions (0 below the first threshold). */
+export function multiDiscountFor(discounts: MultiDiscount[], subscriptions: number) {
+  return [...discounts].sort((a, b) => b.minSubscriptions - a.minSubscriptions)
+    .find((discount) => subscriptions >= discount.minSubscriptions)?.percentOff ?? 0;
+}
 
 export function promotionText(promo: Promotion, locale: Locale) {
   const amount = promo.percentOff ? `-${promo.percentOff}%` : `-${formatPrice(promo.amountOffCents ?? 0, locale)}`;

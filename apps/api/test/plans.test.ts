@@ -6,6 +6,7 @@ import {
   couponProblem,
   discountedPriceCents,
   effectiveTier,
+  multiSubscriptionPercent,
   planLimits,
   requiredTierForEvent,
   tierAllows,
@@ -52,6 +53,17 @@ test('every high-volume logger needs a paid plan and limits grow with the tier',
   }
   assert.ok(PLANS.TIER3.customBranding && !PLANS.TIER2.customBranding);
   assert.ok(tierAllows('TIER3', 'TIER2') && !tierAllows('TIER1', 'TIER2'));
+});
+
+test('multi-subscription discounts', () => {
+  assert.equal(multiSubscriptionPercent(1), 0);
+  assert.equal(multiSubscriptionPercent(2), 15);
+  assert.equal(multiSubscriptionPercent(3), 20);
+  assert.equal(multiSubscriptionPercent(4), 20);
+  assert.equal(multiSubscriptionPercent(5), 25);
+  assert.equal(multiSubscriptionPercent(12), 25);
+  assert.equal(PLANS.TIER1.monthlyCents, 199);
+  assert.equal(PLANS.TIER3.limits.eventsPerDay, 25_000);
 });
 
 test('expired plans fall back to Free', () => {

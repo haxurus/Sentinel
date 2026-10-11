@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Icon, type IconName } from './Brand';
 import { SiteHeader } from './SiteChrome';
 import type { Locale } from '../i18n';
-import { TIER_ORDER, formatPrice, tierLabel, type Plan, type PlanTier } from './plans';
+import { TIER_ORDER, formatPrice, multiDiscountFor, tierLabel, type MultiDiscount, type Plan, type PlanTier } from './plans';
 
 type GuildPlan = {
   planTier: PlanTier;
@@ -52,6 +52,7 @@ type Overview = {
   statusChannel: StatusChannel;
   coupons: Coupon[];
   planCatalog: Plan[];
+  multiSubscriptionDiscounts: MultiDiscount[];
 };
 type Tab = 'servers' | 'contacts' | 'coupons' | 'status' | 'blacklist' | 'audit';
 
@@ -85,6 +86,8 @@ const copy = {
       plusMonth: '+1 mese',
       plusYear: '+1 anno',
       coupon: 'Codice coupon',
+      subscriptions: 'Abbonamenti del cliente',
+      multi: 'sconto abbonamenti multipli',
       note: 'Nota interna',
       notePlaceholder: 'Es. pagato con bonifico il 10/10',
       price: 'Prezzo',
@@ -210,6 +213,8 @@ const copy = {
       plusMonth: '+1 month',
       plusYear: '+1 year',
       coupon: 'Coupon code',
+      subscriptions: 'Customer subscriptions',
+      multi: 'multi-subscription discount',
       note: 'Internal note',
       notePlaceholder: 'E.g. paid by bank transfer on 10/10',
       price: 'Price',
@@ -506,18 +511,21 @@ function PlanEditor({ guild, data, c, locale, action, onDone }: { guild: Guild; 
   const [expires, setExpires] = useState(toDateInput(guild.plan?.planExpiresAt ?? null));
   const [coupon, setCoupon] = useState(guild.plan?.planCouponCode ?? '');
   const [note, setNote] = useState(guild.plan?.planNote ?? '');
+  const [subscriptions, setSubscriptions] = useState('1');
   const free = tier === 'FREE';
+  const multiPercent = multiDiscountFor(data.multiSubscriptionDiscounts ?? [], Number(subscriptions) || 1);
 
   const plan = data.planCatalog.find((item) => item.tier === tier);
   const base = !plan || free ? 0 : billing === 'YEARLY' ? plan.yearlyCents : billing === 'MONTHLY' ? plan.monthlyCents : 0;
   const matched = data.coupons.find((item) => item.code === coupon.trim().toUpperCase());
   const final = useMemo(() => {
-    if (!matched) return base;
-    let price = base;
+    // Multi-subscription discount first, then the coupon.
+    let price = Math.round(base * (100 - multiPercent) / 100);
+    if (!matched) return price;
     if (matched.percentOff) price = Math.round(price * (100 - matched.percentOff) / 100);
     if (matched.amountOffCents) price -= matched.amountOffCents;
     return Math.max(0, price);
-  }, [base, matched]);
+  }, [base, matched, multiPercent]);
 
   const extend = (months: number) => {
     const start = expires && new Date(expires).getTime() > Date.now() ? new Date(expires) : new Date();
@@ -556,12 +564,13 @@ function PlanEditor({ guild, data, c, locale, action, onDone }: { guild: Guild; 
         <label>{c.plan.coupon}<input disabled={free} value={coupon} onChange={(e) => setCoupon(e.target.value.toUpperCase())} list={`coupons-${guild.id}`} placeholder="BETA50" />
           <datalist id={`coupons-${guild.id}`}>{data.coupons.filter((item) => item.active).map((item) => <option key={item.id} value={item.code} />)}</datalist>
         </label>
+        <label>{c.plan.subscriptions}<input disabled={free} type="number" min={1} max={100} value={subscriptions} onChange={(e) => setSubscriptions(e.target.value)} /></label>
       </div>
       {!free && <div className="plan-editor-quick">
         <button type="button" className="button button-sm button-ghost" onClick={() => extend(1)}>{c.plan.plusMonth}</button>
         <button type="button" className="button button-sm button-ghost" onClick={() => extend(12)}>{c.plan.plusYear}</button>
         <button type="button" className="button button-sm button-ghost" onClick={() => setExpires('')}>{c.plan.noExpiry}</button>
-        <span className="plan-editor-price">{c.plan.price}: {matched && final !== base ? <><s>{formatPrice(base, locale)}</s> <strong>{formatPrice(final, locale)}</strong></> : <strong>{formatPrice(base, locale)}</strong>}</span>
+        <span className="plan-editor-price">{c.plan.price}{multiPercent ? ` (-${multiPercent}% ${c.plan.multi})` : ''}: {final !== base ? <><s>{formatPrice(base, locale)}</s> <strong>{formatPrice(final, locale)}</strong></> : <strong>{formatPrice(base, locale)}</strong>}</span>
       </div>}
       <label>{c.plan.note}<input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder={c.plan.notePlaceholder} /></label>
       <button className="button button-primary" onClick={save}>{c.plan.save}</button>

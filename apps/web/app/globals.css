@@ -635,6 +635,14 @@ textarea { min-height: 84px; resize: vertical; line-height: 1.5; }
 .plan-points li { display: flex; align-items: center; gap: 9px; color: var(--text-2); font-size: .84rem; }
 .plan-points .icon { color: var(--accent); }
 .plan-card .button { margin-top: auto; }
+.multi-discount { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 32px; align-items: center; margin-top: 40px; padding: 28px; border: 1px solid var(--accent-line); border-radius: var(--radius-lg); background: radial-gradient(ellipse 70% 120% at 100% 0%, rgba(167,139,250,.08), transparent 60%), var(--surface); }
+.multi-discount h2 { margin: 12px 0 10px; font-size: 1.5rem; }
+.multi-discount p { color: var(--text-2); line-height: 1.6; }
+.multi-example { margin-top: 10px; color: var(--muted) !important; font-size: .86rem; }
+.multi-tiers { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; }
+.multi-tiers li { display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg-raised); text-align: center; }
+.multi-tiers strong { color: var(--premium); font-size: 1.6rem; }
+.multi-tiers span { color: var(--text-2); font-size: .82rem; }
 .compare { margin-top: 56px; }
 .compare h2 { margin-bottom: 18px; font-size: 1.6rem; }
 .compare-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-lg); }
@@ -718,9 +726,9 @@ textarea { min-height: 84px; resize: vertical; line-height: 1.5; }
 }
 
 @media (max-width: 960px) {
-  .pricing-bottom,     .plan-meters { grid-template-columns: 1fr; }
+  .pricing-bottom, .branding-grid, .multi-discount, .plan-meters { grid-template-columns: 1fr; }
   .plan-limits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .coupon-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .coupon-row { grid-template-columns: minmax(0, 1fr) auto auto; }
   .coupon-row > div { grid-column: 1 / -1; }
 }
 
@@ -728,7 +736,7 @@ textarea { min-height: 84px; resize: vertical; line-height: 1.5; }
   .plan-grid { grid-template-columns: 1fr; }
   .coupon-form { grid-template-columns: 1fr; }
   .coupon-wide, .coupon-tiers { grid-column: auto; }
-      .plan-editor-price { margin-left: 0; width: 100%; }
+  .plan-editor-price { margin-left: 0; width: 100%; }
 }
 
 /* ==========================================================================

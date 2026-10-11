@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@sentinel/db';
 import {
   BILLING_PERIODS,
+  MULTI_SUBSCRIPTION_DISCOUNTS,
   EVENT_CATALOG,
   PLANS,
   PLAN_TIERS,
@@ -66,6 +67,7 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     return {
       contacts: { email: config.contactEmail, discord: config.contactDiscord, url: config.contactUrl },
       plans: publicPlans(),
+      multiSubscriptionDiscounts: MULTI_SUBSCRIPTION_DISCOUNTS,
       eventTiers: eventTiers(),
       promotions: coupons.filter((coupon) => couponIsLive(coupon)).map((coupon) => ({
         code: coupon.code,
@@ -305,5 +307,5 @@ export async function planOverview(botGuildIds: string[]) {
       select: { guildId: true, planTier: true, planBilling: true, planExpiresAt: true, planCouponCode: true, planNote: true, planUpdatedAt: true }
     })
   ]);
-  return { config, statusChannel, coupons, plans, planCatalog: publicPlans() };
+  return { config, statusChannel, coupons, plans, planCatalog: publicPlans(), multiSubscriptionDiscounts: MULTI_SUBSCRIPTION_DISCOUNTS };
 }

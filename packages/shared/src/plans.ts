@@ -55,21 +55,34 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
     prioritySupport: false, customBranding: false
   },
   TIER1: {
-    tier: 'TIER1', name: 'Plus', level: 1, monthlyCents: 200, yearlyCents: 2_000,
+    tier: 'TIER1', name: 'Plus', level: 1, monthlyCents: 199, yearlyCents: 1_999,
     limits: { retentionDays: 30, eventsPerDay: 5_000, logChannels: 8, filterEntries: 40, mentionRoles: 2, roleBindings: 3, exportEvents: 10_000 },
     prioritySupport: true, customBranding: false
   },
   TIER2: {
-    tier: 'TIER2', name: 'Pro', level: 2, monthlyCents: 500, yearlyCents: 5_000,
+    tier: 'TIER2', name: 'Pro', level: 2, monthlyCents: 499, yearlyCents: 4_999,
     limits: PRO_LIMITS,
     prioritySupport: true, customBranding: false
   },
   TIER3: {
-    tier: 'TIER3', name: 'Brand', level: 3, monthlyCents: 1_000, yearlyCents: 9_000,
-    limits: { ...PRO_LIMITS, retentionDays: 90, eventsPerDay: 35_000 },
+    tier: 'TIER3', name: 'Brand', level: 3, monthlyCents: 899, yearlyCents: 8_999,
+    limits: { ...PRO_LIMITS, retentionDays: 90, eventsPerDay: 25_000 },
     prioritySupport: true, customBranding: true
   }
 };
+
+/**
+ * Discount for a customer who pays for several servers at once, by number of
+ * paid subscriptions (highest threshold first).
+ */
+export const MULTI_SUBSCRIPTION_DISCOUNTS = [
+  { minSubscriptions: 5, percentOff: 25 },
+  { minSubscriptions: 3, percentOff: 20 },
+  { minSubscriptions: 2, percentOff: 15 }
+] as const;
+
+export const multiSubscriptionPercent = (subscriptions: number) =>
+  MULTI_SUBSCRIPTION_DISCOUNTS.find((discount) => subscriptions >= discount.minSubscriptions)?.percentOff ?? 0;
 
 /** High-volume loggers that need Pro (level 2): debugging and presence data. */
 const TIER2_EVENTS = new Set([
