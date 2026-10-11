@@ -174,17 +174,17 @@ Anyone can add the hosted bot: **Public Bot** must be enabled in the Developer P
 
 | | Free | Level 1 · Plus | Level 2 · Pro | Level 3 · Brand |
 |---|---|---|---|---|
-| Price | — | €2/month · €20/year | €5/month · €50/year | €10/month · €90/year |
+| Price | — | €1.99/month · €19.99/year | €4.99/month · €49.99/year | €8.99/month · €89.99/year |
 | Standard loggers | ✓ | ✓ | ✓ | ✓ |
 | High-volume loggers (messages, reactions, polls, interactions, Audit Log) | | ✓ | ✓ | ✓ |
 | Advanced loggers (presence, typing, raw Gateway, diagnostics) | | | ✓ | ✓ |
 | Retention | 15 days | 30 days | 60 days | 90 days |
-| Events stored per day | 2,000 | 5,000 | 15,000 | 35,000 |
+| Events stored per day | 2,000 | 5,000 | 15,000 | 25,000 |
 | Log channels | 3 | 8 | 20 | 20 |
 | Priority support | | ✓ | ✓ | ✓ |
 | Custom bot name and banner in the server | | | | ✓ |
 
-The full list of limits lives in [`packages/shared/src/plans.ts`](packages/shared/src/plans.ts). When a plan is lowered or expires, loggers outside it are switched off and settings above its limits are clamped; nothing is deleted. Online payments are not enabled yet: the pricing page asks people to get in touch, and plans, expiry dates and coupons are managed by hand.
+Customers paying for several servers get 15% off with 2 subscriptions, 20% with 3 and 25% with 5 or more. The full list of limits lives in [`packages/shared/src/plans.ts`](packages/shared/src/plans.ts). When a plan is lowered or expires, loggers outside it are switched off and settings above its limits are clamped; nothing is deleted. Online payments are not enabled yet: the pricing page asks people to get in touch, and plans, expiry dates and coupons are managed by hand.
 
 **Super console** (`SUPER_ADMIN_USER_ID` only, enforced by the API):
 

@@ -248,7 +248,8 @@ app.get('/api/super/overview', async (request, reply) => {
     config: beta.config,
     statusChannel: beta.statusChannel,
     coupons: beta.coupons,
-    planCatalog: beta.planCatalog
+    planCatalog: beta.planCatalog,
+    multiSubscriptionDiscounts: beta.multiSubscriptionDiscounts
   };
 });
 

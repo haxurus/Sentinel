@@ -32,6 +32,11 @@ const copy = {
       TIER3: 'Tutto il Livello 2, più nome e banner del bot personalizzati nel tuo server.'
     },
     contactCta: 'Contattami',
+    multiKicker: 'Più server',
+    multiTitle: 'Abbonamenti multipli, prezzo più basso.',
+    multiText: 'Attivi un piano su più server? Lo sconto si applica a tutti gli abbonamenti dello stesso cliente, mensili o annuali, anche di livelli diversi.',
+    multiUnit: (count: number, last: boolean) => `${count}${last ? ' o più' : ''} abbonamenti`,
+    multiExample: (servers: number, price: string, total: string) => `Esempio: ${servers} server Pro annuali a ${price} invece di ${total}.`,
     compare: 'Confronto completo',
     feature: 'Funzione',
     rows: {
@@ -76,6 +81,11 @@ const copy = {
       TIER3: 'Everything in Level 2, plus a custom bot name and banner in your server.'
     },
     contactCta: 'Contact me',
+    multiKicker: 'More servers',
+    multiTitle: 'Multiple subscriptions, lower price.',
+    multiText: 'Running a plan on several servers? The discount applies to every subscription of the same customer, monthly or yearly, even on different levels.',
+    multiUnit: (count: number, last: boolean) => `${count}${last ? '+' : ''} subscriptions`,
+    multiExample: (servers: number, price: string, total: string) => `Example: ${servers} yearly Pro servers for ${price} instead of ${total}.`,
     compare: 'Full comparison',
     feature: 'Feature',
     rows: {
@@ -201,6 +211,34 @@ export default function PricingView({ locale, info }: { locale: Locale; info: Pu
                 );
               })}
             </div>
+
+            {info.multiSubscriptionDiscounts?.length > 0 && (() => {
+              const tiers = [...info.multiSubscriptionDiscounts].sort((a, b) => a.minSubscriptions - b.minSubscriptions);
+              const pro = info.plans.find((plan) => plan.tier === 'TIER2');
+              const example = tiers[tiers.length - 1]!;
+              return (
+                <section className="multi-discount">
+                  <div>
+                    <span className="kicker">{c.multiKicker}</span>
+                    <h2>{c.multiTitle}</h2>
+                    <p>{c.multiText}</p>
+                    {pro && <p className="multi-example">{c.multiExample(
+                      example.minSubscriptions,
+                      formatPrice(Math.round(pro.yearlyCents * example.minSubscriptions * (100 - example.percentOff) / 100), locale),
+                      formatPrice(pro.yearlyCents * example.minSubscriptions, locale)
+                    )}</p>}
+                  </div>
+                  <ol className="multi-tiers">
+                    {tiers.map((tier, index) => (
+                      <li key={tier.minSubscriptions}>
+                        <strong className="mono">-{tier.percentOff}%</strong>
+                        <span>{c.multiUnit(tier.minSubscriptions, index === tiers.length - 1)}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              );
+            })()}
 
             <section className="compare">
               <h2>{c.compare}</h2>
