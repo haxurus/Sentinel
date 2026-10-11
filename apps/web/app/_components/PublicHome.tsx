@@ -1,6 +1,8 @@
 import { Icon, type IconName } from './Brand';
 import { SiteFooter, SiteHeader } from './SiteChrome';
 import type { Locale } from '../i18n';
+import { StructuredData } from './StructuredData';
+import { REPO_URL, SITE_URL } from './seo';
 
 
 type StreamRow = { time: string; key: string; text: string; state: 'sent' | 'stored' | 'filtered' };
@@ -9,7 +11,7 @@ const copy = {
   it: {
     nav: { features: 'Funzioni', pipeline: 'Pipeline', security: 'Sicurezza', openSource: 'Open source', pricing: 'Prezzi', beta: 'Beta', signIn: 'Accedi', add: 'Aggiungi a Discord' },
     hero: {
-      kicker: 'Audit e logging per Discord',
+      kicker: 'Bot di log e audit log per Discord',
       title: ['Ogni azione', 'sul tuo server,', 'registrata.'],
       text: 'Sentinel osserva ban, ruoli, permessi, messaggi e canali, conserva uno storico cifrato e consegna ogni evento nel canale giusto. Tu decidi cosa registrare e dove.',
       dashboard: 'Apri la dashboard',
@@ -89,13 +91,24 @@ const copy = {
       repo: 'Vedi il codice su GitHub',
       fork: 'Fai un fork'
     },
+    faq: {
+      kicker: 'Domande frequenti',
+      title: 'Tutto quello che serve sapere.',
+      items: [
+        ['Come vedo i messaggi eliminati su Discord?', 'Discord non conserva i messaggi eliminati. Sentinel salva uno snapshot cifrato di ogni messaggio quando viene inviato: se poi viene modificato o eliminato, nel canale di log trovi il testo originale, l’autore e gli allegati.'],
+        ['Come scopro chi ha bannato, espulso o messo in timeout un membro?', 'Sentinel incrocia ogni evento con l’Audit Log di Discord e indica il moderatore che ha eseguito l’azione, il bersaglio e il motivo, per ban, kick, timeout, ruoli, permessi, canali e webhook.'],
+        ['Sentinel ha bisogno dei permessi di amministratore?', 'No. Servono solo i permessi per leggere i canali, vedere l’Audit Log e inviare messaggi nel canale di log. Una policy interna impedisce al bot qualsiasi azione di moderazione.'],
+        ['Sentinel è gratuito?', 'Sì: il piano Free include tutti i logger standard. I piani Plus, Pro e Brand aggiungono i logger ad alto volume, uno storico più lungo e limiti più alti. Il codice è open source e puoi anche ospitarlo tu.'],
+        ['Dove vengono salvati i dati?', 'In un database PostgreSQL con contenuti e dettagli cifrati AES-256-GCM. Decidi tu per quanto tempo conservarli e puoi cancellare i dati di un utente su richiesta.']
+      ]
+    },
     cta: { title: 'Porta ordine nei log del tuo server.', text: 'Aggiungi il bot, accedi con Discord e attiva il primo logger in pochi minuti.' },
     footer: 'Logging e auditing self-hosted per server Discord.'
   },
   en: {
     nav: { features: 'Features', pipeline: 'Pipeline', security: 'Security', openSource: 'Open source', pricing: 'Pricing', beta: 'Beta', signIn: 'Sign in', add: 'Add to Discord' },
     hero: {
-      kicker: 'Audit & logging for Discord',
+      kicker: 'Discord logging & audit log bot',
       title: ['Every action', 'on your server,', 'on the record.'],
       text: 'Sentinel watches bans, roles, permissions, messages and channels, keeps an encrypted history and delivers every event to the right channel. You decide what gets recorded and where.',
       dashboard: 'Open dashboard',
@@ -175,6 +188,17 @@ const copy = {
       repo: 'View the code on GitHub',
       fork: 'Fork it'
     },
+    faq: {
+      kicker: 'FAQ',
+      title: 'Everything you need to know.',
+      items: [
+        ['How can I see deleted messages on Discord?', 'Discord does not keep deleted messages. Sentinel stores an encrypted snapshot of every message when it is sent, so when it is edited or deleted your log channel shows the original text, the author and the attachments.'],
+        ['How do I find out who banned, kicked or timed out a member?', 'Sentinel matches every event with Discord’s Audit Log and shows the moderator who did it, the target and the reason — for bans, kicks, timeouts, roles, permissions, channels and webhooks.'],
+        ['Does Sentinel need administrator permissions?', 'No. It only needs to read channels, view the Audit Log and post in your log channel. An internal policy blocks every moderation action, whatever role the bot has.'],
+        ['Is Sentinel free?', 'Yes: the Free plan includes every standard logger. Plus, Pro and Brand add high-volume loggers, longer history and higher limits. The code is open source, so you can also host it yourself.'],
+        ['Where is my data stored?', 'In a PostgreSQL database, with message content and event details encrypted with AES-256-GCM. You choose how long it is kept and can delete a user’s data on request.']
+      ]
+    },
     cta: { title: 'Bring order to your server logs.', text: 'Add the bot, sign in with Discord and enable your first logger in minutes.' },
     footer: 'Self-hosted logging and auditing for Discord servers.'
   }
@@ -189,6 +213,33 @@ export default function PublicHome({ locale }: { locale: Locale }) {
 
   return (
     <main className="public-site" lang={locale}>
+      <StructuredData data={[
+        {
+          '@context': 'https://schema.org',
+          '@type': 'SoftwareApplication',
+          name: 'Sentinel',
+          url: `${SITE_URL}/${locale}`,
+          description: c.hero.text,
+          applicationCategory: 'UtilitiesApplication',
+          applicationSubCategory: locale === 'it' ? 'Bot Discord per log e moderazione' : 'Discord logging and moderation bot',
+          operatingSystem: 'Discord',
+          inLanguage: ['en', 'it'],
+          license: 'https://www.gnu.org/licenses/agpl-3.0.html',
+          isAccessibleForFree: true,
+          offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR', url: `${SITE_URL}/${locale}/pricing` },
+          author: { '@type': 'Person', name: 'Haxurus', url: 'https://github.com/haxurus' },
+          sameAs: [REPO_URL]
+        },
+        {
+          '@context': 'https://schema.org',
+          '@type': 'FAQPage',
+          mainEntity: c.faq.items.map(([question, answer]) => ({
+            '@type': 'Question',
+            name: question,
+            acceptedAnswer: { '@type': 'Answer', text: answer }
+          }))
+        }
+      ]} />
       <SiteHeader
         locale={locale}
         itHref="/it"
@@ -339,6 +390,20 @@ export default function PublicHome({ locale }: { locale: Locale }) {
         </div>
       </section>
 
+      <section className="section section-alt" id="faq">
+        <div className="site-container faq-layout">
+          <div className="section-head">
+            <span className="kicker">{c.faq.kicker}</span>
+            <h2>{c.faq.title}</h2>
+          </div>
+          <div className="faq-list">
+            {c.faq.items.map(([question, answer]) => (
+              <details key={question}><summary><h3>{question}</h3></summary><p>{answer}</p></details>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="section cta-section">
         <div className="site-container cta">
           <div><h2>{c.cta.title}</h2><p>{c.cta.text}</p></div>
@@ -354,6 +419,7 @@ export default function PublicHome({ locale }: { locale: Locale }) {
           <p>{c.footer}</p>
           <nav>
             <a href="#features">{c.nav.features}</a>
+            <a href="#faq">FAQ</a>
             <a href={dashboard}>Dashboard</a>
             <a href={`/${locale}/pricing`}>{c.nav.pricing}</a>
             <a href={`/${locale}/beta`}>{c.nav.beta}</a>
