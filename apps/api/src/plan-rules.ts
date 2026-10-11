@@ -88,20 +88,6 @@ export function planAdjustments(tier: PlanTier, settings: PlanSettings, routes: 
   return { settings: settingsPatch, routes: routePatches };
 }
 
-/** Discord permission bits that let a user add bots to a server. */
-const ADMINISTRATOR = 0x8n;
-const MANAGE_GUILD = 0x20n;
-
-export function canManageGuild(guild: { owner: boolean; permissions: string }) {
-  if (guild.owner) return true;
-  try {
-    const permissions = BigInt(guild.permissions);
-    return (permissions & ADMINISTRATOR) === ADMINISTRATOR || (permissions & MANAGE_GUILD) === MANAGE_GUILD;
-  } catch {
-    return false;
-  }
-}
-
 /** Fields only the instance owner should see (billing notes, coupon used). */
 export function publicGuildSettings<T extends { planNote?: unknown; planCouponCode?: unknown }>(settings: T) {
   const { planNote: _note, planCouponCode: _coupon, ...rest } = settings;

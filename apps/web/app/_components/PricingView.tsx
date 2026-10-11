@@ -11,11 +11,11 @@ import { TIER_ORDER, formatLimit, formatPrice, limitLabels, promotionText, tierL
 
 const copy = {
   it: {
-    nav: { home: 'Home', beta: 'Beta', dashboard: 'Dashboard' },
+    nav: { home: 'Home', dashboard: 'Dashboard' },
     kicker: 'Piani',
     title: 'Un piano per ogni server.',
     intro: 'Il piano Free copre il logging di moderazione e struttura del server. I livelli a pagamento sbloccano i logger ad alto volume, alzano i limiti e aggiungono il supporto prioritario.',
-    beta: 'Sentinel è in beta: i pagamenti online non sono ancora attivi. Per attivare un piano contattami direttamente, lo configuro io sul tuo server.',
+    payments: 'I pagamenti online non sono ancora attivi. Per attivare un piano contattami direttamente, lo configuro io sul tuo server.',
     monthly: 'Mensile',
     yearly: 'Annuale',
     perMonth: '/mese',
@@ -25,7 +25,7 @@ const copy = {
     promo: 'Promozione',
     code: 'codice',
     until: 'fino al',
-    free: { cta: 'Entra in beta', text: 'Tutti i logger standard: ban, kick, ruoli, permessi, canali, messaggi modificati ed eliminati, AutoMod.' },
+    free: { cta: 'Aggiungi Sentinel', text: 'Tutti i logger standard: ban, kick, ruoli, permessi, canali, messaggi modificati ed eliminati, AutoMod.' },
     tiers: {
       TIER1: 'Sblocca i logger ad alto volume più utili: nuovi messaggi, reazioni, sondaggi, interazioni, Audit Log completo. Limiti più alti e supporto prioritario.',
       TIER2: 'Tutte le funzioni sbloccate, comprese presenze, typing e Gateway raw, con i limiti più alti.',
@@ -48,18 +48,18 @@ const copy = {
     faq: [
       ['Cosa succede alla scadenza?', 'Il server torna al piano Free: i logger non inclusi vengono disattivati e i limiti tornano quelli gratuiti. La configurazione non viene cancellata.'],
       ['Cosa vuol dire “eventi al giorno”?', 'È il numero di eventi salvati nello storico in un giorno (UTC). Raggiunto il limite, gli eventi successivi non vengono registrati fino al giorno dopo.'],
-      ['Posso provare prima di pagare?', 'Sì: il piano Free resta sempre disponibile e durante la beta posso attivare periodi di prova.']
+      ['Posso provare prima di pagare?', 'Sì: il piano Free resta sempre disponibile e su richiesta posso attivare periodi di prova dei piani a pagamento.']
     ],
     unavailable: 'Impossibile caricare i piani in questo momento. Riprova tra poco.',
     included: 'Incluso',
     notIncluded: 'Non incluso'
   },
   en: {
-    nav: { home: 'Home', beta: 'Beta', dashboard: 'Dashboard' },
+    nav: { home: 'Home', dashboard: 'Dashboard' },
     kicker: 'Plans',
     title: 'A plan for every server.',
     intro: 'The Free plan covers moderation and server-structure logging. Paid levels unlock high-volume loggers, raise the limits and add priority support.',
-    beta: 'Sentinel is in beta: online payments are not active yet. To activate a plan, contact me directly and I will set it up on your server.',
+    payments: 'Online payments are not active yet. To activate a plan, contact me directly and I will set it up on your server.',
     monthly: 'Monthly',
     yearly: 'Yearly',
     perMonth: '/month',
@@ -69,7 +69,7 @@ const copy = {
     promo: 'Promotion',
     code: 'code',
     until: 'until',
-    free: { cta: 'Join the beta', text: 'Every standard logger: bans, kicks, roles, permissions, channels, edited and deleted messages, AutoMod.' },
+    free: { cta: 'Add Sentinel', text: 'Every standard logger: bans, kicks, roles, permissions, channels, edited and deleted messages, AutoMod.' },
     tiers: {
       TIER1: 'Unlocks the most useful high-volume loggers: new messages, reactions, polls, interactions, full Audit Log. Higher limits and priority support.',
       TIER2: 'Every feature unlocked, including presence, typing and raw Gateway, with the highest limits.',
@@ -92,7 +92,7 @@ const copy = {
     faq: [
       ['What happens when a plan expires?', 'The server goes back to Free: loggers outside the plan are switched off and the free limits apply again. Your configuration is not deleted.'],
       ['What does “events per day” mean?', 'The number of events stored in the history in one (UTC) day. Once reached, further events are not recorded until the next day.'],
-      ['Can I try before paying?', 'Yes: the Free plan is always available, and during the beta I can enable trial periods.']
+      ['Can I try before paying?', 'Yes: the Free plan is always available, and on request I can enable trial periods of the paid plans.']
     ],
     unavailable: 'Plans cannot be loaded right now. Please try again shortly.',
     included: 'Included',
@@ -138,7 +138,6 @@ export default function PricingView({ locale, info }: { locale: Locale; info: Pu
         enHref="/en/pricing"
         links={[
           { href: `/${locale}`, label: c.nav.home },
-          { href: `/${locale}/beta`, label: c.nav.beta },
           { href: `/${locale}/dashboard`, label: c.nav.dashboard }
         ]}
       />
@@ -151,7 +150,7 @@ export default function PricingView({ locale, info }: { locale: Locale; info: Pu
             <p>{c.intro}</p>
           </div>
 
-          <div className="notice premium-notice pricing-beta"><Icon name="clock" size={16} />{c.beta}</div>
+          <div className="notice premium-notice pricing-notice"><Icon name="clock" size={16} />{c.payments}</div>
 
           {info?.promotions.map((promo) => {
             const text = promotionText(promo, locale);
@@ -195,7 +194,7 @@ export default function PricingView({ locale, info }: { locale: Locale; info: Pu
                       {plan.prioritySupport && <li><Icon name="users" size={15} />{c.rows.support}</li>}
                       {plan.customBranding && <li><Icon name="sliders" size={15} />{c.rows.branding}</li>}
                     </ul>
-                    <a className={`button button-lg ${free ? 'button-secondary' : plan.tier === 'TIER2' ? 'button-primary' : 'button-secondary'}`} href={free ? `/${locale}/beta` : '#contact'}>
+                    <a className={`button button-lg ${free ? 'button-secondary' : plan.tier === 'TIER2' ? 'button-primary' : 'button-secondary'}`} href={free ? `/backend/bot/invite?lang=${locale}` : '#contact'}>
                       {free ? c.free.cta : c.contactCta}<Icon name="arrowRight" size={15} />
                     </a>
                   </article>

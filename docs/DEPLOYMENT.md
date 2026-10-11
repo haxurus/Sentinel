@@ -218,12 +218,12 @@ sha256sum /tmp/sentinel-deploy   # compare with: git show <commit-sha>:ops/senti
 sudo install -o root -g root -m 755 /tmp/sentinel-deploy /usr/local/sbin/sentinel-deploy
 ```
 
-## Beta access and status notifications
+## Installation access and status notifications
 
-- `SUPER_ADMIN_USER_ID` and `INVITE_ALLOWED_USER_IDS` in `.env` may add the bot to any server. The API mirrors them as install grants at startup, because the bot (which enforces access when it joins a server) does not read the API configuration.
-- Everyone else goes through the waitlist on `/beta`. Approved servers can install the bot; any other server is left immediately.
-- **Public Bot** must be enabled in the Discord Developer Portal for approved users to complete the install. Keep the default install link disabled.
-- After the first deploy with this feature, choose the status channel in **Super console → Notifications** and send a test message.
+- The hosted bot is open to every server: **Public Bot** must be enabled in the Discord Developer Portal. The website's "Add" buttons link straight to the Discord authorisation page.
+- Blacklisted servers and installers (super console → Blacklist) are left immediately.
+- `SUPER_ADMIN_USER_ID` selects the super console owner; `INVITE_ALLOWED_USER_IDS` is only used to derive it when it is not set.
+- Choose the status channel in **Super console → Notifications** and send a test message.
 
 ## 9. Rollback
 

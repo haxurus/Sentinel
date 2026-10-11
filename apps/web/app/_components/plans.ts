@@ -32,7 +32,6 @@ export type Promotion = {
 };
 export type Contacts = { email: string | null; discord: string | null; url: string | null };
 export type PublicInfo = {
-  waitlistOpen: boolean;
   contacts: Contacts;
   plans: Plan[];
   eventTiers: { TIER1: string[]; TIER2: string[] };

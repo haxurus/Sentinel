@@ -11,7 +11,7 @@ import {
   tierAllows,
   type CouponLike
 } from '@sentinel/shared';
-import { canManageGuild, filterEntryCount, logChannelSet, planAdjustments, publicGuildSettings, trimFilters, type PlanRoute } from '../src/plan-rules.ts';
+import { filterEntryCount, logChannelSet, planAdjustments, publicGuildSettings, trimFilters, type PlanRoute } from '../src/plan-rules.ts';
 
 const route = (eventKey: string, patch: Partial<PlanRoute> = {}): PlanRoute => ({
   eventKey,
@@ -107,10 +107,5 @@ test('a downgrade switches off loggers above the plan and clamps limits', () => 
 test('plan helpers', () => {
   assert.equal(logChannelSet('1', [{ destinationChannelId: '1' }, { destinationChannelId: '2' }, { destinationChannelId: null }]).size, 2);
   assert.deepEqual(trimFilters({ ignoredUserIds: ['a', 'b'], ignoredRoleIds: ['c', 'd'], ignoredChannelIds: ['e'] }, 3), { ignoredUserIds: ['a', 'b'], ignoredRoleIds: ['c'], ignoredChannelIds: [] });
-  assert.ok(canManageGuild({ owner: true, permissions: '0' }));
-  assert.ok(canManageGuild({ owner: false, permissions: '32' }));
-  assert.ok(canManageGuild({ owner: false, permissions: '8' }));
-  assert.ok(!canManageGuild({ owner: false, permissions: '1024' }));
-  assert.ok(!canManageGuild({ owner: false, permissions: 'nope' }));
   assert.deepEqual(publicGuildSettings({ guildId: 'x', planNote: 'paid by bank transfer', planCouponCode: 'BETA' }), { guildId: 'x' });
 });

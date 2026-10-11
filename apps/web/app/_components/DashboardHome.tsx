@@ -45,9 +45,7 @@ const copy = {
     setup: 'Da configurare',
     back: 'Torna alla home',
     superConsole: 'Super console',
-    beta: 'Beta',
-    pricing: 'Prezzi',
-    betaText: 'Sentinel è in beta: per aggiungerlo a un nuovo server iscriviti alla lista d’attesa.'
+    pricing: 'Prezzi'
   },
   en: {
     nav: { features: 'Features', add: 'Add Sentinel' },
@@ -73,9 +71,7 @@ const copy = {
     setup: 'Needs configuration',
     back: 'Back to home',
     superConsole: 'Super console',
-    beta: 'Beta',
-    pricing: 'Pricing',
-    betaText: 'Sentinel is in beta: to add it to a new server, join the waitlist.'
+    pricing: 'Pricing'
   }
 } as const;
 
@@ -108,7 +104,6 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
         links={[
           { href: home, label: 'Home' },
           { href: `/${locale}/pricing`, label: c.pricing },
-          { href: `/${locale}/beta`, label: c.beta },
           ...(me?.superAdmin ? [{ href: `/${locale}/super`, label: c.superConsole }] : [])
         ]}
         actions={<a className="button button-primary" href={`/backend/bot/invite?lang=${locale}`}>{c.nav.add}</a>}
@@ -154,7 +149,6 @@ export default function DashboardHome({ locale }: { locale: Locale }) {
                 <a className="button button-secondary" href={`/backend/bot/invite?lang=${locale}`}><Icon name="plus" size={16} />{c.addServer.replace(/^\+\s*/, '')}</a>
               </div>
               {!guilds.length && <div className="notice">{c.empty}</div>}
-              {!me?.superAdmin && <div className="notice premium-notice">{c.betaText} <a className="inline-link" href={`/${locale}/beta`}>{c.beta}</a></div>}
               <div className="guild-grid">
                 {guilds.map((guild) => (
                   <a className="guild-card" href={`/${locale}/dashboard/${guild.guildId}`} key={guild.guildId}>

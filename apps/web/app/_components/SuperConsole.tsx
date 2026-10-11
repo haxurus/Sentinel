@@ -27,7 +27,7 @@ type Guild = {
 };
 type Block = { id: string; kind: 'USER' | 'GUILD'; subjectId: string; reason: string | null; createdAt: string };
 type Audit = { id: string; username: string; action: string; subjectType: string | null; subjectId: string | null; createdAt: string };
-type Config = { waitlistOpen: boolean; contactEmail: string | null; contactDiscord: string | null; contactUrl: string | null };
+type Config = { contactEmail: string | null; contactDiscord: string | null; contactUrl: string | null };
 type StatusChannel = { guildId: string; channelId: string; updatedAt: string } | null;
 type Coupon = {
   id: string;
@@ -44,18 +44,6 @@ type Coupon = {
   active: boolean;
   public: boolean;
 };
-type WaitlistEntry = {
-  id: string;
-  userId: string;
-  username: string;
-  guildId: string;
-  guildName: string | null;
-  memberCount: number;
-  note: string | null;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  createdAt: string;
-  installed: boolean;
-};
 type Overview = {
   guilds: Guild[];
   blocks: Block[];
@@ -64,9 +52,8 @@ type Overview = {
   statusChannel: StatusChannel;
   coupons: Coupon[];
   planCatalog: Plan[];
-  waitlist: WaitlistEntry[];
 };
-type Tab = 'servers' | 'beta' | 'coupons' | 'status' | 'blacklist' | 'audit';
+type Tab = 'servers' | 'contacts' | 'coupons' | 'status' | 'blacklist' | 'audit';
 
 const copy = {
   it: {
@@ -75,7 +62,7 @@ const copy = {
     intro: 'Area riservata al proprietario dell’istanza. Le azioni qui sotto hanno effetto su tutti i server collegati al bot.',
     dashboard: 'Dashboard',
     pricing: 'Prezzi',
-    tabs: { servers: 'Server e piani', beta: 'Beta', coupons: 'Coupon', status: 'Notifiche', blacklist: 'Blacklist', audit: 'Audit' },
+    tabs: { servers: 'Server e piani', contacts: 'Contatti', coupons: 'Coupon', status: 'Notifiche', blacklist: 'Blacklist', audit: 'Audit' },
     liveServers: 'Server collegati',
     liveServersText: 'Elenco live dalla sessione Discord del bot. Da qui assegni il piano di ogni server.',
     members: 'membri',
@@ -85,7 +72,7 @@ const copy = {
     managePlan: 'Gestisci piano',
     close: 'Chiudi',
     paid: 'A pagamento',
-    pending: 'Richieste in attesa',
+    freeServers: 'Server Free',
     noServers: 'Sentinel non è collegato ad alcun server.',
     plan: {
       tier: 'Piano',
@@ -106,26 +93,13 @@ const copy = {
       expired: 'scaduto',
       confirmDowngrade: 'Ridurre il piano? I logger non inclusi verranno disattivati e i limiti applicati subito.'
     },
-    beta: {
-      title: 'Lista d’attesa',
-      text: 'Quando è attiva chiunque può iscriversi dalla pagina Beta con il proprio account Discord. Approvare una richiesta autorizza quel server ad aggiungere il bot.',
-      open: 'Iscrizioni aperte',
-      openText: 'Disattiva per non accettare nuove richieste. Le richieste già inviate restano qui.',
-      contacts: 'Recapiti pubblici',
-      contactsText: 'Mostrati nella pagina prezzi e nella pagina beta. GitHub è sempre incluso.',
+    contacts: {
+      title: 'Recapiti pubblici',
+      text: 'Mostrati nella pagina prezzi a chi vuole attivare un piano. GitHub è sempre incluso.',
       email: 'Email',
       discord: 'Discord (username o link https)',
       url: 'Sito o modulo (https)',
-      saveContacts: 'Salva recapiti',
-      filter: { PENDING: 'In attesa', APPROVED: 'Approvate', REJECTED: 'Rifiutate', ALL: 'Tutte' },
-      approve: 'Approva',
-      reject: 'Rifiuta',
-      reset: 'Rimetti in attesa',
-      remove: 'Elimina',
-      confirmRemove: 'Eliminare definitivamente questa richiesta?',
-      installed: 'Bot installato',
-      requester: 'Richiesta da',
-      none: 'Nessuna richiesta in questo stato.'
+      save: 'Salva recapiti'
     },
     coupons: {
       title: 'Coupon e sconti',
@@ -213,7 +187,7 @@ const copy = {
     intro: 'Instance-owner area. Actions here affect every server connected to the bot.',
     dashboard: 'Dashboard',
     pricing: 'Pricing',
-    tabs: { servers: 'Servers & plans', beta: 'Beta', coupons: 'Coupons', status: 'Notifications', blacklist: 'Blacklist', audit: 'Audit' },
+    tabs: { servers: 'Servers & plans', contacts: 'Contacts', coupons: 'Coupons', status: 'Notifications', blacklist: 'Blacklist', audit: 'Audit' },
     liveServers: 'Connected servers',
     liveServersText: 'Live list from the bot Discord session. Assign each server’s plan from here.',
     members: 'members',
@@ -223,7 +197,7 @@ const copy = {
     managePlan: 'Manage plan',
     close: 'Close',
     paid: 'Paid',
-    pending: 'Pending requests',
+    freeServers: 'Free servers',
     noServers: 'Sentinel is not connected to any server.',
     plan: {
       tier: 'Plan',
@@ -244,26 +218,13 @@ const copy = {
       expired: 'expired',
       confirmDowngrade: 'Lower the plan? Loggers outside it will be switched off and limits applied immediately.'
     },
-    beta: {
-      title: 'Waitlist',
-      text: 'When open, anyone can sign up from the Beta page with their Discord account. Approving a request authorises that server to add the bot.',
-      open: 'Sign-ups open',
-      openText: 'Turn off to stop accepting new requests. Existing requests stay here.',
-      contacts: 'Public contacts',
-      contactsText: 'Shown on the pricing and beta pages. GitHub is always included.',
+    contacts: {
+      title: 'Public contacts',
+      text: 'Shown on the pricing page to people who want to activate a plan. GitHub is always included.',
       email: 'Email',
       discord: 'Discord (username or https link)',
       url: 'Website or form (https)',
-      saveContacts: 'Save contacts',
-      filter: { PENDING: 'Pending', APPROVED: 'Approved', REJECTED: 'Rejected', ALL: 'All' },
-      approve: 'Approve',
-      reject: 'Reject',
-      reset: 'Back to pending',
-      remove: 'Delete',
-      confirmRemove: 'Permanently delete this request?',
-      installed: 'Bot installed',
-      requester: 'Requested by',
-      none: 'No requests in this state.'
+      save: 'Save contacts'
     },
     coupons: {
       title: 'Coupons & discounts',
@@ -401,10 +362,9 @@ export default function SuperConsole({ locale }: { locale: Locale }) {
     dateStyle: 'short', timeStyle: 'short'
   }).format(new Date(value)), [locale]);
 
-  const pendingCount = data?.waitlist.filter((entry) => entry.status === 'PENDING').length ?? 0;
   const tabs: Array<{ key: Tab; icon: IconName; label: string; badge?: number }> = [
     { key: 'servers', icon: 'grid', label: c.tabs.servers },
-    { key: 'beta', icon: 'users', label: c.tabs.beta, badge: pendingCount },
+    { key: 'contacts', icon: 'users', label: c.tabs.contacts },
     { key: 'coupons', icon: 'key', label: c.tabs.coupons },
     { key: 'status', icon: 'bolt', label: c.tabs.status },
     { key: 'blacklist', icon: 'lock', label: c.tabs.blacklist },
@@ -438,7 +398,7 @@ export default function SuperConsole({ locale }: { locale: Locale }) {
             <div className="metric-row">
               <div className="metric"><span>{c.liveServers}</span><strong>{data.guilds.length}</strong></div>
               <div className="metric"><span>{c.paid}</span><strong>{data.guilds.filter((guild) => guild.plan && guild.plan.planTier !== 'FREE').length}</strong></div>
-              <div className="metric"><span>{c.pending}</span><strong>{pendingCount}</strong></div>
+              <div className="metric"><span>{c.freeServers}</span><strong>{data.guilds.filter((guild) => !guild.plan || guild.plan.planTier === 'FREE').length}</strong></div>
               <div className="metric"><span>{c.tabs.coupons}</span><strong>{data.coupons.filter((coupon) => coupon.active).length}</strong></div>
             </div>
 
@@ -451,7 +411,7 @@ export default function SuperConsole({ locale }: { locale: Locale }) {
             </nav>
 
             {tab === 'servers' && <ServersTab data={data} c={c} locale={locale} action={action} fmt={fmt} />}
-            {tab === 'beta' && <BetaTab data={data} c={c} locale={locale} action={action} fmt={fmt} />}
+            {tab === 'contacts' && <ContactsTab data={data} c={c} action={action} />}
             {tab === 'coupons' && <CouponsTab data={data} c={c} locale={locale} action={action} fmt={fmt} />}
             {tab === 'status' && <StatusTab data={data} c={c} action={action} fmt={fmt} setStatus={setStatus} />}
             {tab === 'blacklist' && <BlacklistTab data={data} c={c} action={action} fmt={fmt} setStatus={setStatus} />}
@@ -609,85 +569,28 @@ function PlanEditor({ guild, data, c, locale, action, onDone }: { guild: Guild; 
   );
 }
 
-/* --------------------------------------------------------------------- beta */
+/* ----------------------------------------------------------------- contacts */
 
-function BetaTab({ data, c, locale, action, fmt }: TabProps) {
-  const [filter, setFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING');
+function ContactsTab({ data, c, action }: Pick<TabProps, 'data' | 'c' | 'action'>) {
   const [email, setEmail] = useState(data.config.contactEmail ?? '');
   const [discord, setDiscord] = useState(data.config.contactDiscord ?? '');
   const [url, setUrl] = useState(data.config.contactUrl ?? '');
-  const entries = data.waitlist.filter((entry) => filter === 'ALL' || entry.status === filter);
-
-  const toggleOpen = () => action('/backend/api/super/config', { method: 'PUT', body: JSON.stringify({ waitlistOpen: !data.config.waitlistOpen }) }).catch(ignore);
-  const saveContacts = () => action('/backend/api/super/config', {
+  const save = () => action('/backend/api/super/config', {
     method: 'PUT',
     body: JSON.stringify({ contactEmail: email.trim() || null, contactDiscord: discord.trim() || null, contactUrl: url.trim() || null })
   }).catch(ignore);
-  const review = (entry: WaitlistEntry, next: WaitlistEntry['status']) =>
-    action(`/backend/api/super/waitlist/${entry.id}`, { method: 'PUT', body: JSON.stringify({ status: next }) }).catch(ignore);
-  const remove = (entry: WaitlistEntry) => {
-    if (confirm(c.beta.confirmRemove)) action(`/backend/api/super/waitlist/${entry.id}`, { method: 'DELETE' }).catch(ignore);
-  };
 
-  return <>
-    <div className="two-col">
-      <section className="card">
-        <span className="kicker">Beta</span>
-        <h2>{c.beta.title}</h2>
-        <p>{c.beta.text}</p>
-        <div className="toggle-row">
-          <div><strong>{c.beta.open}</strong><span>{c.beta.openText}</span></div>
-          <button className={`switch ${data.config.waitlistOpen ? 'on' : ''}`} aria-pressed={data.config.waitlistOpen} aria-label={c.beta.open} onClick={toggleOpen}><i /></button>
-        </div>
-        <a className="button button-secondary button-sm" href={`/${locale}/beta`} target="_blank" rel="noreferrer">/{locale}/beta<Icon name="arrowRight" size={13} /></a>
-      </section>
-      <section className="card">
-        <span className="kicker">{c.beta.contacts}</span>
-        <h2>{c.beta.contacts}</h2>
-        <p>{c.beta.contactsText}</p>
-        <label>{c.beta.email}<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={200} /></label>
-        <label>{c.beta.discord}<input value={discord} onChange={(e) => setDiscord(e.target.value)} maxLength={200} /></label>
-        <label>{c.beta.url}<input type="url" value={url} onChange={(e) => setUrl(e.target.value)} maxLength={500} placeholder="https://" /></label>
-        <button className="button button-primary" onClick={saveContacts}>{c.beta.saveContacts}</button>
-      </section>
-    </div>
-
+  return (
     <section className="card">
-      <div className="card-head">
-        <div><span className="kicker">{c.tabs.beta}</span><h2>{c.pending}</h2></div>
-        <div className="segmented">
-          {(['PENDING', 'APPROVED', 'REJECTED', 'ALL'] as const).map((item) => (
-            <button key={item} className={filter === item ? 'active' : ''} onClick={() => setFilter(item)}>
-              {c.beta.filter[item]} <span className="mono">{item === 'ALL' ? data.waitlist.length : data.waitlist.filter((entry) => entry.status === item).length}</span>
-            </button>
-          ))}
-        </div>
+      <div className="card-head"><div><span className="kicker">{c.tabs.contacts}</span><h2>{c.contacts.title}</h2><p>{c.contacts.text}</p></div></div>
+      <div className="inline-fields">
+        <label>{c.contacts.email}<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={200} /></label>
+        <label>{c.contacts.discord}<input value={discord} onChange={(e) => setDiscord(e.target.value)} maxLength={200} /></label>
+        <label>{c.contacts.url}<input type="url" value={url} onChange={(e) => setUrl(e.target.value)} maxLength={500} placeholder="https://" /></label>
       </div>
-      {!entries.length && <div className="empty">{c.beta.none}</div>}
-      <div className="table-list">
-        {entries.map((entry) => (
-          <div className="waitlist-admin-row" key={entry.id}>
-            <div>
-              <strong>{entry.guildName || entry.guildId}</strong>
-              <span className="mono">{entry.guildId} · {entry.memberCount.toLocaleString(locale === 'it' ? 'it-IT' : 'en-US')} {c.members}</span>
-              <span>{c.beta.requester} {entry.username} <span className="mono">({entry.userId})</span> · {fmt(entry.createdAt)}</span>
-              {entry.note && <p>{entry.note}</p>}
-            </div>
-            <div className="waitlist-admin-tags">
-              <span className={`tag ${entry.status === 'APPROVED' ? 'tag-ok' : entry.status === 'REJECTED' ? 'tag-danger' : 'tag-warn'}`}>{c.beta.filter[entry.status]}</span>
-              {entry.installed && <span className="tag">{c.beta.installed}</span>}
-            </div>
-            <div className="super-guild-actions">
-              {entry.status !== 'APPROVED' && <button className="button button-sm button-primary" onClick={() => review(entry, 'APPROVED')}>{c.beta.approve}</button>}
-              {entry.status !== 'REJECTED' && <button className="button button-sm button-secondary" onClick={() => review(entry, 'REJECTED')}>{c.beta.reject}</button>}
-              {entry.status !== 'PENDING' && <button className="button button-sm button-ghost" onClick={() => review(entry, 'PENDING')}>{c.beta.reset}</button>}
-              <button className="button button-sm button-danger" onClick={() => remove(entry)}>{c.beta.remove}</button>
-            </div>
-          </div>
-        ))}
-      </div>
+      <button className="button button-primary" onClick={save}>{c.contacts.save}</button>
     </section>
-  </>;
+  );
 }
 
 /* ------------------------------------------------------------------ coupons */

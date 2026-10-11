@@ -52,7 +52,7 @@ export function SiteFooter({ locale, children }: { locale: Locale; children?: Re
       <div className="site-container">
         {children}
         <div className="site-footer-bottom">
-          <span>Sentinel © 2026 · {locale === 'it' ? 'Fatto da' : 'Made by'} Haxurus · <a href="https://github.com/haxurus/Sentinel" target="_blank" rel="noreferrer">Open source (AGPL-3.0)</a></span>
+          <span>Sentinel © 2026 · {locale === 'it' ? 'Fatto da' : 'Made by'} Haxurus · <a href="https://github.com/haxurus/Sentinel" target="_blank" rel="noreferrer">Open source (AGPL-3.0)</a> · <a href={`/${locale}/legal#privacy`}>Privacy</a> · <a href={`/${locale}/legal#terms`}>{locale === 'it' ? 'Termini' : 'Terms'}</a></span>
           <span className="mono">discord audit &amp; logging</span>
         </div>
       </div>

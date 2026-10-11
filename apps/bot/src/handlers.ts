@@ -10,7 +10,7 @@ import {
   type PartialMessage
 } from 'discord.js';
 import { prisma } from '@sentinel/db';
-import { ensureGuild, getGuildSettings, installApproval, isGuildInstallBlocked, isUserInstallBlocked, snapshotMessage } from './store.js';
+import { ensureGuild, getGuildSettings, isGuildInstallBlocked, isUserInstallBlocked, snapshotMessage } from './store.js';
 import { recordEvent, shouldCapture } from './recorder.js';
 import { findRecentAuditEntry, jsonSafe, redactSecrets } from './utils.js';
 import { decryptText, redactText, unprotectJson } from './security.js';
@@ -85,14 +85,13 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
 
   // Servers the bot just left on purpose: their GuildDelete is not news.
   const intentionalLeaves = new Set<string>();
-  const leaveRejected = async (guild: Guild, reason: 'blocked-guild' | 'blocked-installer' | 'not-approved', installerId: string | null) => {
+  const leaveRejected = async (guild: Guild, reason: 'blocked-guild' | 'blocked-installer', installerId: string | null) => {
     intentionalLeaves.add(guild.id);
     setTimeout(() => intentionalLeaves.delete(guild.id), 120_000).unref();
     await leaveGuild(guild, reason).catch(() => null);
     const why = {
       'blocked-guild': 'il server è in blacklist',
-      'blocked-installer': 'chi ha aggiunto il bot è in blacklist',
-      'not-approved': 'server non approvato per la beta'
+      'blocked-installer': 'chi ha aggiunto il bot è in blacklist'
     }[reason];
     status.notify({
       level: 'warn',
@@ -121,14 +120,6 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
       return;
     }
 
-    // Fail closed: without an approval (or a verifiable installer that may
-    // install anywhere) the bot does not stay, even if Public Bot is on.
-    const approval = await installApproval(guild.id, installerId);
-    if (!approval) {
-      await leaveRejected(guild, 'not-approved', installerId);
-      return;
-    }
-
     await ensureGuild(guild);
     status.notify({
       level: 'ok',
@@ -136,8 +127,7 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
       fields: [
         { name: 'Server', value: `${guild.name}\n\`${guild.id}\`` },
         { name: 'Membri', value: String(guild.memberCount) },
-        { name: 'Aggiunto da', value: installerId ? `<@${installerId}>\n\`${installerId}\`` : 'sconosciuto' },
-        { name: 'Autorizzazione', value: approval }
+        { name: 'Aggiunto da', value: installerId ? `<@${installerId}>\n\`${installerId}\`` : 'sconosciuto' }
       ]
     });
   });

@@ -9,7 +9,7 @@ type StreamRow = { time: string; key: string; text: string; state: 'sent' | 'sto
 
 const copy = {
   it: {
-    nav: { features: 'Funzioni', pipeline: 'Pipeline', security: 'Sicurezza', openSource: 'Open source', pricing: 'Prezzi', beta: 'Beta', signIn: 'Accedi', add: 'Aggiungi a Discord' },
+    nav: { features: 'Funzioni', pipeline: 'Pipeline', security: 'Sicurezza', openSource: 'Open source', pricing: 'Prezzi', signIn: 'Accedi', add: 'Aggiungi a Discord' },
     hero: {
       kicker: 'Bot di log e audit log per Discord',
       title: ['Ogni azione', 'sul tuo server,', 'registrata.'],
@@ -61,7 +61,7 @@ const copy = {
       kicker: 'Come iniziare',
       title: 'Operativo in tre passaggi.',
       steps: [
-        ['Entra in beta e aggiungi il bot', 'Iscrivi il tuo server alla lista d’attesa; una volta approvato, autorizza Sentinel con i soli permessi di lettura e invio log.'],
+        ['Aggiungi il bot', 'Autorizza Sentinel con i soli permessi di lettura e invio log: nessun permesso di moderazione.'],
         ['Accedi con Discord', 'La dashboard mostra i server che puoi gestire e applica i tuoi livelli di accesso.'],
         ['Scegli cosa registrare', 'Attiva i logger, scegli i canali e la retention. Ogni modifica al pannello resta tracciata.']
       ]
@@ -106,7 +106,7 @@ const copy = {
     footer: 'Logging e auditing self-hosted per server Discord.'
   },
   en: {
-    nav: { features: 'Features', pipeline: 'Pipeline', security: 'Security', openSource: 'Open source', pricing: 'Pricing', beta: 'Beta', signIn: 'Sign in', add: 'Add to Discord' },
+    nav: { features: 'Features', pipeline: 'Pipeline', security: 'Security', openSource: 'Open source', pricing: 'Pricing', signIn: 'Sign in', add: 'Add to Discord' },
     hero: {
       kicker: 'Discord logging & audit log bot',
       title: ['Every action', 'on your server,', 'on the record.'],
@@ -158,7 +158,7 @@ const copy = {
       kicker: 'Getting started',
       title: 'Up and running in three steps.',
       steps: [
-        ['Join the beta and add the bot', 'Put your server on the waitlist; once approved, authorise Sentinel with read and log-delivery permissions only.'],
+        ['Add the bot', 'Authorise Sentinel with read and log-delivery permissions only: no moderation rights.'],
         ['Sign in with Discord', 'The dashboard lists the servers you can manage and applies your access level.'],
         ['Choose what to record', 'Enable loggers, pick channels and retention. Every panel change is audited.']
       ]
@@ -248,8 +248,7 @@ export default function PublicHome({ locale }: { locale: Locale }) {
           { href: '#features', label: c.nav.features },
           { href: '#security', label: c.nav.security },
           { href: '#open-source', label: c.nav.openSource },
-          { href: `/${locale}/pricing`, label: c.nav.pricing },
-          { href: `/${locale}/beta`, label: c.nav.beta }
+          { href: `/${locale}/pricing`, label: c.nav.pricing }
         ]}
         actions={<>
           <a className="button button-ghost" href={dashboard}>{c.nav.signIn}</a>
@@ -422,7 +421,6 @@ export default function PublicHome({ locale }: { locale: Locale }) {
             <a href="#faq">FAQ</a>
             <a href={dashboard}>Dashboard</a>
             <a href={`/${locale}/pricing`}>{c.nav.pricing}</a>
-            <a href={`/${locale}/beta`}>{c.nav.beta}</a>
             <a href={invite}>{c.nav.add}</a>
             <a href={repo} target="_blank" rel="noreferrer">{c.openSource.badge}</a>
           </nav>

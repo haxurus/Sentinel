@@ -7,7 +7,7 @@
 
 Sentinel watches what happens on a Discord server — bans, kicks, role and permission changes, edited and deleted messages, channels, invites, AutoMod and more — keeps an encrypted, searchable history and delivers each event to the log channel you choose. Everything is configured from a web dashboard.
 
-- **Hosted instance:** [sentinel.haxurus.com](https://sentinel.haxurus.com) — in beta: servers join through a [waitlist](https://sentinel.haxurus.com/en/beta); plans on the [pricing page](https://sentinel.haxurus.com/en/pricing)
+- **Hosted instance:** [sentinel.haxurus.com](https://sentinel.haxurus.com) — open to every server; plans on the [pricing page](https://sentinel.haxurus.com/en/pricing), [privacy policy and terms](https://sentinel.haxurus.com/en/legal)
 - **Self-hosting:** fork this repository and run it with Docker on your own infrastructure
 - **Open source:** the bot, the API, the dashboard and the deployment scripts are all in this repository under the [AGPL-3.0](LICENSE) licence
 
@@ -22,7 +22,7 @@ Sentinel watches what happens on a Discord server — bans, kicks, role and perm
 - [Local development](#local-development)
 - [Self-hosting and deployment](#self-hosting-and-deployment)
 - [Discord application setup](#discord-application-setup)
-- [Beta, plans and super console](#beta-plans-and-super-console)
+- [Plans and super console](#plans-and-super-console)
 - [Discord limitations](#discord-limitations)
 - [Licence and contributing](#licence-and-contributing)
 
@@ -166,11 +166,9 @@ OAuth2 redirect URL:
 https://<your-hostname>/backend/auth/discord/callback
 ```
 
-Who may keep the bot is enforced by the bot itself: when it joins a server it stays only if the server was approved (waitlist) or the person who added it may install anywhere (`SUPER_ADMIN_USER_ID` and `INVITE_ALLOWED_USER_IDS`); otherwise it leaves immediately and reports it in the status channel. To let approved beta servers install the bot, **Public Bot** must be enabled in the Developer Portal; keep the default install link disabled so the website remains the only entry point.
+Anyone can add the hosted bot: **Public Bot** must be enabled in the Developer Portal. The bot still leaves servers, and servers added by users, that are on the super console blacklist, and reports it in the status channel.
 
-## Beta, plans and super console
-
-**Beta waitlist.** Users sign in with Discord on `/beta` and request access for a server they manage (server ID and member count). The instance owner opens or closes sign-ups and approves or rejects requests from the super console; an approved server can then add the bot. Existing servers were authorised automatically when the beta started.
+## Plans and super console
 
 **Plans.** Every server has a plan, enforced by the dashboard, the API, the recorder (capture, daily quota, retention) and the dispatcher:
 
@@ -191,7 +189,7 @@ The full list of limits lives in [`packages/shared/src/plans.ts`](packages/share
 **Super console** (`SUPER_ADMIN_USER_ID` only, enforced by the API):
 
 - connected servers with their plan (level, billing period, expiry, coupon, internal note), leave or block a server;
-- waitlist switch, requests and public contact details;
+- public contact details shown on the pricing page;
 - coupons and discounts (percentage or fixed amount, plans, billing period, validity, redemptions, optional promotion on the pricing page);
 - the **status channel**: one server and channel, chosen among those the bot can see, that receives bot startup, errors, warnings, reached quotas and servers added, removed or rejected — these notices are no longer posted in individual servers;
 - installation blacklist and an audit log of every action, including automatic plan expiries.
