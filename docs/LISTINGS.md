@@ -14,8 +14,6 @@ README.
 - Privacy policy: https://sentinel.haxurus.com/en/legal#privacy
 - Terms of service: https://sentinel.haxurus.com/en/legal#terms
 - Most directories also ask for a **support server** invite.
-- Replace `CLIENT_ID` in the invite URL with the application ID from the
-  Developer Portal.
 
 ## Common fields
 
@@ -34,7 +32,7 @@ README.
 | Licence | AGPL-3.0 (open source) |
 | Contact | haxurus@icloud.com · Discord: haxurus |
 | Languages | English, Italian (dashboard and log messages) |
-| Invite URL | `https://discord.com/oauth2/authorize?client_id=CLIENT_ID&scope=bot%20applications.commands&permissions=67194240` |
+| Invite URL | `https://discord.com/oauth2/authorize?client_id=1555694361059008665&scope=bot%20applications.commands&permissions=67194240` |
 
 Permissions in the invite (no Administrator): View Channels, Send Messages,
 Embed Links, Read Message History, View Audit Log, Change Nickname (used only
