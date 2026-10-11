@@ -15,14 +15,10 @@ import { superAdminAudit } from './super-audit.js';
 import { getGuildResources, refreshStatusChannel, sendStatusTest, setBotBranding, type BotApiError } from './discord.js';
 import { findForeignReference } from './helpers.js';
 import { PlanError, changeGuildPlan, guildPlanUsage, guildTier } from './plan-service.js';
-import { canManageGuild } from './plan-rules.js';
 
 const snowflake = z.string().regex(/^\d{17,20}$/);
 const nullableText = (max: number) => z.string().trim().max(max).nullable().optional()
   .transform((value) => (value ? value : null));
-
-const WAITLIST_STATUSES = ['PENDING', 'APPROVED', 'REJECTED'] as const;
-const MAX_OPEN_REQUESTS_PER_USER = 5;
 
 export async function instanceConfig() {
   return prisma.instanceConfig.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
@@ -47,10 +43,10 @@ const sendPlanError = (reply: FastifyReply, error: unknown) => {
 };
 
 /**
- * Beta programme: public plan catalogue, waitlist, install grants, coupons,
- * plan management and the instance status channel.
+ * Public plan catalogue, coupons, plan management, public contacts and the
+ * instance status channel.
  */
-export async function registerBetaRoutes(app: FastifyInstance) {
+export async function registerPlanRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- public
   // Served to the pricing page (also server-side, from a single address), so
   // it is cached briefly instead of being rate limited per client.
@@ -68,7 +64,6 @@ export async function registerBetaRoutes(app: FastifyInstance) {
       prisma.coupon.findMany({ where: { public: true, active: true }, orderBy: { createdAt: 'desc' }, take: 10 })
     ]);
     return {
-      waitlistOpen: config.waitlistOpen,
       contacts: { email: config.contactEmail, discord: config.contactDiscord, url: config.contactUrl },
       plans: publicPlans(),
       eventTiers: eventTiers(),
@@ -84,100 +79,11 @@ export async function registerBetaRoutes(app: FastifyInstance) {
     };
   };
 
-  // -------------------------------------------------------------- waitlist
-  app.get('/api/waitlist', async (request, reply) => {
-    const session = await requireSession(request, reply);
-    if (!session) return;
-    const [config, entries] = await Promise.all([
-      instanceConfig(),
-      prisma.waitlistEntry.findMany({ where: { userId: session.userId }, orderBy: { createdAt: 'desc' } })
-    ]);
-    const manageable = session.guilds.filter(canManageGuild);
-    const installed = new Set((await prisma.guildSettings.findMany({
-      where: { guildId: { in: [...manageable.map((guild) => guild.id), ...entries.map((entry) => entry.guildId)] } },
-      select: { guildId: true }
-    })).map((row) => row.guildId));
-    return {
-      open: config.waitlistOpen,
-      contacts: { email: config.contactEmail, discord: config.contactDiscord, url: config.contactUrl },
-      entries: entries.map((entry) => ({
-        id: entry.id,
-        guildId: entry.guildId,
-        guildName: entry.guildName,
-        memberCount: entry.memberCount,
-        note: entry.note,
-        status: entry.status,
-        createdAt: entry.createdAt,
-        reviewedAt: entry.reviewedAt,
-        installed: installed.has(entry.guildId)
-      })),
-      guilds: manageable.map((guild) => ({
-        id: guild.id,
-        name: guild.name,
-        iconUrl: guild.icon ? `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=64` : null,
-        installed: installed.has(guild.id)
-      }))
-    };
-  });
-
-  app.post('/api/waitlist', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (request, reply) => {
-    const session = await requireSession(request, reply);
-    if (!session) return;
-    const parsed = z.object({
-      guildId: snowflake,
-      memberCount: z.number().int().min(1).max(10_000_000),
-      note: nullableText(500)
-    }).safeParse(request.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' });
-    const { guildId, memberCount, note } = parsed.data;
-
-    const config = await instanceConfig();
-    if (!config.waitlistOpen) return reply.code(403).send({ error: 'WAITLIST_CLOSED' });
-
-    const blocked = await prisma.installBlock.findFirst({
-      where: { OR: [{ kind: 'USER', subjectId: session.userId }, { kind: 'GUILD', subjectId: guildId }] },
-      select: { id: true }
-    });
-    if (blocked) return reply.code(403).send({ error: 'INSTALL_BLOCKED' });
-
-    // Only someone who can add bots to the server may ask for it.
-    const guild = session.guilds.find((item) => item.id === guildId);
-    if (!guild || !canManageGuild(guild)) return reply.code(403).send({ error: 'GUILD_NOT_MANAGEABLE' });
-
-    const installed = await prisma.guildSettings.findUnique({ where: { guildId }, select: { guildId: true } });
-    if (installed) return reply.code(409).send({ error: 'ALREADY_INSTALLED' });
-
-    const existing = await prisma.waitlistEntry.findUnique({ where: { userId_guildId: { userId: session.userId, guildId } } });
-    if (existing?.status === 'APPROVED') return reply.code(409).send({ error: 'ALREADY_APPROVED' });
-    if (!existing) {
-      const open = await prisma.waitlistEntry.count({ where: { userId: session.userId, status: 'PENDING' } });
-      if (open >= MAX_OPEN_REQUESTS_PER_USER) return reply.code(429).send({ error: 'WAITLIST_LIMIT' });
-    }
-
-    const data = { username: session.username, guildName: guild.name, memberCount, note, status: 'PENDING', reviewedAt: null, reviewedByUserId: null };
-    const entry = await prisma.waitlistEntry.upsert({
-      where: { userId_guildId: { userId: session.userId, guildId } },
-      update: data,
-      create: { userId: session.userId, guildId, ...data }
-    });
-    return { ok: true, id: entry.id, status: entry.status };
-  });
-
-  app.delete('/api/waitlist/:id', async (request, reply) => {
-    const session = await requireSession(request, reply);
-    if (!session) return;
-    const { id } = request.params as { id: string };
-    const removed = await prisma.waitlistEntry.deleteMany({ where: { id, userId: session.userId, status: { in: ['PENDING', 'REJECTED'] } } });
-    if (!removed.count) return reply.code(404).send({ error: 'NOT_FOUND' });
-    return { ok: true };
-  });
-
   // ------------------------------------------------------- super: settings
   app.put('/api/super/config', async (request, reply) => {
     const session = await requireSuperAdmin(request, reply);
     if (!session) return;
     const parsed = z.object({
-      waitlistOpen: z.boolean().optional(),
       contactEmail: z.union([z.literal(''), z.string().trim().email().max(200)]).nullable().optional(),
       contactDiscord: z.string().trim().max(200).nullable().optional(),
       contactUrl: z.union([z.literal(''), z.string().trim().url().max(500).refine((value) => value.startsWith('https://'))]).nullable().optional()
@@ -185,7 +91,6 @@ export async function registerBetaRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' });
     const text = (value: string | null | undefined) => value === undefined ? undefined : value || null;
     const data = {
-      waitlistOpen: parsed.data.waitlistOpen,
       contactEmail: text(parsed.data.contactEmail),
       contactDiscord: text(parsed.data.contactDiscord),
       contactUrl: text(parsed.data.contactUrl)
@@ -193,53 +98,6 @@ export async function registerBetaRoutes(app: FastifyInstance) {
     const config = await prisma.instanceConfig.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
     await superAdminAudit(request, session, 'instance.config', null, null, data);
     return config;
-  });
-
-  // ------------------------------------------------------- super: waitlist
-  const syncWaitlistGrant = async (guildId: string, userId: string) => {
-    const approved = await prisma.waitlistEntry.count({ where: { guildId, status: 'APPROVED' } });
-    if (approved) {
-      await prisma.installGrant.upsert({
-        where: { kind_subjectId: { kind: 'GUILD', subjectId: guildId } },
-        update: {},
-        create: { kind: 'GUILD', subjectId: guildId, source: 'WAITLIST', createdByUserId: userId }
-      });
-    } else {
-      // Grants from other sources (legacy servers, manual) are left alone.
-      await prisma.installGrant.deleteMany({ where: { kind: 'GUILD', subjectId: guildId, source: 'WAITLIST' } });
-    }
-  };
-
-  app.put('/api/super/waitlist/:id', async (request, reply) => {
-    const session = await requireSuperAdmin(request, reply);
-    if (!session) return;
-    const { id } = request.params as { id: string };
-    const parsed = z.object({ status: z.enum(WAITLIST_STATUSES) }).safeParse(request.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' });
-    const entry = await prisma.waitlistEntry.findUnique({ where: { id } });
-    if (!entry) return reply.code(404).send({ error: 'NOT_FOUND' });
-    const updated = await prisma.waitlistEntry.update({
-      where: { id },
-      data: { status: parsed.data.status, reviewedAt: new Date(), reviewedByUserId: session.userId }
-    });
-    await syncWaitlistGrant(entry.guildId, session.userId);
-    await superAdminAudit(request, session, `waitlist.${parsed.data.status.toLowerCase()}`, 'GUILD', entry.guildId, {
-      requesterId: entry.userId,
-      memberCount: entry.memberCount
-    });
-    return updated;
-  });
-
-  app.delete('/api/super/waitlist/:id', async (request, reply) => {
-    const session = await requireSuperAdmin(request, reply);
-    if (!session) return;
-    const { id } = request.params as { id: string };
-    const entry = await prisma.waitlistEntry.findUnique({ where: { id } });
-    if (!entry) return reply.code(404).send({ error: 'NOT_FOUND' });
-    await prisma.waitlistEntry.delete({ where: { id } });
-    await syncWaitlistGrant(entry.guildId, session.userId);
-    await superAdminAudit(request, session, 'waitlist.delete', 'GUILD', entry.guildId, { requesterId: entry.userId });
-    return { ok: true };
   });
 
   // -------------------------------------------------------- super: coupons
@@ -436,11 +294,10 @@ export async function registerBetaRoutes(app: FastifyInstance) {
   });
 }
 
-/** Super console overview additions: plans, waitlist, coupons, settings. */
-export async function betaOverview(botGuildIds: string[]) {
-  const [config, waitlist, coupons, statusChannel, plans] = await Promise.all([
+/** Super console overview additions: plans, coupons, settings. */
+export async function planOverview(botGuildIds: string[]) {
+  const [config, coupons, statusChannel, plans] = await Promise.all([
     instanceConfig(),
-    prisma.waitlistEntry.findMany({ orderBy: { createdAt: 'desc' }, take: 500 }),
     prisma.coupon.findMany({ orderBy: { createdAt: 'desc' } }),
     prisma.statusChannel.findUnique({ where: { id: 1 } }),
     prisma.guildSettings.findMany({
@@ -448,16 +305,5 @@ export async function betaOverview(botGuildIds: string[]) {
       select: { guildId: true, planTier: true, planBilling: true, planExpiresAt: true, planCouponCode: true, planNote: true, planUpdatedAt: true }
     })
   ]);
-  const installed = new Set((await prisma.guildSettings.findMany({
-    where: { guildId: { in: waitlist.map((entry) => entry.guildId) } },
-    select: { guildId: true }
-  })).map((row) => row.guildId));
-  return {
-    config,
-    statusChannel,
-    coupons,
-    plans,
-    planCatalog: publicPlans(),
-    waitlist: waitlist.map((entry) => ({ ...entry, installed: installed.has(entry.guildId) }))
-  };
+  return { config, statusChannel, coupons, plans, planCatalog: publicPlans() };
 }

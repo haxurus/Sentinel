@@ -7,13 +7,13 @@ import { z } from 'zod';
 import { prisma } from '@sentinel/db';
 import { EVENT_CATALOG, SETTINGS_TIER, tierAllows } from '@sentinel/shared';
 import { config } from './config.js';
-import { createSession, destroySession, getSession, isSuperAdminUserId, randomToken, requireGuild, requireSession, requireSuperAdmin, resolveGuildAccess, type OAuthGuild } from './auth.js';
+import { createSession, destroySession, isSuperAdminUserId, randomToken, requireGuild, requireSession, requireSuperAdmin, resolveGuildAccess, type OAuthGuild } from './auth.js';
 import { getBotGuilds, getGuildResources, leaveBotGuild } from './discord.js';
 import { panelAudit } from './audit.js';
 import { superAdminAudit } from './super-audit.js';
 import { unprotectJson } from './security.js';
 import { exportJsonChunks, findForeignReference, isValidTimeZone, rateLimitKey } from './helpers.js';
-import { betaOverview, registerBetaRoutes } from './beta-routes.js';
+import { planOverview, registerPlanRoutes } from './plan-routes.js';
 import { guildTier, sweepExpiredPlans } from './plan-service.js';
 import { filterEntryCount, logChannelSet, publicGuildSettings, requiredTierForKey } from './plan-rules.js';
 import { Readable } from 'node:stream';
@@ -90,22 +90,6 @@ const cleanupPanelAudit = async () => {
 void cleanupPanelAudit().catch(() => null);
 setInterval(() => void cleanupPanelAudit().catch(() => null), 6 * 60 * 60 * 1000).unref();
 
-// Accounts configured in the environment may add the bot to any server. They
-// are mirrored as USER grants because the bot (which enforces the beta gate
-// when it joins a server) cannot read the API configuration.
-const syncEnvironmentGrants = async () => {
-  const ids = [...new Set([...config.inviteAllowedUserIds, config.superAdminUserId].filter(Boolean))];
-  await prisma.installGrant.deleteMany({ where: { kind: 'USER', source: 'ENV', subjectId: { notIn: ids } } });
-  for (const subjectId of ids) {
-    await prisma.installGrant.upsert({
-      where: { kind_subjectId: { kind: 'USER', subjectId } },
-      update: {},
-      create: { kind: 'USER', subjectId, source: 'ENV' }
-    });
-  }
-};
-void syncEnvironmentGrants().catch((error) => app.log.error({ err: error }, 'Unable to sync install grants'));
-
 const runPlanSweep = () => sweepExpiredPlans(app.log).catch((error) => app.log.error({ err: error }, 'Plan expiry sweep failed'));
 void runPlanSweep();
 setInterval(() => void runPlanSweep(), 10 * 60 * 1000).unref();
@@ -134,52 +118,17 @@ const botInstallUrl = (guildId?: string) => {
   return url.toString();
 };
 
-/**
- * Beta access: instance owner and allowlisted accounts may add the bot
- * anywhere; everyone else only to servers whose waitlist request was
- * approved. The bot enforces the same rule when it joins a server.
- */
-const installAccess = async (userId: string) => {
-  const blocked = await prisma.installBlock.findUnique({
-    where: { kind_subjectId: { kind: 'USER', subjectId: userId } },
-    select: { id: true }
-  });
-  if (blocked) return { anywhere: false, guildIds: [] as string[] };
-  const [grant, approved] = await Promise.all([
-    prisma.installGrant.findUnique({ where: { kind_subjectId: { kind: 'USER', subjectId: userId } }, select: { id: true } }),
-    prisma.waitlistEntry.findMany({ where: { userId, status: 'APPROVED' }, select: { guildId: true } })
-  ]);
-  return { anywhere: Boolean(grant), guildIds: approved.map((entry) => entry.guildId) };
-};
-
-const inviteRedirect = async (userId: string, uiLanguage: string, requestedGuild?: string) => {
-  const access = await installAccess(userId);
-  if (requestedGuild && (access.anywhere || access.guildIds.includes(requestedGuild))) return botInstallUrl(requestedGuild);
-  if (access.anywhere) return botInstallUrl();
-  if (access.guildIds.length === 1) return botInstallUrl(access.guildIds[0]);
-  return `${config.webUrl}/${uiLanguage}/beta`;
-};
-
 app.get('/bot/invite', async (request, reply) => {
-  const parsed = z.object({ lang: z.enum(['it', 'en']).optional(), guild: snowflake.optional() }).safeParse(request.query);
-  const uiLanguage = parsed.success ? (parsed.data.lang ?? 'it') : 'it';
-  const requestedGuild = parsed.success ? parsed.data.guild : undefined;
-  const session = await getSession(request);
-
-  if (!session) {
-    const loginUrl = new URL(`${config.publicBaseUrl}/auth/discord`);
-    loginUrl.searchParams.set('lang', uiLanguage);
-    loginUrl.searchParams.set('intent', 'invite');
-    return reply.redirect(loginUrl.toString());
-  }
-
-  return reply.redirect(await inviteRedirect(session.userId, uiLanguage, requestedGuild));
+  // Open to everyone: no sign-in needed to add the bot. Blacklisted servers
+  // and installers are still rejected by the bot when it joins.
+  const parsed = z.object({ guild: snowflake.optional() }).safeParse(request.query);
+  return reply.redirect(botInstallUrl(parsed.success ? parsed.data.guild : undefined));
 });
 
 app.get('/auth/discord', async (request, reply) => {
   const authQuery = z.object({
     lang: z.enum(['it', 'en']).optional(),
-    intent: z.enum(['dashboard', 'invite', 'beta']).optional()
+    intent: z.enum(['dashboard', 'invite']).optional()
   }).safeParse(request.query);
   const uiLanguage = authQuery.success ? (authQuery.data.lang ?? 'it') : 'it';
   const authIntent = authQuery.success ? (authQuery.data.intent ?? 'dashboard') : 'dashboard';
@@ -222,7 +171,7 @@ app.get('/auth/discord/callback', async (request, reply) => {
 
   const intentCookieName = config.production ? '__Host-sentinel_oauth_intent' : 'sentinel_oauth_intent';
   const intentCookie = request.cookies[intentCookieName];
-  const authIntent = intentCookie === 'invite' || intentCookie === 'beta' ? intentCookie : 'dashboard';
+  const authIntent = intentCookie === 'invite' ? 'invite' : 'dashboard';
   reply.clearCookie(intentCookieName, { path: '/', secure: config.production, sameSite: 'lax' });
 
   const redirectUri = `${config.publicBaseUrl}/auth/discord/callback`;
@@ -248,8 +197,7 @@ app.get('/auth/discord/callback', async (request, reply) => {
   const guilds = await guildResponse.json() as OAuthGuild[];
   await createSession(request, reply, user, guilds);
 
-  if (authIntent === 'invite') return reply.redirect(await inviteRedirect(user.id, uiLanguage));
-  if (authIntent === 'beta') return reply.redirect(`${config.webUrl}/${uiLanguage}/beta`);
+  if (authIntent === 'invite') return reply.redirect(botInstallUrl());
 
   return reply.redirect(`${config.webUrl}/${uiLanguage}/dashboard`);
 });
@@ -286,7 +234,7 @@ app.get('/api/super/overview', async (request, reply) => {
 
   const guildBlocks = new Set(blocks.filter((block) => block.kind === 'GUILD').map((block) => block.subjectId));
   const premiumMap = new Map(settingsRows.map((row) => [row.guildId, row.premiumEnabled]));
-  const beta = await betaOverview(guilds.map((guild) => guild.id));
+  const beta = await planOverview(guilds.map((guild) => guild.id));
   const planMap = new Map(beta.plans.map((row) => [row.guildId, row]));
   return {
     guilds: guilds.map((guild) => ({
@@ -300,8 +248,7 @@ app.get('/api/super/overview', async (request, reply) => {
     config: beta.config,
     statusChannel: beta.statusChannel,
     coupons: beta.coupons,
-    planCatalog: beta.planCatalog,
-    waitlist: beta.waitlist
+    planCatalog: beta.planCatalog
   };
 });
 
@@ -790,7 +737,7 @@ app.get('/api/guilds/:guildId/export', async (request, reply) => {
   )));
 });
 
-await registerBetaRoutes(app);
+await registerPlanRoutes(app);
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, 'Shutting down');

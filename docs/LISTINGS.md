@@ -11,12 +11,9 @@ README.
 
 - **Public Bot** must be enabled in the Discord Developer Portal, otherwise
   reviewers cannot add the bot.
-- **Beta gate:** the bot leaves every server that was not approved. Directory
-  reviewers add the bot to their own test servers, so authorise those servers
-  (or the reviewer accounts) before the review, or the listing will be
-  rejected as "bot leaves immediately".
-- Directories expect a **privacy policy**, **terms of service** and a
-  **support server** (the Discord App Directory requires the first two).
+- Privacy policy: https://sentinel.haxurus.com/en/legal#privacy
+- Terms of service: https://sentinel.haxurus.com/en/legal#terms
+- Most directories also ask for a **support server** invite.
 - Replace `CLIENT_ID` in the invite URL with the application ID from the
   Developer Portal.
 
@@ -31,6 +28,8 @@ README.
 | Website | https://sentinel.haxurus.com/en |
 | Pricing | https://sentinel.haxurus.com/en/pricing |
 | Dashboard | https://sentinel.haxurus.com/en/dashboard |
+| Privacy policy | https://sentinel.haxurus.com/en/legal#privacy |
+| Terms of service | https://sentinel.haxurus.com/en/legal#terms |
 | Source code | https://github.com/haxurus/Sentinel |
 | Licence | AGPL-3.0 (open source) |
 | Contact | haxurus@icloud.com · Discord: haxurus |
@@ -93,8 +92,6 @@ Free includes every standard logger. Plus, Pro and Brand unlock high-volume logg
 1. Add Sentinel to your server.
 2. Open https://sentinel.haxurus.com/en/dashboard and sign in with Discord.
 3. Pick a default log channel and turn on the loggers you need.
-
-Sentinel is currently in beta: request access at https://sentinel.haxurus.com/en/beta
 ```
 
 ## Per-directory notes
@@ -121,7 +118,7 @@ Sentinel is currently in beta: request access at https://sentinel.haxurus.com/en
 
 ### Discord App Directory (official)
 
-Requires a verified application, a privacy policy and terms of service.
+Requires a verified application (Discord asks for verification once the bot is in 75+ servers) plus the privacy policy and terms links above.
 
 - Short description: the 97-character version.
 - Detailed description: the Markdown above without the H1 title.

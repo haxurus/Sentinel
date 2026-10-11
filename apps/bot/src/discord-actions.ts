@@ -1,6 +1,6 @@
 import { Routes, type Client, type Guild } from 'discord.js';
 
-export type GuildLeaveReason = 'super-console' | 'blocked-guild' | 'blocked-installer' | 'not-approved';
+export type GuildLeaveReason = 'super-console' | 'blocked-guild' | 'blocked-installer';
 
 /**
  * The only high-level Discord mutations Sentinel intentionally exposes.

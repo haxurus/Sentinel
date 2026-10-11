@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+import { permanentRedirect } from 'next/navigation';
 
-// Former "still in development" page: installs now go through the beta waitlist.
-export default function Page() { redirect('/it/beta'); }
+// Retired page from the private phase: Sentinel is open to every server.
+export default function Page() { permanentRedirect('/it'); }

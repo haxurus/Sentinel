@@ -127,22 +127,3 @@ export async function isUserInstallBlocked(userId: string) {
   return Boolean(block);
 }
 
-
-/**
- * Beta gate: a server may keep the bot only if it was approved (GUILD grant,
- * e.g. an accepted waitlist request) or the person who added the bot may
- * install it anywhere (USER grant: instance owner and allowlisted accounts).
- */
-export async function installApproval(guildId: string, installerId: string | null) {
-  const guildGrant = await prisma.installGrant.findUnique({
-    where: { kind_subjectId: { kind: 'GUILD', subjectId: guildId } },
-    select: { source: true }
-  });
-  if (guildGrant) return `GUILD:${guildGrant.source}`;
-  if (!installerId) return null;
-  const userGrant = await prisma.installGrant.findUnique({
-    where: { kind_subjectId: { kind: 'USER', subjectId: installerId } },
-    select: { source: true }
-  });
-  return userGrant ? `USER:${userGrant.source}` : null;
-}
