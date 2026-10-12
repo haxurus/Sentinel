@@ -256,14 +256,13 @@ Before every deployment after the first one, a PostgreSQL dump is stored in:
 
 with root-only permissions and a local retention of 14 days.
 
-## 10. Recommended branch protection
+## 10. Repository protection
 
-Protect `main` in GitHub settings:
+Configured on GitHub for `haxurus/Sentinel`:
 
-- require Pull Requests;
-- require the `CI / Typecheck, tests and migrations` and `CI / Compose and container images` checks;
-- block force-pushes and branch deletion;
-- require review conversations to be resolved;
-- keep CODEOWNERS/review for sensitive changes.
+- **Ruleset "Protect main":** changes only through pull requests, the `Typecheck, tests and migrations` and `Compose and container images` checks must pass, unresolved review threads block the merge, force pushes and branch deletion are blocked. No bypass.
+- **Environment `production`:** deployments allowed only from `main`; it holds the VPS secrets.
+- **Secret scanning with push protection**, **CodeQL** code scanning (default setup), **Dependabot** alerts and security updates, **private vulnerability reporting**.
+- **Actions:** `GITHUB_TOKEN` read-only by default and unable to approve pull requests, every action must be pinned to a full commit SHA, workflows from outside contributors need approval.
 
-Changes to `deploy/`, `ops/`, `security/`, `.github/workflows/`, and migrations should always receive manual review.
+Changes to `deploy/`, `ops/`, `security/`, `.github/workflows/` and migrations should always be reviewed carefully: they reach production or the VPS.
