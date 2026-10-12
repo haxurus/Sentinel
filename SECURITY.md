@@ -4,7 +4,7 @@
 
 Do not publish tokens, credentials, database dumps, sensitive logs, or working exploit details in public issues.
 
-For project vulnerabilities, use the repository's **GitHub Private Vulnerability Reporting / Security Advisories** when available.
+Report vulnerabilities privately through GitHub: **[Report a vulnerability](https://github.com/haxurus/Sentinel/security/advisories/new)** (Security → Advisories). If you cannot use GitHub, write to haxurus@icloud.com. Please allow time for a fix before any public disclosure.
 
 In case of a suspected compromise:
 
