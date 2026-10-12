@@ -84,9 +84,8 @@ export const MULTI_SUBSCRIPTION_DISCOUNTS = [
 export const multiSubscriptionPercent = (subscriptions: number) =>
   MULTI_SUBSCRIPTION_DISCOUNTS.find((discount) => subscriptions >= discount.minSubscriptions)?.percentOff ?? 0;
 
-/** High-volume loggers that need Pro (level 2): debugging and presence data. */
+/** High-volume loggers that need Pro (level 2): typing and Gateway diagnostics. */
 const TIER2_EVENTS = new Set([
-  'presence.update',
   'typing.start',
   'raw.gateway',
   'voice.server_update',
@@ -114,7 +113,6 @@ export function requiredTierForEvent(event: { key: string; noisy?: boolean } | u
 
 /** Settings toggles that turn on high-volume Gateway capture. */
 export const SETTINGS_TIER = {
-  presenceLoggingEnabled: 'TIER2',
   typingLoggingEnabled: 'TIER2',
   rawGatewayEnabled: 'TIER2'
 } as const satisfies Record<string, PlanTier>;

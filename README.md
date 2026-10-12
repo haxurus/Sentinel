@@ -28,7 +28,7 @@ Sentinel watches what happens on a Discord server — bans, kicks, role and perm
 
 ## Features
 
-**73 event types**, each with its own logger:
+**72 event types**, each with its own logger:
 
 | Area | Events |
 |---|---|
@@ -38,7 +38,7 @@ Sentinel watches what happens on a Discord server — bans, kicks, role and perm
 | Voice & activity | join, leave, move, mute/deaf/stream/video, Stage, scheduled events, soundboard, voice effects |
 | Content | emoji, stickers |
 | Automation & apps | AutoMod rules and actions, slash commands, application command permissions, Discord Audit Log |
-| System & advanced | server availability, optional presence, typing and raw Gateway capture |
+| System & advanced | server availability, optional typing and raw Gateway capture |
 
 **Per-logger control**
 
@@ -152,11 +152,12 @@ Rollback is also available as the **Rollback production** GitHub Actions workflo
 
 ## Discord application setup
 
-Privileged Gateway intents — enable all three: the bot requests them at login and Discord rejects the connection if any is disabled, even when the related loggers are off.
+Privileged Gateway intents — enable both: the bot requests them at login and Discord rejects the connection if either is disabled.
 
 - **Server Members Intent**
 - **Message Content Intent**
-- **Presence Intent**
+
+The Presence Intent is not used: Sentinel never records members' online status or activities.
 
 Bot permissions (no `Administrator`): View Channels, Send Messages, Embed Links, Read Message History, View Audit Log, Change Nickname (used only for the Brand plan's custom name).
 
@@ -177,7 +178,7 @@ Anyone can add the hosted bot: **Public Bot** must be enabled in the Developer P
 | Price | — | €1.99/month · €19.99/year | €4.99/month · €49.99/year | €8.99/month · €89.99/year |
 | Standard loggers | ✓ | ✓ | ✓ | ✓ |
 | High-volume loggers (messages, reactions, polls, interactions, Audit Log) | | ✓ | ✓ | ✓ |
-| Advanced loggers (presence, typing, raw Gateway, diagnostics) | | | ✓ | ✓ |
+| Advanced loggers (typing, raw Gateway, diagnostics) | | | ✓ | ✓ |
 | Retention | 15 days | 30 days | 60 days | 90 days |
 | Events stored per day | 2,000 | 5,000 | 15,000 | 25,000 |
 | Log channels | 3 | 8 | 20 | 20 |

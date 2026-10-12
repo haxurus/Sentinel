@@ -366,7 +366,6 @@ const settingsSchema = z.object({
   messageSnapshotEnabled: z.boolean().optional(),
   storeMessageContent: z.boolean().optional(),
   rawGatewayEnabled: z.boolean().optional(),
-  presenceLoggingEnabled: z.boolean().optional(),
   typingLoggingEnabled: z.boolean().optional()
 });
 

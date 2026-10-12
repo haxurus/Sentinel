@@ -29,7 +29,6 @@ const CATEGORY_EN: Record<string, string> = {
   Interazioni: 'Interactions',
   Applicazioni: 'Applications',
   Audit: 'Audit',
-  Presenza: 'Presence',
   Avanzato: 'Advanced'
 };
 
@@ -104,7 +103,6 @@ const EVENT_EN: Record<string, { label: string; description: string }> = {
   'application.permissions_update': { label: 'Application command permissions', description: 'Permissions for a command or application entity change in the server.' },
   'user.update': { label: 'User profile updated', description: 'Username, avatar or other global user data changes.' },
   'audit.entry': { label: 'Discord Audit Log', description: 'Discord creates a new Audit Log entry.' },
-  'presence.update': { label: 'Presence updated', description: 'A member status or activity changes.' },
   'typing.start': { label: 'Typing', description: 'A user starts typing.' },
   'raw.gateway': { label: 'Raw Gateway', description: 'Raw copy of non-normalized Gateway events. Use only for debugging.' },
   'system.ready': { label: 'Bot ready', description: 'The bot completes its connection to Discord.' },

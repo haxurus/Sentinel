@@ -9,6 +9,6 @@ export default function Image() {
     kicker: 'Bot di log per Discord',
     title: 'Ogni azione sul tuo server Discord, registrata.',
     subtitle: 'Ban, kick, ruoli, permessi, messaggi modificati ed eliminati — cifrati, ricercabili, nel canale giusto.',
-    tags: ['73 tipi di evento', 'Piano gratuito', 'Open source']
+    tags: ['72 tipi di evento', 'Piano gratuito', 'Open source']
   });
 }

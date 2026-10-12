@@ -19,7 +19,6 @@ type Settings = {
   messageSnapshotEnabled: boolean;
   storeMessageContent: boolean;
   rawGatewayEnabled: boolean;
-  presenceLoggingEnabled: boolean;
   typingLoggingEnabled: boolean;
   premiumEnabled: boolean;
 };
@@ -79,8 +78,8 @@ const LOGGER_MACROS: LoggerMacro[] = [
   {
     key: 'members',
     label: 'Membri & moderazione',
-    description: 'Ingressi, uscite, profili, provvedimenti, Audit Log, AutoMod e presenza.',
-    categories: ['Utenti', 'Moderazione', 'Audit', 'AutoMod', 'Presenza']
+    description: 'Ingressi, uscite, profili, provvedimenti, Audit Log e AutoMod.',
+    categories: ['Utenti', 'Moderazione', 'Audit', 'AutoMod']
   },
   {
     key: 'messages',
@@ -179,7 +178,7 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
   const macroCopy = (macro: LoggerMacro) => {
     if (locale === 'it') return { label: macro.label, description: macro.description };
     const english: Record<string, { label: string; description: string }> = {
-      members: { label: 'Members & moderation', description: 'Joins, leaves, profiles, moderation actions, Audit Log, AutoMod and presence.' },
+      members: { label: 'Members & moderation', description: 'Joins, leaves, profiles, moderation actions, Audit Log and AutoMod.' },
       messages: { label: 'Messages & conversations', description: 'Messages, reactions, polls, threads and bot interactions.' },
       server: { label: 'Server & structure', description: 'Channels, roles, invites, webhooks, integrations and server settings.' },
       voice: { label: 'Voice & activity', description: 'Voice channels, Stage, scheduled events and soundboard.' },
@@ -457,7 +456,6 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
               <div className="panel-title"><div><p className="eyebrow">{L('DATI', 'DATA')}</p><h2>{L('Acquisizione', 'Collection')}</h2></div></div>
               <Toggle disabled={!canAdmin} label={L('Snapshot messaggi', 'Message snapshots')} description={L('Conserva una copia per ricostruire i messaggi eliminati.', 'Keep a copy to reconstruct deleted messages.')} checked={settings.messageSnapshotEnabled} onChange={(value) => saveSettings({ messageSnapshotEnabled: value })} />
               <Toggle disabled={!canAdmin} label={L('Contenuto messaggi', 'Message content')} description={L('Salva testo ed embed negli snapshot.', 'Store text and embeds in snapshots.')} checked={settings.storeMessageContent} onChange={(value) => saveSettings({ storeMessageContent: value })} />
-              <Toggle disabled={!canAdmin || !advancedAllowed} label={L('Presenze · Pro', 'Presence · Pro')} description={advancedAllowed ? L('Status e attività. Può generare molti eventi.', 'Status and activity. This can generate many events.') : L('Richiede il Livello 2 · Pro.', 'Requires Level 2 · Pro.')} checked={settings.presenceLoggingEnabled} onChange={(value) => saveSettings({ presenceLoggingEnabled: value })} />
               <Toggle disabled={!canAdmin || !advancedAllowed} label="Typing · Pro" description={advancedAllowed ? L('Registra quando un utente inizia a scrivere.', 'Record when a user starts typing.') : L('Richiede il Livello 2 · Pro.', 'Requires Level 2 · Pro.')} checked={settings.typingLoggingEnabled} onChange={(value) => saveSettings({ typingLoggingEnabled: value })} />
               <Toggle disabled={!canAdmin || !advancedAllowed} label="Gateway raw · Pro" description={advancedAllowed ? L('Debug avanzato: salva eventi Gateway grezzi.', 'Advanced debug: store raw Gateway events.') : L('Richiede il Livello 2 · Pro.', 'Requires Level 2 · Pro.')} checked={settings.rawGatewayEnabled} onChange={(value) => saveSettings({ rawGatewayEnabled: value })} danger />
             </section>

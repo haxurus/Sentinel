@@ -30,7 +30,6 @@ const client = new Client({
     GatewayIntentBits.GuildWebhooks,
     GatewayIntentBits.GuildInvites,
     GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildPresences,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.GuildMessageTyping,

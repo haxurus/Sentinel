@@ -15,7 +15,6 @@ export type PlanRoute = {
 export type PlanSettings = {
   defaultLogChannelId: string | null;
   defaultRetentionDays: number;
-  presenceLoggingEnabled: boolean;
   typingLoggingEnabled: boolean;
   rawGatewayEnabled: boolean;
 };
