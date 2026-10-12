@@ -13,7 +13,7 @@ README.
   reviewers cannot add the bot.
 - Privacy policy: https://sentinel.haxurus.com/en/legal#privacy
 - Terms of service: https://sentinel.haxurus.com/en/legal#terms
-- Most directories also ask for a **support server** invite.
+- Support server: https://discord.gg/DDBGWP5fMX
 
 ## Common fields
 
@@ -31,6 +31,7 @@ README.
 | Source code | https://github.com/haxurus/Sentinel |
 | Licence | AGPL-3.0 (open source) |
 | Contact | haxurus@icloud.com · Discord: haxurus |
+| Support server | https://discord.gg/DDBGWP5fMX |
 | Languages | English, Italian (dashboard and log messages) |
 | Invite URL | `https://discord.com/oauth2/authorize?client_id=1555694361059008665&scope=bot%20applications.commands&permissions=67194240` |
 
