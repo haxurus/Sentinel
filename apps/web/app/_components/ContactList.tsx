@@ -2,18 +2,26 @@ import { Icon } from './Brand';
 import type { Locale } from '../i18n';
 import type { Contacts } from './plans';
 
-const REPO = 'https://github.com/haxurus/Sentinel';
+const DISCORD_INVITE = /^https:\/\/(?:www\.)?(?:discord\.gg|discord\.com\/invite)\//i;
 
-/** Contacts set in the super console; GitHub is the fallback. */
+/** Contacts set in the super console (Contacts tab). */
 export default function ContactList({ contacts, locale }: { contacts: Contacts | null; locale: Locale }) {
-  const items: Array<{ icon: 'message' | 'users' | 'globe' | 'github'; label: string; value: string; href: string | null }> = [];
+  const items: Array<{ icon: 'message' | 'users' | 'globe'; label: string; value: string; href: string | null }> = [];
   if (contacts?.email) items.push({ icon: 'message', label: 'Email', value: contacts.email, href: `mailto:${contacts.email}` });
   if (contacts?.discord) {
     const link = /^https:\/\//.test(contacts.discord);
     items.push({ icon: 'users', label: 'Discord', value: link ? contacts.discord.replace(/^https:\/\//, '') : contacts.discord, href: link ? contacts.discord : null });
   }
-  if (contacts?.url) items.push({ icon: 'globe', label: locale === 'it' ? 'Sito' : 'Website', value: contacts.url.replace(/^https:\/\//, ''), href: contacts.url });
-  items.push({ icon: 'github', label: 'GitHub', value: 'github.com/haxurus/Sentinel/issues', href: `${REPO}/issues` });
+  if (contacts?.url) {
+    const server = DISCORD_INVITE.test(contacts.url);
+    items.push({
+      icon: server ? 'users' : 'globe',
+      label: server ? (locale === 'it' ? 'Server Discord' : 'Discord server') : (locale === 'it' ? 'Sito' : 'Website'),
+      value: contacts.url.replace(/^https:\/\/(?:www\.)?/, ''),
+      href: contacts.url
+    });
+  }
+  if (!items.length) return null;
 
   return (
     <ul className="contact-list">

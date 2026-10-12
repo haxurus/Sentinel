@@ -98,10 +98,10 @@ const copy = {
     },
     contacts: {
       title: 'Recapiti pubblici',
-      text: 'Mostrati nella pagina prezzi a chi vuole attivare un piano. GitHub è sempre incluso.',
+      text: 'Mostrati nella pagina prezzi a chi vuole attivare un piano.',
       email: 'Email',
       discord: 'Discord (username o link https)',
-      url: 'Sito o modulo (https)',
+      url: 'Link: server Discord, sito o modulo (https)',
       save: 'Salva recapiti'
     },
     coupons: {
@@ -225,10 +225,10 @@ const copy = {
     },
     contacts: {
       title: 'Public contacts',
-      text: 'Shown on the pricing page to people who want to activate a plan. GitHub is always included.',
+      text: 'Shown on the pricing page to people who want to activate a plan.',
       email: 'Email',
       discord: 'Discord (username or https link)',
-      url: 'Website or form (https)',
+      url: 'Link: Discord server, website or form (https)',
       save: 'Save contacts'
     },
     coupons: {
