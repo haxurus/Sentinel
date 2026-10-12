@@ -28,7 +28,7 @@ const copy = {
     free: { cta: 'Aggiungi Sentinel', text: 'Tutti i logger standard: ban, kick, ruoli, permessi, canali, messaggi modificati ed eliminati, AutoMod.' },
     tiers: {
       TIER1: 'Sblocca i logger ad alto volume più utili: nuovi messaggi, reazioni, sondaggi, interazioni, Audit Log completo. Limiti più alti e supporto prioritario.',
-      TIER2: 'Tutte le funzioni sbloccate, comprese presenze, typing e Gateway raw, con i limiti più alti.',
+      TIER2: 'Tutte le funzioni sbloccate, compresi typing e Gateway raw, con i limiti più alti.',
       TIER3: 'Tutto il Livello 2, più nome e banner del bot personalizzati nel tuo server.'
     },
     contactCta: 'Contattami',
@@ -42,7 +42,7 @@ const copy = {
     rows: {
       standard: 'Logger standard (moderazione, messaggi, struttura)',
       tier1: 'Logger ad alto volume: messaggi, reazioni, sondaggi, interazioni, Audit Log',
-      tier2: 'Logger avanzati: presenze, typing, Gateway raw, diagnostica',
+      tier2: 'Logger avanzati: typing, Gateway raw, diagnostica',
       support: 'Supporto prioritario',
       branding: 'Nome e banner del bot personalizzati'
     },
@@ -77,7 +77,7 @@ const copy = {
     free: { cta: 'Add Sentinel', text: 'Every standard logger: bans, kicks, roles, permissions, channels, edited and deleted messages, AutoMod.' },
     tiers: {
       TIER1: 'Unlocks the most useful high-volume loggers: new messages, reactions, polls, interactions, full Audit Log. Higher limits and priority support.',
-      TIER2: 'Every feature unlocked, including presence, typing and raw Gateway, with the highest limits.',
+      TIER2: 'Every feature unlocked, including typing and raw Gateway, with the highest limits.',
       TIER3: 'Everything in Level 2, plus a custom bot name and banner in your server.'
     },
     contactCta: 'Contact me',
@@ -91,7 +91,7 @@ const copy = {
     rows: {
       standard: 'Standard loggers (moderation, messages, structure)',
       tier1: 'High-volume loggers: messages, reactions, polls, interactions, Audit Log',
-      tier2: 'Advanced loggers: presence, typing, raw Gateway, diagnostics',
+      tier2: 'Advanced loggers: typing, raw Gateway, diagnostics',
       support: 'Priority support',
       branding: 'Custom bot name and banner'
     },

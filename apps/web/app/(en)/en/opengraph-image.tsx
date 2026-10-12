@@ -9,6 +9,6 @@ export default function Image() {
     kicker: 'Discord logging bot',
     title: 'Every action on your Discord server, on the record.',
     subtitle: 'Bans, kicks, roles, permissions, edited and deleted messages — encrypted, searchable, routed to the right channel.',
-    tags: ['73 event types', 'Free plan', 'Open source']
+    tags: ['72 event types', 'Free plan', 'Open source']
   });
 }

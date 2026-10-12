@@ -5,7 +5,7 @@ type Section = { title: string; body: Array<string | string[]> };
 type Doc = { id: string; kicker: string; title: string; intro: string; sections: Section[] };
 
 const CONTACT = 'haxurus@icloud.com';
-const UPDATED = { it: '11 ottobre 2026', en: '11 October 2026' };
+const UPDATED = { it: '12 ottobre 2026', en: '12 October 2026' };
 
 const copy: Record<Locale, { kicker: string; title: string; intro: string; updated: string; toc: string; docs: Doc[]; home: string; pricing: string }> = {
   en: {
@@ -34,9 +34,10 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
               'user identifiers, usernames, nicknames, avatars and roles of the members involved in an event (who acted and who was affected);',
               'message content, attachment names and links and embeds, to show edited and deleted messages;',
               'moderation actions and their reasons from the Discord Audit Log, member joins and leaves, voice activity, invites, AutoMod actions and server configuration changes;',
-              'on paid plans and only if enabled: new messages, reactions, presence (status and activity), typing and raw Gateway events.'
+              'on paid plans and only if enabled: new messages, reactions, typing and raw Gateway events.'
             ],
             'When you sign in to the dashboard with Discord: your Discord user ID, username, avatar and the list of servers you belong to (scopes identify and guilds), plus a log of the changes you make in the panel with a one-way hash of your IP address.',
+            'Sentinel does not collect members’ online status or activities (games, music, custom status).',
             'Technical data: our web server and Cloudflare, which protects and delivers the site, process IP addresses and request data to deliver pages and prevent abuse.'
           ] },
           { title: 'Why we process it', body: [
@@ -137,9 +138,10 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
               'identificativi, username, nickname, avatar e ruoli dei membri coinvolti in un evento (chi ha agito e chi l’ha subito);',
               'contenuto dei messaggi, nomi e link degli allegati ed embed, per mostrare i messaggi modificati ed eliminati;',
               'azioni di moderazione e relativi motivi dall’Audit Log di Discord, ingressi e uscite, attività vocale, inviti, azioni AutoMod e modifiche alla configurazione del server;',
-              'solo nei piani a pagamento e se attivati: nuovi messaggi, reazioni, presenza (stato e attività), digitazione ed eventi Gateway grezzi.'
+              'solo nei piani a pagamento e se attivati: nuovi messaggi, reazioni, digitazione ed eventi Gateway grezzi.'
             ],
             'Quando accedi alla dashboard con Discord: il tuo ID utente, username, avatar e l’elenco dei server di cui fai parte (scope identify e guilds), più un registro delle modifiche che fai nel pannello con un hash non reversibile del tuo indirizzo IP.',
+            'Sentinel non raccoglie lo stato online né le attività dei membri (giochi, musica, stato personalizzato).',
             'Dati tecnici: il nostro server web e Cloudflare, che protegge e distribuisce il sito, trattano indirizzi IP e dati delle richieste per mostrare le pagine e prevenire abusi.'
           ] },
           { title: 'Perché li trattiamo', body: [

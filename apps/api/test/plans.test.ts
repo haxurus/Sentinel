@@ -30,7 +30,6 @@ const route = (eventKey: string, patch: Partial<PlanRoute> = {}): PlanRoute => (
 const settings = {
   defaultLogChannelId: '100000000000000001',
   defaultRetentionDays: 30,
-  presenceLoggingEnabled: false,
   typingLoggingEnabled: false,
   rawGatewayEnabled: false
 };
@@ -42,7 +41,8 @@ test('every high-volume logger needs a paid plan and limits grow with the tier',
     else assert.equal(required, 'FREE', event.key);
   }
   assert.equal(requiredTierForEvent({ key: 'message.create', noisy: true }), 'TIER1');
-  assert.equal(requiredTierForEvent({ key: 'presence.update', noisy: true }), 'TIER2');
+  assert.equal(requiredTierForEvent({ key: 'typing.start', noisy: true }), 'TIER2');
+  assert.ok(!EVENT_CATALOG.some((event) => event.key === 'presence.update'), 'presence is never logged');
   assert.ok(!EVENT_CATALOG.some((event) => event.key.startsWith('system.')), 'bot status is instance-wide, not per server');
 
   const order = ['FREE', 'TIER1', 'TIER2', 'TIER3'] as const;
@@ -91,7 +91,7 @@ test('coupons validate scope, dates and redemptions', () => {
 test('a downgrade switches off loggers above the plan and clamps limits', () => {
   const routes = [
     route('message.create'),
-    route('presence.update'),
+    route('typing.start'),
     route('moderation.ban', { retentionDays: 365, mentionRoleIds: ['1', '2', '3'] }),
     route('message.delete', { ignoredUserIds: Array.from({ length: 12 }, (_, i) => `u${i}`), ignoredRoleIds: ['r1', 'r2', 'r3', 'r4', 'r5'] }),
     route('channel.create', { destinationChannelId: '200000000000000001' }),
@@ -99,12 +99,12 @@ test('a downgrade switches off loggers above the plan and clamps limits', () => 
     route('channel.update', { destinationChannelId: '200000000000000003' }),
     route('role.create', { destinationChannelId: '200000000000000001' })
   ];
-  const result = planAdjustments('FREE', { ...settings, defaultRetentionDays: 200, presenceLoggingEnabled: true }, routes);
-  assert.deepEqual(result.settings, { defaultRetentionDays: 15, presenceLoggingEnabled: false });
+  const result = planAdjustments('FREE', { ...settings, defaultRetentionDays: 200, typingLoggingEnabled: true }, routes);
+  assert.deepEqual(result.settings, { defaultRetentionDays: 15, typingLoggingEnabled: false });
 
   const patch = (key: string) => result.routes.find((item) => item.eventKey === key)?.data;
   assert.deepEqual(patch('message.create'), { captureEnabled: false, enabled: false });
-  assert.deepEqual(patch('presence.update'), { captureEnabled: false, enabled: false });
+  assert.deepEqual(patch('typing.start'), { captureEnabled: false, enabled: false });
   assert.deepEqual(patch('moderation.ban'), { retentionDays: 15, mentionRoleIds: ['1'] });
   assert.equal(filterEntryCount(patch('message.delete') as PlanRoute), 15);
   // Free allows 3 channels: the default one plus the first two distinct ones.
@@ -113,7 +113,7 @@ test('a downgrade switches off loggers above the plan and clamps limits', () => 
   assert.deepEqual(patch('channel.update'), { destinationChannelId: null });
   assert.equal(patch('role.create'), undefined);
 
-  assert.deepEqual(planAdjustments('TIER2', settings, [route('presence.update')]).routes, []);
+  assert.deepEqual(planAdjustments('TIER2', settings, [route('typing.start')]).routes, []);
 });
 
 test('plan helpers', () => {

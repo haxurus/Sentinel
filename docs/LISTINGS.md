@@ -39,7 +39,7 @@ Permissions in the invite (no Administrator): View Channels, Send Messages,
 Embed Links, Read Message History, View Audit Log, Change Nickname (used only
 for the custom bot name of the Brand plan).
 
-Privileged intents: Server Members, Message Content, Presence.
+Privileged intents: Server Members, Message Content (no Presence: online status and activities are never recorded).
 
 ## Short descriptions
 
@@ -71,7 +71,7 @@ Privileged intents: Server Members, Message Content, Presence.
 - **Voice & events:** joins, leaves, moves, mute/deafen/stream, Stage, scheduled events and soundboard
 - **Automation:** AutoMod rules and actions, application command permissions
 
-73 event types in total, each with its own logger.
+72 event types in total, each with its own logger.
 
 ## Why Sentinel
 
@@ -84,7 +84,7 @@ Privileged intents: Server Members, Message Content, Presence.
 
 ## Plans
 
-Free includes every standard logger. Plus, Pro and Brand unlock high-volume loggers (new messages, reactions, presence, raw Gateway), longer history and higher limits; Brand adds a custom bot name and banner in your server. See https://sentinel.haxurus.com/en/pricing
+Free includes every standard logger. Plus, Pro and Brand unlock high-volume loggers (new messages, reactions, typing, raw Gateway), longer history and higher limits; Brand adds a custom bot name and banner in your server. See https://sentinel.haxurus.com/en/pricing
 
 ## Getting started
 

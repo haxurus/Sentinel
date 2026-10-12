@@ -940,14 +940,6 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
     });
   });
 
-  on(Events.PresenceUpdate, async (oldPresence, newPresence) => {
-    const guild = newPresence.guild;
-    if (!guild) return;
-    const settings = await getGuildSettings(guild.id);
-    if (!settings?.presenceLoggingEnabled || !newPresence.userId) return;
-    await recordEvent({ guildId: guild.id, eventKey: 'presence.update', actorId: newPresence.userId, targetId: newPresence.userId, summary: `Presenza modificata per ${newPresence.user?.tag ?? newPresence.userId}.`, details: { oldStatus: oldPresence?.status ?? null, newStatus: newPresence.status, activities: newPresence.activities.map((a) => ({ name: a.name, type: a.type, state: a.state })) } });
-  });
-
   on(Events.TypingStart, async (typing) => {
     if (!typing.guild) return;
     const settings = await getGuildSettings(typing.guild.id);
