@@ -71,7 +71,7 @@ Privileged intents: Server Members, Message Content (no Presence: online status 
 - **Voice & events:** joins, leaves, moves, mute/deafen/stream, Stage, scheduled events and soundboard
 - **Automation:** AutoMod rules and actions, application command permissions
 
-72 event types in total, each with its own logger.
+70 event types in total, each with its own logger.
 
 ## Why Sentinel
 
@@ -84,7 +84,7 @@ Privileged intents: Server Members, Message Content (no Presence: online status 
 
 ## Plans
 
-Free includes every standard logger. Plus, Pro and Brand unlock high-volume loggers (new messages, reactions, typing, raw Gateway), longer history and higher limits; Brand adds a custom bot name and banner in your server. See https://sentinel.haxurus.com/en/pricing
+Free includes every standard logger. Plus, Pro and Brand unlock high-volume loggers (new messages, reactions, polls, interactions, full Audit Log), longer history and higher limits; Brand adds a custom bot name and banner in your server. Paid plans are Discord subscriptions, bought directly in Discord. See https://sentinel.haxurus.com/en/pricing
 
 ## Getting started
 

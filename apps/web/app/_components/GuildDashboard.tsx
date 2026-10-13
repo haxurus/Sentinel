@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from './Brand';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { localizeCategory, localizeEvent, type Locale } from '../i18n';
-import { TIER_ORDER, formatLimit, formatNumber, limitLabels, planErrorMessage, tierLabel, tierShort, type Plan, type PlanTier } from './plans';
+import { TIER_ORDER, formatLimit, formatNumber, limitLabels, planErrorMessage, tierLabel, tierShort, type DiscordStore, type Plan, type PlanTier } from './plans';
 
 type Settings = {
   guildId: string;
@@ -18,8 +18,6 @@ type Settings = {
   embedFooter: string;
   messageSnapshotEnabled: boolean;
   storeMessageContent: boolean;
-  rawGatewayEnabled: boolean;
-  typingLoggingEnabled: boolean;
   premiumEnabled: boolean;
 };
 
@@ -62,7 +60,10 @@ type PlanInfo = {
   effectiveTier: PlanTier;
   expiresAt: string | null;
   billing: string | null;
+  /** MANUAL (trial, partner, gift) or DISCORD (a Discord subscription). */
+  source: string;
   plan: Plan;
+  discord: DiscordStore;
   usage: { eventsToday: number; logChannels: number; roleBindings: number };
   branding: { nickname: string | null; bannerSet: boolean };
   eventTiers: { TIER1: string[]; TIER2: string[] };
@@ -107,9 +108,9 @@ const LOGGER_MACROS: LoggerMacro[] = [
   },
   {
     key: 'system',
-    label: 'Sistema & avanzato',
-    description: 'Disponibilità del server e diagnostica Gateway avanzata.',
-    categories: ['Sistema', 'Avanzato']
+    label: 'Sistema',
+    description: 'Disponibilità del server e diagnostica Gateway.',
+    categories: ['Sistema']
   }
 ];
 
@@ -183,7 +184,7 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
       server: { label: 'Server & structure', description: 'Channels, roles, invites, webhooks, integrations and server settings.' },
       voice: { label: 'Voice & activity', description: 'Voice channels, Stage, scheduled events and soundboard.' },
       content: { label: 'Content & customization', description: 'Emoji, stickers and other custom server elements.' },
-      system: { label: 'System & advanced', description: 'Server availability and advanced Gateway diagnostics.' },
+      system: { label: 'System', description: 'Server availability and Gateway diagnostics.' },
       other: { label: 'Other loggers', description: 'Events not yet assigned to a macro category.' }
     };
     return english[macro.key] ?? { label: macro.label, description: macro.description };
@@ -299,7 +300,6 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
   const canAdmin = access === 'ADMIN' || access === 'OWNER';
   const tier: PlanTier = plan?.effectiveTier ?? 'FREE';
   const maxRetention = plan?.plan.limits.retentionDays ?? 3650;
-  const advancedAllowed = tierIndex(tier) >= tierIndex('TIER2');
   const canModerate = canAdmin || access === 'MODERATOR';
   const formatDate = (value: string) => {
     try {
@@ -456,8 +456,6 @@ export default function GuildDashboard({ guildId, locale }: { guildId: string; l
               <div className="panel-title"><div><p className="eyebrow">{L('DATI', 'DATA')}</p><h2>{L('Acquisizione', 'Collection')}</h2></div></div>
               <Toggle disabled={!canAdmin} label={L('Snapshot messaggi', 'Message snapshots')} description={L('Conserva una copia per ricostruire i messaggi eliminati.', 'Keep a copy to reconstruct deleted messages.')} checked={settings.messageSnapshotEnabled} onChange={(value) => saveSettings({ messageSnapshotEnabled: value })} />
               <Toggle disabled={!canAdmin} label={L('Contenuto messaggi', 'Message content')} description={L('Salva testo ed embed negli snapshot.', 'Store text and embeds in snapshots.')} checked={settings.storeMessageContent} onChange={(value) => saveSettings({ storeMessageContent: value })} />
-              <Toggle disabled={!canAdmin || !advancedAllowed} label="Typing · Pro" description={advancedAllowed ? L('Registra quando un utente inizia a scrivere.', 'Record when a user starts typing.') : L('Richiede il Livello 2 · Pro.', 'Requires Level 2 · Pro.')} checked={settings.typingLoggingEnabled} onChange={(value) => saveSettings({ typingLoggingEnabled: value })} />
-              <Toggle disabled={!canAdmin || !advancedAllowed} label="Gateway raw · Pro" description={advancedAllowed ? L('Debug avanzato: salva eventi Gateway grezzi.', 'Advanced debug: store raw Gateway events.') : L('Richiede il Livello 2 · Pro.', 'Requires Level 2 · Pro.')} checked={settings.rawGatewayEnabled} onChange={(value) => saveSettings({ rawGatewayEnabled: value })} danger />
             </section>
           </div>
 
@@ -934,16 +932,22 @@ function PlanPanel({ plan, locale }: { plan: PlanInfo; locale: Locale }) {
           <p className="eyebrow">{L('PIANO', 'PLAN')}</p>
           <h2>{tierLabel(plan.effectiveTier, locale)}</h2>
         </div>
-        <a className="button button-sm button-secondary" href={`/${locale}/pricing`}>{L('Vedi i piani', 'See plans')}</a>
+        {plan.discord.enabled
+          ? <a className="button button-sm button-premium" href={plan.discord.store} target="_blank" rel="noopener noreferrer">{plan.source === 'DISCORD' ? L('Gestisci su Discord', 'Manage on Discord') : L('Abbonati su Discord', 'Subscribe on Discord')}</a>
+          : <a className="button button-sm button-secondary" href={`/${locale}/pricing`}>{L('Vedi i piani', 'See plans')}</a>}
       </div>
       <p className="muted">
         {expired
           ? L(`Il piano ${tierLabel(plan.tier, locale)} è scaduto: valgono i limiti Free.`, `The ${tierLabel(plan.tier, locale)} plan has expired: Free limits apply.`)
-          : plan.expiresAt
-            ? L(`Valido fino al ${new Date(plan.expiresAt).toLocaleDateString('it-IT')}.`, `Valid until ${new Date(plan.expiresAt).toLocaleDateString('en-GB')}.`)
+          : plan.source === 'DISCORD'
+            ? L('Abbonamento Discord attivo, con rinnovo automatico. Puoi gestirlo o disdirlo dalle impostazioni di Discord.', 'Active Discord subscription, renewed automatically. You can manage or cancel it from your Discord settings.')
             : plan.effectiveTier === 'FREE'
-              ? L('Piano gratuito. Per sbloccare i logger ad alto volume e alzare i limiti contattami dalla pagina prezzi.', 'Free plan. To unlock high-volume loggers and raise limits, contact me from the pricing page.')
-              : L('Piano attivo, senza scadenza.', 'Active plan, no expiry.')}
+              ? plan.discord.enabled
+                ? L('Piano gratuito. Per sbloccare i logger ad alto volume e alzare i limiti, abbonati su Discord.', 'Free plan. To unlock high-volume loggers and raise limits, subscribe on Discord.')
+                : L('Piano gratuito. I piani a pagamento saranno presto disponibili come abbonamenti Discord.', 'Free plan. Paid plans will soon be available as Discord subscriptions.')
+              : plan.expiresAt
+                ? L(`Piano di prova o omaggio, valido fino al ${new Date(plan.expiresAt).toLocaleDateString('it-IT')}.`, `Trial or complimentary plan, valid until ${new Date(plan.expiresAt).toLocaleDateString('en-GB')}.`)
+                : L('Piano di prova o omaggio, senza scadenza.', 'Trial or complimentary plan, no expiry.')}
       </p>
       <div className="plan-meters">
         {meters.map((meter) => {

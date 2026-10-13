@@ -30,8 +30,15 @@ model GuildSettings {
   planCouponCode          String?
   planNote                String?
   planUpdatedAt           DateTime?
+  // MANUAL (super console: trials, partners, gifts) or DISCORD (a Premium
+  // Apps guild subscription, kept in sync from the entitlements).
+  planSource              String    @default("MANUAL")
+  planEntitlementId       String?
   brandNickname           String?
   brandBannerSet          Boolean   @default(false)
+  // Set when the bot leaves or is removed; the server's data is deleted
+  // 30 days later unless the bot is added back.
+  removedAt               DateTime?
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
@@ -40,6 +47,8 @@ model GuildSettings {
   snapshots  MessageSnapshot[]
   panelAudit PanelAudit[]
   panelRoles PanelRoleBinding[]
+
+  @@index([removedAt])
 }
 
 model LogRoute {
@@ -200,6 +209,9 @@ model InstanceConfig {
   contactEmail   String?
   contactDiscord String?
   contactUrl     String?
+  // Discord Premium Apps SKU IDs by plan and billing period:
+  // { "TIER1": { "MONTHLY": "<sku id>", "YEARLY": "<sku id>" }, ... }
+  discordSkus    Json     @default("{}")
   updatedAt      DateTime @updatedAt
 }
 

@@ -31,7 +31,7 @@ Sentinel watches what happens on a Discord server — bans, kicks, role and perm
 
 ## Features
 
-**72 event types**, each with its own logger:
+**70 event types**, each with its own logger:
 
 | Area | Events |
 |---|---|
@@ -41,7 +41,7 @@ Sentinel watches what happens on a Discord server — bans, kicks, role and perm
 | Voice & activity | join, leave, move, mute/deaf/stream/video, Stage, scheduled events, soundboard, voice effects |
 | Content | emoji, stickers |
 | Automation & apps | AutoMod rules and actions, slash commands, application command permissions, Discord Audit Log |
-| System & advanced | server availability, optional typing and raw Gateway capture |
+| System | server availability and Gateway diagnostics |
 
 **Per-logger control**
 
@@ -86,6 +86,7 @@ A logging bot sees a lot, so Sentinel is designed to limit what a compromised co
 - **Read-only Discord capability policy.** The bot process allows only REST reads, posting log messages, leaving a server and changing its own nickname and banner in a server (Brand plan; any other member field is rejected). Bans, kicks, timeouts, role/channel/message changes, webhooks and AutoMod changes are blocked in-process, regardless of the permissions given to the bot role. A build-time check (`policy:check`) rejects code that tries to bypass it.
 - **Separated secrets.** The Discord token exists only in the bot container; the web container has no application secrets; secrets live in root-only files on the host.
 - **Encryption at rest.** Message content, attachments, embeds and event details are encrypted with AES-256-GCM.
+- **Data minimisation.** No online status, activities or typing are recorded. History expires with the plan's retention, and when the bot is removed from a server all of that server's data and settings are deleted 30 days later unless it is added back.
 - **Least-privilege database.** Distinct PostgreSQL roles for API and bot; the bot cannot read sessions, panel audit or super-admin tables. CI verifies these grants on every change.
 - **Isolation.** Segmented Docker networks, private authenticated Redis, read-only non-root containers with `cap_drop: ALL` and resource limits, no Docker socket, egress blocked towards host/LAN.
 - **Web hardening.** HttpOnly/Secure session cookies (HMAC-hashed in the database, rotated on login), OAuth `state`, Origin-based CSRF checks, strict CSP, per-session rate limiting, input validation, guild ownership checks on every channel/role ID.
@@ -181,20 +182,22 @@ Anyone can add the hosted bot: **Public Bot** must be enabled in the Developer P
 | Price | — | €1.99/month · €19.99/year | €4.99/month · €49.99/year | €8.99/month · €89.99/year |
 | Standard loggers | ✓ | ✓ | ✓ | ✓ |
 | High-volume loggers (messages, reactions, polls, interactions, Audit Log) | | ✓ | ✓ | ✓ |
-| Advanced loggers (typing, raw Gateway, diagnostics) | | | ✓ | ✓ |
+| Gateway diagnostics and server availability loggers | | | ✓ | ✓ |
 | Retention | 15 days | 30 days | 60 days | 90 days |
 | Events stored per day | 2,000 | 5,000 | 15,000 | 25,000 |
 | Log channels | 3 | 8 | 20 | 20 |
 | Priority support | | ✓ | ✓ | ✓ |
 | Custom bot name and banner in the server | | | | ✓ |
 
-Customers paying for several servers get 15% off with 2 subscriptions, 20% with 3 and 25% with 5 or more. The full list of limits lives in [`packages/shared/src/plans.ts`](packages/shared/src/plans.ts). When a plan is lowered or expires, loggers outside it are switched off and settings above its limits are clamped; nothing is deleted. Online payments are not enabled yet: the pricing page asks people to get in touch, and plans, expiry dates and coupons are managed by hand.
+The full list of limits lives in [`packages/shared/src/plans.ts`](packages/shared/src/plans.ts). When a plan is lowered or expires, loggers outside it are switched off and settings above its limits are clamped; nothing is deleted.
+
+**Payments.** Paid plans are sold only as **Discord Premium Apps guild subscriptions**, at the same prices as the pricing page, as the [Discord Developer Policy](https://support-dev.discord.com/hc/articles/8563934450327-Discord-Developer-Policy) requires. There are no coupons or multi-server discounts, because Discord could not offer the same price. The SKU IDs are set in the super console; every two minutes the API reads the application's active entitlements through the bot (a read-only REST call) and updates each server's plan: a purchase switches the plan on, a renewal extends it and an ended subscription brings the server back to Free. If the entitlements cannot be read, nothing changes. Until SKUs are configured the pricing page shows the plans as "coming soon on Discord".
 
 **Super console** (`SUPER_ADMIN_USER_ID` only, enforced by the API):
 
-- connected servers with their plan (level, billing period, expiry, coupon, internal note), leave or block a server;
+- connected servers with their plan (level, source — Discord subscription or manual —, expiry, internal note), leave or block a server; manual plans are free trials, partner or complimentary plans;
 - public contact details shown on the pricing page;
-- coupons and discounts (percentage or fixed amount, plans, billing period, validity, redemptions, optional promotion on the pricing page);
+- **Discord subscriptions**: the SKU ID of each plan and billing period, the last sync and a manual "sync now";
 - the **status channel**: one server and channel, chosen among those the bot can see, that receives bot startup, errors, warnings, reached quotas and servers added, removed or rejected — these notices are no longer posted in individual servers;
 - installation blacklist and an audit log of every action, including automatic plan expiries.
 

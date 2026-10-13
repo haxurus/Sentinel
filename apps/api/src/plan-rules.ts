@@ -1,4 +1,4 @@
-import { EVENT_CATALOG, SETTINGS_TIER, planLimits, requiredTierForEvent, tierAllows, type PlanTier } from '@sentinel/shared';
+import { EVENT_CATALOG, planLimits, requiredTierForEvent, tierAllows, type PlanTier } from '@sentinel/shared';
 
 export type PlanRoute = {
   eventKey: string;
@@ -15,8 +15,6 @@ export type PlanRoute = {
 export type PlanSettings = {
   defaultLogChannelId: string | null;
   defaultRetentionDays: number;
-  typingLoggingEnabled: boolean;
-  rawGatewayEnabled: boolean;
 };
 
 const eventByKey = new Map(EVENT_CATALOG.map((event) => [event.key, event]));
@@ -60,9 +58,6 @@ export function planAdjustments(tier: PlanTier, settings: PlanSettings, routes: 
   const limits = planLimits(tier);
   const settingsPatch: Partial<PlanSettings> = {};
   if (settings.defaultRetentionDays > limits.retentionDays) settingsPatch.defaultRetentionDays = limits.retentionDays;
-  for (const [key, required] of Object.entries(SETTINGS_TIER) as Array<[keyof typeof SETTINGS_TIER, PlanTier]>) {
-    if (settings[key] && !tierAllows(tier, required)) settingsPatch[key] = false;
-  }
 
   const allowedChannels = new Set<string>();
   if (settings.defaultLogChannelId) allowedChannels.add(settings.defaultLogChannelId);

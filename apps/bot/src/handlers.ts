@@ -10,9 +10,9 @@ import {
   type PartialMessage
 } from 'discord.js';
 import { prisma } from '@sentinel/db';
-import { ensureGuild, getGuildSettings, isGuildInstallBlocked, isUserInstallBlocked, snapshotMessage } from './store.js';
+import { ensureGuild, getGuildSettings, isGuildInstallBlocked, isUserInstallBlocked, markGuildRemoved, snapshotMessage } from './store.js';
 import { recordEvent, shouldCapture } from './recorder.js';
-import { findRecentAuditEntry, jsonSafe, redactSecrets } from './utils.js';
+import { findRecentAuditEntry, jsonSafe } from './utils.js';
 import { decryptText, redactText, unprotectJson } from './security.js';
 import { leaveGuild } from './discord-actions.js';
 import { logger } from './logger.js';
@@ -745,6 +745,7 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
         fields: [{ name: 'Server', value: `${guild.name ?? 'sconosciuto'}\n\`${guild.id}\`` }]
       });
     }
+    await markGuildRemoved(guild.id);
     if (await isGuildInstallBlocked(guild.id)) return;
     const exists = await prisma.guildSettings.findUnique({ where: { guildId: guild.id }, select: { guildId: true } });
     if (!exists) return;
@@ -938,31 +939,5 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
       summary: `Nuova voce Audit Log: ${String(entry.action)}.`,
       details: { action: entry.action, reason: entry.reason, changes: jsonSafe(entry.changes ?? []), extra: jsonSafe(entry.extra ?? null) }
     });
-  });
-
-  on(Events.TypingStart, async (typing) => {
-    if (!typing.guild) return;
-    const settings = await getGuildSettings(typing.guild.id);
-    if (!settings?.typingLoggingEnabled || typing.user.id === client.user?.id) return;
-    await recordEvent({ guildId: typing.guild.id, eventKey: 'typing.start', actorId: typing.user.id, channelId: typing.channel.id, summary: `${typing.user.tag ?? typing.user.id} ha iniziato a scrivere.`, details: { actorBot: typing.user.bot ?? false } });
-  });
-
-  const handleRaw = async (packet: any) => {
-    const guildId = packet?.d?.guild_id as string | undefined;
-    if (!guildId) return;
-    if (packet.t === 'MESSAGE_CREATE' && packet.d?.author?.id === client.user?.id) return;
-    const settings = await getGuildSettings(guildId);
-    if (!settings?.rawGatewayEnabled) return;
-    let data = redactSecrets(jsonSafe(packet.d));
-    if (!settings.storeMessageContent && data && typeof data === 'object' && !Array.isArray(data) && (packet.t === 'MESSAGE_CREATE' || packet.t === 'MESSAGE_UPDATE')) {
-      const redacted = { ...(data as Record<string, unknown>) };
-      delete redacted.content;
-      delete redacted.embeds;
-      data = redacted;
-    }
-    await recordEvent({ guildId, eventKey: 'raw.gateway', actorId: packet.d?.user_id ?? packet.d?.author?.id ?? null, targetId: packet.d?.id ?? null, channelId: packet.d?.channel_id ?? null, summary: `Gateway event ${packet.t ?? 'UNKNOWN'}.`, details: { opcode: packet.op, type: packet.t, sequence: packet.s, data } });
-  };
-  client.on(Events.Raw, (packet: any) => {
-    handleRaw(packet).catch((error: unknown) => report(Events.Raw, error));
   });
 }
