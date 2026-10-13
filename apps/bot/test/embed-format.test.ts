@@ -65,7 +65,7 @@ test('referenceKindForDetail classifies detail keys', () => {
 test('message.delete targets render as users', () => {
   assert.equal(targetKindForEvent('message.delete'), 'user');
   assert.equal(targetKindForEvent('role.update'), 'role');
-  assert.equal(targetKindForEvent('soundboard.sync'), 'technical');
+  assert.equal(targetKindForEvent('webhook.update'), 'technical');
 });
 
 test('buildDetailsField never exceeds a field value', () => {
