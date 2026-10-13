@@ -71,23 +71,8 @@ export const PLANS: Record<PlanTier, PlanDefinition> = {
   }
 };
 
-/**
- * Discount for a customer who pays for several servers at once, by number of
- * paid subscriptions (highest threshold first).
- */
-export const MULTI_SUBSCRIPTION_DISCOUNTS = [
-  { minSubscriptions: 5, percentOff: 25 },
-  { minSubscriptions: 3, percentOff: 20 },
-  { minSubscriptions: 2, percentOff: 15 }
-] as const;
-
-export const multiSubscriptionPercent = (subscriptions: number) =>
-  MULTI_SUBSCRIPTION_DISCOUNTS.find((discount) => subscriptions >= discount.minSubscriptions)?.percentOff ?? 0;
-
-/** High-volume loggers that need Pro (level 2): typing and Gateway diagnostics. */
+/** High-volume loggers that need Pro (level 2): Gateway diagnostics. */
 const TIER2_EVENTS = new Set([
-  'typing.start',
-  'raw.gateway',
   'voice.server_update',
   'thread.list_sync',
   'soundboard.sync',
@@ -111,12 +96,6 @@ export function requiredTierForEvent(event: { key: string; noisy?: boolean } | u
   return event.noisy ? 'TIER1' : 'FREE';
 }
 
-/** Settings toggles that turn on high-volume Gateway capture. */
-export const SETTINGS_TIER = {
-  typingLoggingEnabled: 'TIER2',
-  rawGatewayEnabled: 'TIER2'
-} as const satisfies Record<string, PlanTier>;
-
 /** The plan in force: an expired plan behaves as Free until it is renewed. */
 export function effectiveTier(
   plan: { planTier?: string | null; planExpiresAt?: Date | string | null },
@@ -129,45 +108,3 @@ export function effectiveTier(
 }
 
 export const planLimits = (tier: PlanTier) => PLANS[tier].limits;
-
-export type CouponLike = {
-  code: string;
-  percentOff: number | null;
-  amountOffCents: number | null;
-  tiers: string[];
-  billing: string;
-  maxRedemptions: number | null;
-  redemptions: number;
-  validFrom: Date | string | null;
-  validUntil: Date | string | null;
-  active: boolean;
-};
-
-export const normalizeCouponCode = (value: string) => value.trim().toUpperCase();
-
-/** Why a coupon cannot be applied to a plan, or null when it can. */
-export function couponProblem(coupon: CouponLike, tier: PlanTier, billing: BillingPeriod | null, now: Date = new Date()) {
-  if (!coupon.active) return 'COUPON_INACTIVE';
-  if (coupon.validFrom && new Date(coupon.validFrom).getTime() > now.getTime()) return 'COUPON_NOT_STARTED';
-  if (coupon.validUntil && new Date(coupon.validUntil).getTime() < now.getTime()) return 'COUPON_EXPIRED';
-  if (coupon.maxRedemptions !== null && coupon.redemptions >= coupon.maxRedemptions) return 'COUPON_EXHAUSTED';
-  if (tier === 'FREE') return 'COUPON_FREE_PLAN';
-  if (coupon.tiers.length && !coupon.tiers.includes(tier)) return 'COUPON_WRONG_TIER';
-  if (coupon.billing !== 'ANY' && coupon.billing !== billing) return 'COUPON_WRONG_BILLING';
-  return null;
-}
-
-export function basePriceCents(tier: PlanTier, billing: BillingPeriod | null) {
-  if (billing === 'YEARLY') return PLANS[tier].yearlyCents;
-  if (billing === 'MONTHLY') return PLANS[tier].monthlyCents;
-  return 0;
-}
-
-/** Price after a coupon, never below zero. */
-export function discountedPriceCents(priceCents: number, coupon: Pick<CouponLike, 'percentOff' | 'amountOffCents'> | null) {
-  if (!coupon) return priceCents;
-  let price = priceCents;
-  if (coupon.percentOff) price = Math.round(price * (100 - coupon.percentOff) / 100);
-  if (coupon.amountOffCents) price -= coupon.amountOffCents;
-  return Math.max(0, price);
-}

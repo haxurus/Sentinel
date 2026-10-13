@@ -77,8 +77,6 @@ export const EVENT_CATALOG: EventDefinition[] = [
   { key: 'application.permissions_update', category: 'Applicazioni', label: 'Permessi comando applicazione', description: 'Cambiano i permessi di un comando o entita applicazione nel server.' },
   { key: 'user.update', category: 'Utenti', label: 'Profilo utente modificato', description: 'Cambiano username, avatar o altri dati globali di un utente.', noisy: true },
   { key: 'audit.entry', category: 'Audit', label: 'Audit log Discord', description: 'Discord genera una nuova voce di Audit Log.', noisy: true },
-  { key: 'typing.start', category: 'Messaggi', label: 'Typing', description: 'Un utente inizia a scrivere.', noisy: true },
-  { key: 'raw.gateway', category: 'Avanzato', label: 'Gateway raw', description: 'Copia grezza degli eventi Gateway non normalizzati. Da usare solo per debug.', noisy: true }
 ];
 
 export const eventDefinition = (key: string) => EVENT_CATALOG.find((event) => event.key === key);

@@ -39,7 +39,7 @@ export const normalizeColor = (value?: string | null) => {
 const USER_TARGET_EVENTS = new Set([
   'member.join', 'member.leave', 'member.update', 'moderation.kick', 'moderation.ban', 'moderation.unban',
   'voice.join', 'voice.leave', 'voice.move', 'voice.state', 'thread.member_update', 'user.update',
-  'typing.start', 'message.delete'
+  'message.delete'
 ]);
 
 const CHANNEL_TARGET_EVENTS = new Set([

@@ -1,21 +1,15 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@sentinel/db';
-import {
-  BILLING_PERIODS,
-  MULTI_SUBSCRIPTION_DISCOUNTS,
-  EVENT_CATALOG,
-  PLANS,
-  PLAN_TIERS,
-  normalizeCouponCode,
-  requiredTierForEvent
-} from '@sentinel/shared';
+import { EVENT_CATALOG, PLANS, PLAN_TIERS, requiredTierForEvent } from '@sentinel/shared';
 import { requireGuild, requireSession, requireSuperAdmin } from './auth.js';
 import { panelAudit } from './audit.js';
 import { superAdminAudit } from './super-audit.js';
 import { getGuildResources, refreshStatusChannel, sendStatusTest, setBotBranding, type BotApiError } from './discord.js';
 import { findForeignReference } from './helpers.js';
 import { PlanError, changeGuildPlan, guildPlanUsage, guildTier } from './plan-service.js';
+import { config as appConfig } from './config.js';
+import { PAID_TIERS, SKU_PERIODS, lastDiscordSync, parseSkus, storeLinks, syncDiscordPlans } from './discord-billing.js';
 
 const snowflake = z.string().regex(/^\d{17,20}$/);
 const nullableText = (max: number) => z.string().trim().max(max).nullable().optional()
@@ -32,11 +26,8 @@ const eventTiers = () => ({
   TIER2: EVENT_CATALOG.filter((event) => requiredTierForEvent(event) === 'TIER2').map((event) => event.key)
 });
 
-const couponIsLive = (coupon: { active: boolean; validFrom: Date | null; validUntil: Date | null; maxRedemptions: number | null; redemptions: number }, now = new Date()) =>
-  coupon.active &&
-  (!coupon.validFrom || coupon.validFrom <= now) &&
-  (!coupon.validUntil || coupon.validUntil >= now) &&
-  (coupon.maxRedemptions === null || coupon.redemptions < coupon.maxRedemptions);
+/** Where each paid plan can be bought in Discord (null until configured). */
+const discordStore = (skus: unknown) => storeLinks(parseSkus(skus), appConfig.clientId);
 
 const sendPlanError = (reply: FastifyReply, error: unknown) => {
   if (error instanceof PlanError) return reply.code(error.status).send({ error: error.code });
@@ -44,8 +35,8 @@ const sendPlanError = (reply: FastifyReply, error: unknown) => {
 };
 
 /**
- * Public plan catalogue, coupons, plan management, public contacts and the
- * instance status channel.
+ * Public plan catalogue, Discord subscriptions, plan management, public
+ * contacts and the instance status channel.
  */
 export async function registerPlanRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- public
@@ -60,24 +51,12 @@ export async function registerPlanRoutes(app: FastifyInstance) {
   });
 
   const loadPublicInfo = async () => {
-    const [config, coupons] = await Promise.all([
-      instanceConfig(),
-      prisma.coupon.findMany({ where: { public: true, active: true }, orderBy: { createdAt: 'desc' }, take: 10 })
-    ]);
+    const config = await instanceConfig();
     return {
       contacts: { email: config.contactEmail, discord: config.contactDiscord, url: config.contactUrl },
       plans: publicPlans(),
-      multiSubscriptionDiscounts: MULTI_SUBSCRIPTION_DISCOUNTS,
       eventTiers: eventTiers(),
-      promotions: coupons.filter((coupon) => couponIsLive(coupon)).map((coupon) => ({
-        code: coupon.code,
-        description: coupon.description,
-        percentOff: coupon.percentOff,
-        amountOffCents: coupon.amountOffCents,
-        tiers: coupon.tiers,
-        billing: coupon.billing,
-        validUntil: coupon.validUntil
-      }))
+      discord: discordStore(config.discordSkus)
     };
   };
 
@@ -102,58 +81,38 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     return config;
   });
 
-  // -------------------------------------------------------- super: coupons
-  const couponBody = z.object({
-    description: nullableText(200),
-    percentOff: z.number().int().min(1).max(100).nullable().optional(),
-    amountOffCents: z.number().int().min(1).max(100_000).nullable().optional(),
-    tiers: z.array(z.enum(['TIER1', 'TIER2', 'TIER3'])).max(3).optional(),
-    billing: z.enum(['ANY', 'MONTHLY', 'YEARLY']).optional(),
-    maxRedemptions: z.number().int().min(1).max(100_000).nullable().optional(),
-    validFrom: z.coerce.date().nullable().optional(),
-    validUntil: z.coerce.date().nullable().optional(),
-    active: z.boolean().optional(),
-    public: z.boolean().optional()
-  });
-  const discountValid = (value: { percentOff?: number | null; amountOffCents?: number | null }) =>
-    Boolean(value.percentOff) !== Boolean(value.amountOffCents);
-
-  app.post('/api/super/coupons', async (request, reply) => {
+  // ------------------------------------------ super: Discord subscriptions
+  app.put('/api/super/discord-skus', async (request, reply) => {
     const session = await requireSuperAdmin(request, reply);
     if (!session) return;
-    const parsed = couponBody.extend({ code: z.string().trim().regex(/^[A-Za-z0-9_-]{3,32}$/) }).safeParse(request.body);
-    if (!parsed.success || !discountValid(parsed.data)) return reply.code(400).send({ error: 'INVALID_COUPON' });
-    const code = normalizeCouponCode(parsed.data.code);
-    if (await prisma.coupon.findUnique({ where: { code }, select: { id: true } })) return reply.code(409).send({ error: 'COUPON_EXISTS' });
-    const coupon = await prisma.coupon.create({ data: { ...parsed.data, code, createdByUserId: session.userId } });
-    await superAdminAudit(request, session, 'coupon.create', 'COUPON', code, { percentOff: coupon.percentOff, amountOffCents: coupon.amountOffCents });
-    return coupon;
+    const sku = z.union([z.literal(''), snowflake]).nullable().optional();
+    const period = z.object({ MONTHLY: sku, YEARLY: sku }).partial();
+    const parsed = z.object({ TIER1: period, TIER2: period, TIER3: period }).partial().safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_SKU' });
+    const skus: Record<string, Record<string, string>> = {};
+    const seen = new Set<string>();
+    for (const tier of PAID_TIERS) {
+      for (const billing of SKU_PERIODS) {
+        const id = parsed.data[tier]?.[billing];
+        if (!id) continue;
+        if (seen.has(id)) return reply.code(400).send({ error: 'DUPLICATE_SKU' });
+        seen.add(id);
+        skus[tier] = { ...skus[tier], [billing]: id };
+      }
+    }
+    await prisma.instanceConfig.upsert({ where: { id: 1 }, update: { discordSkus: skus }, create: { id: 1, discordSkus: skus } });
+    publicInfoCache = null;
+    await superAdminAudit(request, session, 'discord.skus', null, null, skus);
+    return { skus, sync: await syncDiscordPlans(request.log) };
   });
 
-  app.put('/api/super/coupons/:id', async (request, reply) => {
+  app.post('/api/super/discord-sync', async (request, reply) => {
     const session = await requireSuperAdmin(request, reply);
     if (!session) return;
-    const { id } = request.params as { id: string };
-    const parsed = couponBody.safeParse(request.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_COUPON' });
-    const current = await prisma.coupon.findUnique({ where: { id } });
-    if (!current) return reply.code(404).send({ error: 'NOT_FOUND' });
-    const next = { percentOff: current.percentOff, amountOffCents: current.amountOffCents, ...parsed.data };
-    if (!discountValid(next)) return reply.code(400).send({ error: 'INVALID_COUPON' });
-    const coupon = await prisma.coupon.update({ where: { id }, data: parsed.data });
-    await superAdminAudit(request, session, 'coupon.update', 'COUPON', coupon.code, parsed.data);
-    return coupon;
-  });
-
-  app.delete('/api/super/coupons/:id', async (request, reply) => {
-    const session = await requireSuperAdmin(request, reply);
-    if (!session) return;
-    const { id } = request.params as { id: string };
-    const coupon = await prisma.coupon.findUnique({ where: { id } });
-    if (!coupon) return reply.code(404).send({ error: 'NOT_FOUND' });
-    await prisma.coupon.delete({ where: { id } });
-    await superAdminAudit(request, session, 'coupon.delete', 'COUPON', coupon.code);
-    return { ok: true };
+    const result = await syncDiscordPlans(request.log);
+    await superAdminAudit(request, session, 'discord.sync', null, null, result);
+    if (!result.ok) return reply.code(502).send({ error: 'DISCORD_SYNC_FAILED' });
+    return result;
   });
 
   // ---------------------------------------------------------- super: plans
@@ -163,17 +122,13 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     const { guildId } = request.params as { guildId: string };
     const parsed = z.object({
       tier: z.enum(PLAN_TIERS),
-      billing: z.enum(BILLING_PERIODS).nullable().optional(),
       expiresAt: z.coerce.date().nullable().optional(),
-      couponCode: z.string().trim().max(32).nullable().optional(),
       note: nullableText(500)
     }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY' });
     const change = {
       tier: parsed.data.tier,
-      billing: parsed.data.billing ?? null,
       expiresAt: parsed.data.expiresAt ?? null,
-      couponCode: parsed.data.couponCode || null,
       note: parsed.data.note
     };
     if (change.tier !== 'FREE' && change.expiresAt && change.expiresAt.getTime() <= Date.now()) {
@@ -251,9 +206,9 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     const { guildId } = request.params as { guildId: string };
     const session = await requireGuild(request, reply, guildId);
     if (!session) return;
-    const usage = await guildPlanUsage(guildId);
+    const [usage, config] = await Promise.all([guildPlanUsage(guildId), instanceConfig()]);
     if (!usage) return reply.code(404).send({ error: 'BOT_NOT_IN_GUILD' });
-    return { ...usage, eventTiers: eventTiers() };
+    return { ...usage, eventTiers: eventTiers(), discord: discordStore(config.discordSkus) };
   });
 
   // Banners are resized in the browser to stay under the edge proxy's 64 KB
@@ -296,16 +251,22 @@ export async function registerPlanRoutes(app: FastifyInstance) {
   });
 }
 
-/** Super console overview additions: plans, coupons, settings. */
+/** Super console overview additions: plans, Discord subscriptions, settings. */
 export async function planOverview(botGuildIds: string[]) {
-  const [config, coupons, statusChannel, plans] = await Promise.all([
+  const [config, statusChannel, plans] = await Promise.all([
     instanceConfig(),
-    prisma.coupon.findMany({ orderBy: { createdAt: 'desc' } }),
     prisma.statusChannel.findUnique({ where: { id: 1 } }),
     prisma.guildSettings.findMany({
       where: { guildId: { in: botGuildIds } },
-      select: { guildId: true, planTier: true, planBilling: true, planExpiresAt: true, planCouponCode: true, planNote: true, planUpdatedAt: true }
+      select: { guildId: true, planTier: true, planBilling: true, planExpiresAt: true, planSource: true, planNote: true, planUpdatedAt: true }
     })
   ]);
-  return { config, statusChannel, coupons, plans, planCatalog: publicPlans(), multiSubscriptionDiscounts: MULTI_SUBSCRIPTION_DISCOUNTS };
+  const { discordSkus, ...settings } = config;
+  return {
+    config: settings,
+    statusChannel,
+    plans,
+    planCatalog: publicPlans(),
+    discord: { skus: parseSkus(discordSkus), applicationId: appConfig.clientId, lastSync: lastDiscordSync(), ...discordStore(discordSkus) }
+  };
 }

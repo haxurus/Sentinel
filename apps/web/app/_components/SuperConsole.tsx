@@ -1,16 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Icon, type IconName } from './Brand';
 import { SiteHeader } from './SiteChrome';
 import type { Locale } from '../i18n';
-import { TIER_ORDER, formatPrice, multiDiscountFor, tierLabel, type MultiDiscount, type Plan, type PlanTier } from './plans';
+import { TIER_ORDER, formatPrice, tierLabel, type DiscordStore, type PaidTier, type Plan, type PlanTier, type StorePeriod } from './plans';
 
 type GuildPlan = {
   planTier: PlanTier;
   planBilling: string | null;
   planExpiresAt: string | null;
-  planCouponCode: string | null;
+  planSource: string;
   planNote: string | null;
   planUpdatedAt: string | null;
 } | null;
@@ -29,20 +29,11 @@ type Block = { id: string; kind: 'USER' | 'GUILD'; subjectId: string; reason: st
 type Audit = { id: string; username: string; action: string; subjectType: string | null; subjectId: string | null; createdAt: string };
 type Config = { contactEmail: string | null; contactDiscord: string | null; contactUrl: string | null };
 type StatusChannel = { guildId: string; channelId: string; updatedAt: string } | null;
-type Coupon = {
-  id: string;
-  code: string;
-  description: string | null;
-  percentOff: number | null;
-  amountOffCents: number | null;
-  tiers: string[];
-  billing: string;
-  maxRedemptions: number | null;
-  redemptions: number;
-  validFrom: string | null;
-  validUntil: string | null;
-  active: boolean;
-  public: boolean;
+type Skus = Partial<Record<PaidTier, Partial<Record<StorePeriod, string>>>>;
+type DiscordOverview = DiscordStore & {
+  skus: Skus;
+  applicationId: string;
+  lastSync: { at: string; ok: boolean; entitlements: number; changed: number; error?: string } | null;
 };
 type Overview = {
   guilds: Guild[];
@@ -50,11 +41,10 @@ type Overview = {
   audit: Audit[];
   config: Config;
   statusChannel: StatusChannel;
-  coupons: Coupon[];
   planCatalog: Plan[];
-  multiSubscriptionDiscounts: MultiDiscount[];
+  discord: DiscordOverview;
 };
-type Tab = 'servers' | 'contacts' | 'coupons' | 'status' | 'blacklist' | 'audit';
+type Tab = 'servers' | 'contacts' | 'discord' | 'status' | 'blacklist' | 'audit';
 
 const copy = {
   it: {
@@ -63,7 +53,7 @@ const copy = {
     intro: 'Area riservata al proprietario dell’istanza. Le azioni qui sotto hanno effetto su tutti i server collegati al bot.',
     dashboard: 'Dashboard',
     pricing: 'Prezzi',
-    tabs: { servers: 'Server e piani', contacts: 'Contatti', coupons: 'Coupon', status: 'Notifiche', blacklist: 'Blacklist', audit: 'Audit' },
+    tabs: { servers: 'Server e piani', contacts: 'Contatti', discord: 'Abbonamenti Discord', status: 'Notifiche', blacklist: 'Blacklist', audit: 'Audit' },
     liveServers: 'Server collegati',
     liveServersText: 'Elenco live dalla sessione Discord del bot. Da qui assegni il piano di ogni server.',
     members: 'membri',
@@ -77,20 +67,14 @@ const copy = {
     noServers: 'Sentinel non è collegato ad alcun server.',
     plan: {
       tier: 'Piano',
-      billing: 'Fatturazione',
-      monthly: 'Mensile',
-      yearly: 'Annuale',
-      gift: 'Omaggio / prova',
+      manual: 'Da qui assegni solo piani gratuiti (prova, partner, omaggio): i piani a pagamento si vendono solo tramite Discord. Un abbonamento Discord attivo di livello uguale o superiore prende il posto del piano manuale.',
+      discordSource: 'Abbonamento Discord',
       expires: 'Scadenza',
       noExpiry: 'Nessuna scadenza',
       plusMonth: '+1 mese',
       plusYear: '+1 anno',
-      coupon: 'Codice coupon',
-      subscriptions: 'Abbonamenti del cliente',
-      multi: 'sconto abbonamenti multipli',
       note: 'Nota interna',
-      notePlaceholder: 'Es. pagato con bonifico il 10/10',
-      price: 'Prezzo',
+      notePlaceholder: 'Es. prova di 30 giorni per un server partner',
       save: 'Salva piano',
       expiresOn: 'scade il',
       expired: 'scaduto',
@@ -98,36 +82,27 @@ const copy = {
     },
     contacts: {
       title: 'Recapiti pubblici',
-      text: 'Mostrati nella pagina prezzi a chi vuole attivare un piano.',
+      text: 'Mostrati nella pagina prezzi per domande, prove gratuite e collaborazioni.',
       email: 'Email',
       discord: 'Discord (username o link https)',
       url: 'Link: server Discord, sito o modulo (https)',
       save: 'Salva recapiti'
     },
-    coupons: {
-      title: 'Coupon e sconti',
-      text: 'I coupon si applicano quando assegni un piano a un server. Quelli pubblici compaiono come promozione nella pagina prezzi.',
-      code: 'Codice',
-      type: 'Tipo di sconto',
-      percent: 'Percentuale',
-      amount: 'Importo fisso (€)',
-      value: 'Valore',
-      tiers: 'Piani',
-      allTiers: 'Tutti i piani a pagamento',
-      billing: 'Fatturazione',
-      any: 'Qualsiasi',
-      max: 'Utilizzi massimi',
-      from: 'Valido dal',
-      until: 'Valido fino al',
-      description: 'Descrizione',
-      public: 'Mostra nella pagina prezzi',
-      create: 'Crea coupon',
-      active: 'Attivo',
-      used: 'utilizzi',
-      unlimited: 'illimitati',
-      remove: 'Elimina',
-      confirmRemove: 'Eliminare questo coupon?',
-      none: 'Nessun coupon.'
+    discord: {
+      title: 'Abbonamenti Discord',
+      text: 'I piani a pagamento si vendono solo come abbonamenti per server tramite le App premium di Discord, agli stessi prezzi della pagina prezzi. Crea gli SKU nel Portale sviluppatori (Monetizzazione) e incolla qui i loro ID: i piani dei server si aggiornano da soli ogni due minuti.',
+      monthly: 'SKU mensile',
+      yearly: 'SKU annuale (solo se Discord lo prevede)',
+      price: 'Prezzo da impostare su Discord',
+      save: 'Salva SKU',
+      sync: 'Sincronizza ora',
+      store: 'Apri lo store',
+      notConfigured: 'Nessuno SKU configurato: la pagina prezzi mostra «Presto su Discord».',
+      lastSync: 'Ultima sincronizzazione',
+      never: 'non ancora eseguita',
+      entitlements: 'abbonamenti attivi',
+      changed: 'piani aggiornati',
+      failed: 'non riuscita: il bot non ha potuto leggere gli abbonamenti'
     },
     status: {
       title: 'Canale notifiche di stato',
@@ -167,16 +142,9 @@ const copy = {
     user: 'Utente',
     guild: 'Server',
     errors: {
-      COUPON_NOT_FOUND: 'Coupon inesistente.',
-      COUPON_INACTIVE: 'Coupon disattivato.',
-      COUPON_NOT_STARTED: 'Coupon non ancora valido.',
-      COUPON_EXPIRED: 'Coupon scaduto.',
-      COUPON_EXHAUSTED: 'Coupon esaurito.',
-      COUPON_FREE_PLAN: 'Un coupon non si applica al piano Free.',
-      COUPON_WRONG_TIER: 'Il coupon non vale per questo piano.',
-      COUPON_WRONG_BILLING: 'Il coupon non vale per questa fatturazione.',
-      COUPON_EXISTS: 'Esiste già un coupon con questo codice.',
-      INVALID_COUPON: 'Coupon non valido: indica un solo tipo di sconto e un codice di 3-32 caratteri.',
+      INVALID_SKU: 'ID SKU non valido (17-20 cifre).',
+      DUPLICATE_SKU: 'Lo stesso SKU non può valere per due piani.',
+      DISCORD_SYNC_FAILED: 'Sincronizzazione non riuscita: il bot non ha potuto leggere gli abbonamenti.',
       EXPIRY_IN_PAST: 'La scadenza è nel passato.',
       UNKNOWN_GUILD_REFERENCE: 'Il canale non appartiene al server scelto o non può ricevere messaggi.',
       DISCORD_RESOURCES_FAILED: 'Impossibile leggere i canali da Discord.',
@@ -190,7 +158,7 @@ const copy = {
     intro: 'Instance-owner area. Actions here affect every server connected to the bot.',
     dashboard: 'Dashboard',
     pricing: 'Pricing',
-    tabs: { servers: 'Servers & plans', contacts: 'Contacts', coupons: 'Coupons', status: 'Notifications', blacklist: 'Blacklist', audit: 'Audit' },
+    tabs: { servers: 'Servers & plans', contacts: 'Contacts', discord: 'Discord subscriptions', status: 'Notifications', blacklist: 'Blacklist', audit: 'Audit' },
     liveServers: 'Connected servers',
     liveServersText: 'Live list from the bot Discord session. Assign each server’s plan from here.',
     members: 'members',
@@ -204,20 +172,14 @@ const copy = {
     noServers: 'Sentinel is not connected to any server.',
     plan: {
       tier: 'Plan',
-      billing: 'Billing',
-      monthly: 'Monthly',
-      yearly: 'Yearly',
-      gift: 'Gift / trial',
+      manual: 'Only free plans are assigned here (trial, partner, gift): paid plans are sold only through Discord. An active Discord subscription of the same or a higher level replaces the manual plan.',
+      discordSource: 'Discord subscription',
       expires: 'Expiry',
       noExpiry: 'No expiry',
       plusMonth: '+1 month',
       plusYear: '+1 year',
-      coupon: 'Coupon code',
-      subscriptions: 'Customer subscriptions',
-      multi: 'multi-subscription discount',
       note: 'Internal note',
-      notePlaceholder: 'E.g. paid by bank transfer on 10/10',
-      price: 'Price',
+      notePlaceholder: 'E.g. 30-day trial for a partner server',
       save: 'Save plan',
       expiresOn: 'expires',
       expired: 'expired',
@@ -225,36 +187,27 @@ const copy = {
     },
     contacts: {
       title: 'Public contacts',
-      text: 'Shown on the pricing page to people who want to activate a plan.',
+      text: 'Shown on the pricing page for questions, free trials and partnerships.',
       email: 'Email',
       discord: 'Discord (username or https link)',
       url: 'Link: Discord server, website or form (https)',
       save: 'Save contacts'
     },
-    coupons: {
-      title: 'Coupons & discounts',
-      text: 'Coupons apply when you assign a plan to a server. Public ones appear as promotions on the pricing page.',
-      code: 'Code',
-      type: 'Discount type',
-      percent: 'Percentage',
-      amount: 'Fixed amount (€)',
-      value: 'Value',
-      tiers: 'Plans',
-      allTiers: 'Every paid plan',
-      billing: 'Billing',
-      any: 'Any',
-      max: 'Maximum redemptions',
-      from: 'Valid from',
-      until: 'Valid until',
-      description: 'Description',
-      public: 'Show on the pricing page',
-      create: 'Create coupon',
-      active: 'Active',
-      used: 'used',
-      unlimited: 'unlimited',
-      remove: 'Delete',
-      confirmRemove: 'Delete this coupon?',
-      none: 'No coupons.'
+    discord: {
+      title: 'Discord subscriptions',
+      text: 'Paid plans are sold only as per-server subscriptions through Discord Premium Apps, at the same prices as the pricing page. Create the SKUs in the Developer Portal (Monetization) and paste their IDs here: server plans update by themselves every two minutes.',
+      monthly: 'Monthly SKU',
+      yearly: 'Yearly SKU (only if Discord offers it)',
+      price: 'Price to set on Discord',
+      save: 'Save SKUs',
+      sync: 'Sync now',
+      store: 'Open the store',
+      notConfigured: 'No SKU configured: the pricing page shows “Coming soon on Discord”.',
+      lastSync: 'Last sync',
+      never: 'not run yet',
+      entitlements: 'active subscriptions',
+      changed: 'plans updated',
+      failed: 'failed: the bot could not read the subscriptions'
     },
     status: {
       title: 'Status notification channel',
@@ -294,16 +247,9 @@ const copy = {
     user: 'User',
     guild: 'Server',
     errors: {
-      COUPON_NOT_FOUND: 'Unknown coupon.',
-      COUPON_INACTIVE: 'Coupon is disabled.',
-      COUPON_NOT_STARTED: 'Coupon is not valid yet.',
-      COUPON_EXPIRED: 'Coupon has expired.',
-      COUPON_EXHAUSTED: 'Coupon has no redemptions left.',
-      COUPON_FREE_PLAN: 'Coupons do not apply to the Free plan.',
-      COUPON_WRONG_TIER: 'The coupon does not cover this plan.',
-      COUPON_WRONG_BILLING: 'The coupon does not cover this billing period.',
-      COUPON_EXISTS: 'A coupon with this code already exists.',
-      INVALID_COUPON: 'Invalid coupon: use exactly one discount type and a 3-32 character code.',
+      INVALID_SKU: 'Invalid SKU ID (17-20 digits).',
+      DUPLICATE_SKU: 'The same SKU cannot be used for two plans.',
+      DISCORD_SYNC_FAILED: 'Sync failed: the bot could not read the subscriptions.',
       EXPIRY_IN_PAST: 'The expiry date is in the past.',
       UNKNOWN_GUILD_REFERENCE: 'The channel does not belong to the selected server or cannot receive messages.',
       DISCORD_RESOURCES_FAILED: 'Unable to read channels from Discord.',
@@ -370,7 +316,7 @@ export default function SuperConsole({ locale }: { locale: Locale }) {
   const tabs: Array<{ key: Tab; icon: IconName; label: string; badge?: number }> = [
     { key: 'servers', icon: 'grid', label: c.tabs.servers },
     { key: 'contacts', icon: 'users', label: c.tabs.contacts },
-    { key: 'coupons', icon: 'key', label: c.tabs.coupons },
+    { key: 'discord', icon: 'key', label: c.tabs.discord },
     { key: 'status', icon: 'bolt', label: c.tabs.status },
     { key: 'blacklist', icon: 'lock', label: c.tabs.blacklist },
     { key: 'audit', icon: 'clock', label: c.tabs.audit }
@@ -404,7 +350,7 @@ export default function SuperConsole({ locale }: { locale: Locale }) {
               <div className="metric"><span>{c.liveServers}</span><strong>{data.guilds.length}</strong></div>
               <div className="metric"><span>{c.paid}</span><strong>{data.guilds.filter((guild) => guild.plan && guild.plan.planTier !== 'FREE').length}</strong></div>
               <div className="metric"><span>{c.freeServers}</span><strong>{data.guilds.filter((guild) => !guild.plan || guild.plan.planTier === 'FREE').length}</strong></div>
-              <div className="metric"><span>{c.tabs.coupons}</span><strong>{data.coupons.filter((coupon) => coupon.active).length}</strong></div>
+              <div className="metric"><span>{c.tabs.discord}</span><strong>{data.guilds.filter((guild) => guild.plan?.planSource === 'DISCORD').length}</strong></div>
             </div>
 
             <nav className="console-tabs" aria-label={c.kicker}>
@@ -417,7 +363,7 @@ export default function SuperConsole({ locale }: { locale: Locale }) {
 
             {tab === 'servers' && <ServersTab data={data} c={c} locale={locale} action={action} fmt={fmt} />}
             {tab === 'contacts' && <ContactsTab data={data} c={c} action={action} />}
-            {tab === 'coupons' && <CouponsTab data={data} c={c} locale={locale} action={action} fmt={fmt} />}
+            {tab === 'discord' && <DiscordTab data={data} c={c} locale={locale} action={action} fmt={fmt} />}
             {tab === 'status' && <StatusTab data={data} c={c} action={action} fmt={fmt} setStatus={setStatus} />}
             {tab === 'blacklist' && <BlacklistTab data={data} c={c} action={action} fmt={fmt} setStatus={setStatus} />}
             {tab === 'audit' && (
@@ -486,6 +432,7 @@ function ServersTab({ data, c, locale, action }: TabProps) {
                 </div>
                 <div className="super-guild-plan">
                   <span className={`tag ${tier !== 'FREE' && !expired ? 'tag-premium' : ''}`}>{tierLabel(tier, locale)}</span>
+                  {guild.plan?.planSource === 'DISCORD' && <small>{c.plan.discordSource}</small>}
                   {expires && <small className={expired ? 'text-danger' : ''}>{expired ? c.plan.expired : c.plan.expiresOn} {expires.toLocaleDateString(locale === 'it' ? 'it-IT' : 'en-GB')}</small>}
                 </div>
                 <div className="super-guild-actions">
@@ -494,7 +441,7 @@ function ServersTab({ data, c, locale, action }: TabProps) {
                   <button className="button button-sm button-danger" onClick={() => blockGuild(guild)}>{c.blockLeave}</button>
                 </div>
               </div>
-              {editing === guild.id && <PlanEditor guild={guild} data={data} c={c} locale={locale} action={action} onDone={() => setEditing(null)} />}
+              {editing === guild.id && <PlanEditor guild={guild} c={c} locale={locale} action={action} onDone={() => setEditing(null)} />}
             </article>
           );
         })}
@@ -505,27 +452,11 @@ function ServersTab({ data, c, locale, action }: TabProps) {
 
 const toDateInput = (value: string | null) => value ? new Date(value).toISOString().slice(0, 10) : '';
 
-function PlanEditor({ guild, data, c, locale, action, onDone }: { guild: Guild; data: Overview; c: Copy; locale: Locale; action: Action; onDone: () => void }) {
+function PlanEditor({ guild, c, locale, action, onDone }: { guild: Guild; c: Copy; locale: Locale; action: Action; onDone: () => void }) {
   const [tier, setTier] = useState<PlanTier>(guild.plan?.planTier ?? 'FREE');
-  const [billing, setBilling] = useState(guild.plan?.planBilling ?? 'MONTHLY');
   const [expires, setExpires] = useState(toDateInput(guild.plan?.planExpiresAt ?? null));
-  const [coupon, setCoupon] = useState(guild.plan?.planCouponCode ?? '');
   const [note, setNote] = useState(guild.plan?.planNote ?? '');
-  const [subscriptions, setSubscriptions] = useState('1');
   const free = tier === 'FREE';
-  const multiPercent = multiDiscountFor(data.multiSubscriptionDiscounts ?? [], Number(subscriptions) || 1);
-
-  const plan = data.planCatalog.find((item) => item.tier === tier);
-  const base = !plan || free ? 0 : billing === 'YEARLY' ? plan.yearlyCents : billing === 'MONTHLY' ? plan.monthlyCents : 0;
-  const matched = data.coupons.find((item) => item.code === coupon.trim().toUpperCase());
-  const final = useMemo(() => {
-    // Multi-subscription discount first, then the coupon.
-    let price = Math.round(base * (100 - multiPercent) / 100);
-    if (!matched) return price;
-    if (matched.percentOff) price = Math.round(price * (100 - matched.percentOff) / 100);
-    if (matched.amountOffCents) price -= matched.amountOffCents;
-    return Math.max(0, price);
-  }, [base, matched, multiPercent]);
 
   const extend = (months: number) => {
     const start = expires && new Date(expires).getTime() > Date.now() ? new Date(expires) : new Date();
@@ -540,10 +471,8 @@ function PlanEditor({ guild, data, c, locale, action, onDone }: { guild: Guild; 
       method: 'PUT',
       body: JSON.stringify({
         tier,
-        billing: free ? null : billing,
         // End of the chosen day, in the browser's time zone.
         expiresAt: free || !expires ? null : new Date(`${expires}T23:59:59`).toISOString(),
-        couponCode: free ? null : coupon.trim() || null,
         note: note.trim() || null
       })
     }).then(onDone, ignore);
@@ -551,26 +480,17 @@ function PlanEditor({ guild, data, c, locale, action, onDone }: { guild: Guild; 
 
   return (
     <div className="plan-editor">
+      <p className="muted">{c.plan.manual}</p>
       <div className="inline-fields">
         <label>{c.plan.tier}<select value={tier} onChange={(e) => setTier(e.target.value as PlanTier)}>
           {TIER_ORDER.map((item) => <option key={item} value={item}>{tierLabel(item, locale)}</option>)}
         </select></label>
-        <label>{c.plan.billing}<select disabled={free} value={billing} onChange={(e) => setBilling(e.target.value)}>
-          <option value="MONTHLY">{c.plan.monthly}</option>
-          <option value="YEARLY">{c.plan.yearly}</option>
-          <option value="GIFT">{c.plan.gift}</option>
-        </select></label>
         <label>{c.plan.expires}<input disabled={free} type="date" value={expires} onChange={(e) => setExpires(e.target.value)} /></label>
-        <label>{c.plan.coupon}<input disabled={free} value={coupon} onChange={(e) => setCoupon(e.target.value.toUpperCase())} list={`coupons-${guild.id}`} placeholder="BETA50" />
-          <datalist id={`coupons-${guild.id}`}>{data.coupons.filter((item) => item.active).map((item) => <option key={item.id} value={item.code} />)}</datalist>
-        </label>
-        <label>{c.plan.subscriptions}<input disabled={free} type="number" min={1} max={100} value={subscriptions} onChange={(e) => setSubscriptions(e.target.value)} /></label>
       </div>
       {!free && <div className="plan-editor-quick">
         <button type="button" className="button button-sm button-ghost" onClick={() => extend(1)}>{c.plan.plusMonth}</button>
         <button type="button" className="button button-sm button-ghost" onClick={() => extend(12)}>{c.plan.plusYear}</button>
         <button type="button" className="button button-sm button-ghost" onClick={() => setExpires('')}>{c.plan.noExpiry}</button>
-        <span className="plan-editor-price">{c.plan.price}{multiPercent ? ` (-${multiPercent}% ${c.plan.multi})` : ''}: {final !== base ? <><s>{formatPrice(base, locale)}</s> <strong>{formatPrice(final, locale)}</strong></> : <strong>{formatPrice(base, locale)}</strong>}</span>
       </div>}
       <label>{c.plan.note}<input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder={c.plan.notePlaceholder} /></label>
       <button className="button button-primary" onClick={save}>{c.plan.save}</button>
@@ -602,84 +522,66 @@ function ContactsTab({ data, c, action }: Pick<TabProps, 'data' | 'c' | 'action'
   );
 }
 
-/* ------------------------------------------------------------------ coupons */
+/* ------------------------------------------------------------------ discord */
 
-const emptyCoupon = { code: '', type: 'percent', value: '', tiers: [] as string[], billing: 'ANY', max: '', from: '', until: '', description: '', public: false };
+const PAID_TIERS: PaidTier[] = ['TIER1', 'TIER2', 'TIER3'];
+const STORE_PERIODS: StorePeriod[] = ['MONTHLY', 'YEARLY'];
 
-function CouponsTab({ data, c, locale, action, fmt }: TabProps) {
-  const [form, setForm] = useState(emptyCoupon);
-  const set = (patch: Partial<typeof emptyCoupon>) => setForm((current) => ({ ...current, ...patch }));
+function DiscordTab({ data, c, locale, action, fmt }: TabProps) {
+  const discord = data.discord;
+  const [skus, setSkus] = useState<Record<string, string>>(() => {
+    const values: Record<string, string> = {};
+    for (const tier of PAID_TIERS) for (const period of STORE_PERIODS) values[`${tier}.${period}`] = discord.skus[tier]?.[period] ?? '';
+    return values;
+  });
 
-  const create = () => {
-    const value = Number(form.value.replace(',', '.'));
-    action('/backend/api/super/coupons', {
-      method: 'POST',
-      body: JSON.stringify({
-        code: form.code.trim(),
-        description: form.description.trim() || null,
-        percentOff: form.type === 'percent' ? Math.round(value) || null : null,
-        amountOffCents: form.type === 'amount' ? Math.round(value * 100) || null : null,
-        tiers: form.tiers,
-        billing: form.billing,
-        maxRedemptions: form.max ? Number(form.max) : null,
-        validFrom: form.from ? new Date(`${form.from}T00:00:00`).toISOString() : null,
-        validUntil: form.until ? new Date(`${form.until}T23:59:59`).toISOString() : null,
-        public: form.public
-      })
-    }).then(() => setForm(emptyCoupon), ignore);
+  const save = () => {
+    const body: Record<string, Record<string, string | null>> = {};
+    for (const tier of PAID_TIERS) {
+      body[tier] = {};
+      for (const period of STORE_PERIODS) body[tier]![period] = skus[`${tier}.${period}`]!.trim() || null;
+    }
+    action('/backend/api/super/discord-skus', { method: 'PUT', body: JSON.stringify(body) }).catch(ignore);
   };
-  const update = (coupon: Coupon, patch: Partial<Coupon>) =>
-    action(`/backend/api/super/coupons/${coupon.id}`, { method: 'PUT', body: JSON.stringify(patch) }).catch(ignore);
-  const remove = (coupon: Coupon) => {
-    if (confirm(c.coupons.confirmRemove)) action(`/backend/api/super/coupons/${coupon.id}`, { method: 'DELETE' }).catch(ignore);
-  };
-  const date = (value: string | null) => value ? fmt(value).split(',')[0] : '…';
+  const sync = () => action('/backend/api/super/discord-sync', { method: 'POST', body: '{}' }).catch(ignore);
+  const last = discord.lastSync;
 
   return (
     <section className="card">
-      <div className="card-head"><div><span className="kicker">{c.tabs.coupons}</span><h2>{c.coupons.title}</h2><p>{c.coupons.text}</p></div></div>
-      <div className="coupon-form">
-        <label>{c.coupons.code}<input value={form.code} onChange={(e) => set({ code: e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, '') })} maxLength={32} placeholder="BETA50" /></label>
-        <label>{c.coupons.type}<select value={form.type} onChange={(e) => set({ type: e.target.value })}>
-          <option value="percent">{c.coupons.percent}</option>
-          <option value="amount">{c.coupons.amount}</option>
-        </select></label>
-        <label>{c.coupons.value}<input value={form.value} onChange={(e) => set({ value: e.target.value.replace(/[^\d.,]/g, '') })} inputMode="decimal" placeholder={form.type === 'percent' ? '50' : '5'} /></label>
-        <label>{c.coupons.billing}<select value={form.billing} onChange={(e) => set({ billing: e.target.value })}>
-          <option value="ANY">{c.coupons.any}</option>
-          <option value="MONTHLY">{c.plan.monthly}</option>
-          <option value="YEARLY">{c.plan.yearly}</option>
-        </select></label>
-        <label>{c.coupons.max}<input value={form.max} onChange={(e) => set({ max: e.target.value.replace(/\D/g, '') })} inputMode="numeric" placeholder="∞" /></label>
-        <label>{c.coupons.from}<input type="date" value={form.from} onChange={(e) => set({ from: e.target.value })} /></label>
-        <label>{c.coupons.until}<input type="date" value={form.until} onChange={(e) => set({ until: e.target.value })} /></label>
-        <label className="coupon-wide">{c.coupons.description}<input value={form.description} onChange={(e) => set({ description: e.target.value })} maxLength={200} /></label>
-        <fieldset className="coupon-tiers">
-          <legend>{c.coupons.tiers}</legend>
-          {(['TIER1', 'TIER2', 'TIER3'] as const).map((tier) => (
-            <label key={tier} className="check"><input type="checkbox" checked={form.tiers.includes(tier)} onChange={(e) => set({ tiers: e.target.checked ? [...form.tiers, tier] : form.tiers.filter((item) => item !== tier) })} />{tierLabel(tier, locale)}</label>
-          ))}
-          {!form.tiers.length && <small>{c.coupons.allTiers}</small>}
-        </fieldset>
-        <label className="check coupon-public"><input type="checkbox" checked={form.public} onChange={(e) => set({ public: e.target.checked })} />{c.coupons.public}</label>
-        <button className="button button-primary" onClick={create}>{c.coupons.create}</button>
+      <div className="card-head">
+        <div><span className="kicker">Discord</span><h2>{c.discord.title}</h2><p>{c.discord.text}</p></div>
+        {discord.enabled && <a className="button button-sm button-secondary" href={discord.store} target="_blank" rel="noopener noreferrer">{c.discord.store}</a>}
       </div>
-
-      {!data.coupons.length && <div className="empty">{c.coupons.none}</div>}
-      <div className="table-list">
-        {data.coupons.map((coupon) => (
-          <div className="coupon-row" key={coupon.id}>
-            <div>
-              <strong className="mono">{coupon.code}</strong>
-              <span>{coupon.percentOff ? `-${coupon.percentOff}%` : `-${formatPrice(coupon.amountOffCents ?? 0, locale)}`} · {coupon.tiers.length ? coupon.tiers.map((tier) => tierLabel(tier, locale)).join(', ') : c.coupons.allTiers} · {coupon.billing === 'ANY' ? c.coupons.any : coupon.billing === 'YEARLY' ? c.plan.yearly : c.plan.monthly}</span>
-              <span>{coupon.redemptions} {c.coupons.used} / {coupon.maxRedemptions ?? c.coupons.unlimited} · {date(coupon.validFrom)} → {date(coupon.validUntil)}</span>
-              {coupon.description && <span>{coupon.description}</span>}
-            </div>
-            <label className="check"><input type="checkbox" checked={coupon.active} onChange={(e) => update(coupon, { active: e.target.checked })} />{c.coupons.active}</label>
-            <label className="check"><input type="checkbox" checked={coupon.public} onChange={(e) => update(coupon, { public: e.target.checked })} />{c.pricing}</label>
-            <button className="button button-sm button-danger" onClick={() => remove(coupon)}>{c.coupons.remove}</button>
-          </div>
-        ))}
+      {!discord.enabled && <div className="notice premium-notice">{c.discord.notConfigured}</div>}
+      <div className="sku-form">
+        {PAID_TIERS.map((tier) => {
+          const plan = data.planCatalog.find((item) => item.tier === tier);
+          return STORE_PERIODS.map((period) => (
+            <label key={`${tier}.${period}`}>
+              {tierLabel(tier, locale)} · {period === 'MONTHLY' ? c.discord.monthly : c.discord.yearly}
+              <input
+                className="mono"
+                value={skus[`${tier}.${period}`]}
+                onChange={(e) => setSkus((current) => ({ ...current, [`${tier}.${period}`]: e.target.value.replace(/\D/g, '') }))}
+                inputMode="numeric"
+                maxLength={20}
+                placeholder="SKU ID"
+              />
+              {plan && <small className="field-help">{c.discord.price}: {formatPrice(period === 'MONTHLY' ? plan.monthlyCents : plan.yearlyCents, locale)}</small>}
+            </label>
+          ));
+        })}
+        <button className="button button-primary" onClick={save}>{c.discord.save}</button>
+      </div>
+      <div className="inline-fields">
+        <p className="muted">
+          {c.discord.lastSync}: {last
+            ? last.ok
+              ? `${fmt(last.at)} · ${last.entitlements} ${c.discord.entitlements} · ${last.changed} ${c.discord.changed}`
+              : `${fmt(last.at)} · ${c.discord.failed}`
+            : c.discord.never}
+        </p>
+        <button className="button button-sm button-secondary" disabled={!discord.enabled} onClick={sync}>{c.discord.sync}</button>
       </div>
     </section>
   );

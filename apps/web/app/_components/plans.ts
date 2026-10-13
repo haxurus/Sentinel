@@ -21,23 +21,20 @@ export type Plan = {
   prioritySupport: boolean;
   customBranding: boolean;
 };
-export type Promotion = {
-  code: string;
-  description: string | null;
-  percentOff: number | null;
-  amountOffCents: number | null;
-  tiers: string[];
-  billing: string;
-  validUntil: string | null;
-};
-export type MultiDiscount = { minSubscriptions: number; percentOff: number };
 export type Contacts = { email: string | null; discord: string | null; url: string | null };
+export type PaidTier = 'TIER1' | 'TIER2' | 'TIER3';
+export type StorePeriod = 'MONTHLY' | 'YEARLY';
+/** Discord Premium Apps store pages, where paid plans are bought. */
+export type DiscordStore = {
+  enabled: boolean;
+  store: string;
+  links: Record<PaidTier, Record<StorePeriod, string | null>>;
+};
 export type PublicInfo = {
   contacts: Contacts;
   plans: Plan[];
-  multiSubscriptionDiscounts: MultiDiscount[];
   eventTiers: { TIER1: string[]; TIER2: string[] };
-  promotions: Promotion[];
+  discord: DiscordStore;
 };
 
 export const TIER_ORDER: PlanTier[] = ['FREE', 'TIER1', 'TIER2', 'TIER3'];
@@ -62,19 +59,6 @@ export function formatPrice(cents: number, locale: Locale) {
 }
 
 export const formatNumber = (value: number, locale: Locale) => value.toLocaleString(locale === 'it' ? 'it-IT' : 'en-US');
-
-/** Percentage for a given number of paid subscriptions (0 below the first threshold). */
-export function multiDiscountFor(discounts: MultiDiscount[], subscriptions: number) {
-  return [...discounts].sort((a, b) => b.minSubscriptions - a.minSubscriptions)
-    .find((discount) => subscriptions >= discount.minSubscriptions)?.percentOff ?? 0;
-}
-
-export function promotionText(promo: Promotion, locale: Locale) {
-  const amount = promo.percentOff ? `-${promo.percentOff}%` : `-${formatPrice(promo.amountOffCents ?? 0, locale)}`;
-  const scope = promo.tiers.length ? promo.tiers.map(tierShort).join(', ') : (locale === 'it' ? 'tutti i piani' : 'every plan');
-  const billing = promo.billing === 'MONTHLY' ? (locale === 'it' ? 'mensile' : 'monthly') : promo.billing === 'YEARLY' ? (locale === 'it' ? 'annuale' : 'yearly') : '';
-  return { amount, scope: billing ? `${scope} · ${billing}` : scope };
-}
 
 export function limitLabels(locale: Locale): Record<keyof PlanLimits, string> {
   return locale === 'it'

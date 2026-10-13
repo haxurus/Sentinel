@@ -8,7 +8,7 @@ const cache = new Map<string, { value: GuildSettings; expires: number }>();
 export async function ensureGuild(guild: Guild) {
   const settings = await prisma.guildSettings.upsert({
     where: { guildId: guild.id },
-    update: { guildName: guild.name, iconUrl: guild.iconURL() },
+    update: { guildName: guild.name, iconUrl: guild.iconURL(), removedAt: null },
     create: { guildId: guild.id, guildName: guild.name, iconUrl: guild.iconURL() }
   });
 
@@ -68,6 +68,46 @@ export async function snapshotMessage(message: Message) {
       createdAt: message.createdAt
     }
   });
+}
+
+/** Days a server's data is kept after the bot is removed from it. */
+export const REMOVED_GUILD_GRACE_DAYS = 30;
+
+/** The bot left or was removed: start the countdown to deleting its data. */
+export async function markGuildRemoved(guildId: string) {
+  cache.delete(guildId);
+  await prisma.guildSettings.updateMany({ where: { guildId, removedAt: null }, data: { removedAt: new Date() } });
+}
+
+/**
+ * Servers in the database that the bot no longer belongs to, for example
+ * because it was removed while offline. `present` must be the full guild list
+ * after login: unavailable guilds are part of it, so an outage never counts.
+ */
+export async function markMissingGuildsRemoved(present: Iterable<string>) {
+  const ids = [...present];
+  const result = await prisma.guildSettings.updateMany({
+    where: { removedAt: null, guildId: { notIn: ids } },
+    data: { removedAt: new Date() }
+  });
+  return result.count;
+}
+
+/**
+ * Deletes every server removed more than the grace period ago. The cascade
+ * removes its loggers, events, message snapshots, panel roles and panel log.
+ * Blacklist entries are kept; a Discord subscription is restored from its
+ * entitlement if the bot is added back.
+ */
+export async function purgeRemovedGuilds(now = new Date()) {
+  const cutoff = new Date(now.getTime() - REMOVED_GUILD_GRACE_DAYS * 86_400_000);
+  const rows = await prisma.guildSettings.findMany({ where: { removedAt: { lt: cutoff } }, select: { guildId: true } });
+  for (const { guildId } of rows) {
+    cache.delete(guildId);
+    // Re-check the condition: the bot may have been added back meanwhile.
+    await prisma.guildSettings.deleteMany({ where: { guildId, removedAt: { lt: cutoff } } });
+  }
+  return rows.map((row) => row.guildId);
 }
 
 export async function runRetentionCleanup() {

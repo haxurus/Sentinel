@@ -7,6 +7,7 @@ const allowed: Array<[string, string]> = [
   ['GET', '/guilds/123456789012345678/channels'],
   ['GET', '/guilds/123456789012345678/audit-logs'],
   ['GET', '/guilds/123456789012345678/members/234567890123456789'],
+  ['GET', '/applications/123456789012345678/entitlements'],
   ['POST', '/channels/123456789012345678/messages'],
   ['DELETE', '/users/@me/guilds/123456789012345678'],
   ['PATCH', '/guilds/123456789012345678/members/@me']

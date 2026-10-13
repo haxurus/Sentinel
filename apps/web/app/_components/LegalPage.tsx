@@ -5,7 +5,7 @@ type Section = { title: string; body: Array<string | string[]> };
 type Doc = { id: string; kicker: string; title: string; intro: string; sections: Section[] };
 
 const CONTACT = 'haxurus@icloud.com';
-const UPDATED = { it: '12 ottobre 2026', en: '12 October 2026' };
+const UPDATED = { it: '13 ottobre 2026', en: '13 October 2026' };
 
 const copy: Record<Locale, { kicker: string; title: string; intro: string; updated: string; toc: string; docs: Doc[]; home: string; pricing: string }> = {
   en: {
@@ -34,10 +34,11 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
               'user identifiers, usernames, nicknames, avatars and roles of the members involved in an event (who acted and who was affected);',
               'message content, attachment names and links and embeds, to show edited and deleted messages;',
               'moderation actions and their reasons from the Discord Audit Log, member joins and leaves, voice activity, invites, AutoMod actions and server configuration changes;',
-              'on paid plans and only if enabled: new messages, reactions, typing and raw Gateway events.'
+              'on paid plans and only if enabled: new messages, reactions, polls and interactions.'
             ],
             'When you sign in to the dashboard with Discord: your Discord user ID, username, avatar and the list of servers you belong to (scopes identify and guilds), plus a log of the changes you make in the panel with a one-way hash of your IP address.',
-            'Sentinel does not collect members’ online status or activities (games, music, custom status).',
+            'Sentinel does not collect members’ online status or activities (games, music, custom status), nor when they are typing.',
+            'If you buy a subscription, Discord processes the payment: we receive from Discord only the subscription’s status (the server, the plan and its validity), never your payment details.',
             'Technical data: our web server and Cloudflare, which protects and delivers the site, process IP addresses and request data to deliver pages and prevent abuse.'
           ] },
           { title: 'Why we process it', body: [
@@ -45,13 +46,14 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
               'to record and display server events and post them to the log channels chosen by the administrators;',
               'to let authorised people sign in to the dashboard and manage their servers;',
               'to keep the service secure, prevent abuse and enforce these terms;',
-              'to manage plans requested by server administrators.'
+              'to apply the plans and Discord subscriptions of each server.'
             ],
             'Under the GDPR the legal basis is the legitimate interest of server administrators and of the operator in moderating communities and running a secure service (Art. 6(1)(f)), and the performance of the service requested by dashboard users (Art. 6(1)(b)).'
           ] },
           { title: 'How long we keep it', body: [
             [
-              'Server events and message snapshots: for the retention period chosen by the server’s administrators, within the limit of the server’s plan (15 to 90 days), then deleted automatically. If the bot is removed from a server, its data keeps expiring on the same schedule.',
+              'Server events and message snapshots: for the retention period chosen by the server’s administrators, within the limit of the server’s plan (15 to 90 days), then deleted automatically.',
+              'If the bot is removed from a server, all the data and settings of that server are deleted 30 days later, unless the bot is added back in the meantime.',
               'Dashboard sessions: 8 hours.',
               'Panel change log: for the same retention period as the server’s events.',
               'Database backups: up to 14 days.'
@@ -61,7 +63,7 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
             'Message content, attachments, embeds and event details are encrypted at rest with AES-256-GCM. Session tokens are stored only as hashes. The bot cannot perform moderation actions, and each component has its own database permissions. The code is open source, so these measures can be verified on GitHub.'
           ] },
           { title: 'Sharing', body: [
-            'We do not sell data and we do not use it for advertising or profiling. Data is shared only with the providers needed to run the service: Discord (the platform the bot works on), Cloudflare (network delivery and protection) and our hosting provider. Log messages are posted only in the channels configured by each server’s administrators.'
+            'We do not sell data and we do not use it for advertising or profiling, or to train artificial intelligence or machine-learning models. Data is shared only with the providers needed to run the service: Discord (the platform the bot works on), Cloudflare (network delivery and protection) and our hosting provider. Log messages are posted only in the channels configured by each server’s administrators.'
           ] },
           { title: 'Cookies', body: [
             'We use only strictly necessary cookies: a session cookie when you sign in, and short-lived cookies (10 minutes) that protect the Discord sign-in and remember your language. There are no analytics or advertising cookies.'
@@ -93,7 +95,7 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
             ]
           ] },
           { title: 'Plans and payments', body: [
-            'The Free plan is available to everyone. Paid plans (Plus, Pro, Brand) are activated by the operator after you request them; online payments are not available yet, so prices and payment are agreed directly with you before activation, and any refund is agreed case by case without prejudice to your statutory rights. When a paid plan expires, the server returns to the Free plan: features outside it are switched off and its limits apply, but your configuration is not deleted.'
+            'The Free plan is available to everyone. Paid plans (Plus, Pro, Brand) are sold only as Discord subscriptions, through Discord’s Premium Apps: Discord is the seller, processes the payment and handles taxes, renewals, cancellations and refunds under its own terms. A subscription applies to the server chosen when buying it and stays active until the end of the period paid. The operator may grant free trials or complimentary plans at its discretion. When a paid plan ends, the server returns to the Free plan: features outside it are switched off and its limits apply, but your configuration is not deleted.'
           ] },
           { title: 'Availability', body: [
             'We work to keep Sentinel available and reliable, but the service is provided “as is” and “as available”, without guaranteed uptime. Discord outages, missing bot permissions or maintenance can delay or prevent logs.'
@@ -138,10 +140,11 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
               'identificativi, username, nickname, avatar e ruoli dei membri coinvolti in un evento (chi ha agito e chi l’ha subito);',
               'contenuto dei messaggi, nomi e link degli allegati ed embed, per mostrare i messaggi modificati ed eliminati;',
               'azioni di moderazione e relativi motivi dall’Audit Log di Discord, ingressi e uscite, attività vocale, inviti, azioni AutoMod e modifiche alla configurazione del server;',
-              'solo nei piani a pagamento e se attivati: nuovi messaggi, reazioni, digitazione ed eventi Gateway grezzi.'
+              'solo nei piani a pagamento e se attivati: nuovi messaggi, reazioni, sondaggi e interazioni.'
             ],
             'Quando accedi alla dashboard con Discord: il tuo ID utente, username, avatar e l’elenco dei server di cui fai parte (scope identify e guilds), più un registro delle modifiche che fai nel pannello con un hash non reversibile del tuo indirizzo IP.',
-            'Sentinel non raccoglie lo stato online né le attività dei membri (giochi, musica, stato personalizzato).',
+            'Sentinel non raccoglie lo stato online né le attività dei membri (giochi, musica, stato personalizzato), né quando stanno scrivendo.',
+            'Se acquisti un abbonamento, il pagamento è gestito da Discord: da Discord riceviamo solo lo stato dell’abbonamento (il server, il piano e la sua validità), mai i tuoi dati di pagamento.',
             'Dati tecnici: il nostro server web e Cloudflare, che protegge e distribuisce il sito, trattano indirizzi IP e dati delle richieste per mostrare le pagine e prevenire abusi.'
           ] },
           { title: 'Perché li trattiamo', body: [
@@ -149,13 +152,14 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
               'per registrare e mostrare gli eventi del server e pubblicarli nei canali di log scelti dagli amministratori;',
               'per consentire alle persone autorizzate di accedere alla dashboard e gestire i propri server;',
               'per mantenere il servizio sicuro, prevenire abusi e far rispettare questi termini;',
-              'per gestire i piani richiesti dagli amministratori dei server.'
+              'per applicare i piani e gli abbonamenti Discord di ciascun server.'
             ],
             'Ai sensi del GDPR la base giuridica è il legittimo interesse degli amministratori dei server e del gestore a moderare le community e a offrire un servizio sicuro (art. 6.1.f), e l’esecuzione del servizio richiesto da chi usa la dashboard (art. 6.1.b).'
           ] },
           { title: 'Per quanto tempo li conserviamo', body: [
             [
-              'Eventi e snapshot dei messaggi: per il periodo di conservazione scelto dagli amministratori, entro il limite del piano del server (da 15 a 90 giorni), poi vengono cancellati automaticamente. Se il bot viene rimosso da un server, i dati continuano a scadere con le stesse regole.',
+              'Eventi e snapshot dei messaggi: per il periodo di conservazione scelto dagli amministratori, entro il limite del piano del server (da 15 a 90 giorni), poi vengono cancellati automaticamente.',
+              'Se il bot viene rimosso da un server, tutti i dati e le impostazioni di quel server vengono cancellati 30 giorni dopo, salvo che il bot venga aggiunto di nuovo nel frattempo.',
               'Sessioni della dashboard: 8 ore.',
               'Registro delle modifiche al pannello: per lo stesso periodo degli eventi del server.',
               'Backup del database: fino a 14 giorni.'
@@ -165,7 +169,7 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
             'Contenuto dei messaggi, allegati, embed e dettagli degli eventi sono cifrati con AES-256-GCM. I token di sessione sono salvati solo come hash. Il bot non può eseguire azioni di moderazione e ogni componente ha permessi separati sul database. Il codice è open source, quindi queste misure sono verificabili su GitHub.'
           ] },
           { title: 'Condivisione', body: [
-            'Non vendiamo i dati e non li usiamo per pubblicità o profilazione. Li condividiamo solo con i fornitori necessari al servizio: Discord (la piattaforma su cui opera il bot), Cloudflare (distribuzione e protezione di rete) e il nostro fornitore di hosting. I messaggi di log vengono pubblicati solo nei canali configurati dagli amministratori di ciascun server.'
+            'Non vendiamo i dati e non li usiamo per pubblicità o profilazione, né per addestrare modelli di intelligenza artificiale o di apprendimento automatico. Li condividiamo solo con i fornitori necessari al servizio: Discord (la piattaforma su cui opera il bot), Cloudflare (distribuzione e protezione di rete) e il nostro fornitore di hosting. I messaggi di log vengono pubblicati solo nei canali configurati dagli amministratori di ciascun server.'
           ] },
           { title: 'Cookie', body: [
             'Usiamo solo cookie tecnici necessari: un cookie di sessione quando accedi e cookie di breve durata (10 minuti) che proteggono l’accesso con Discord e ricordano la lingua. Non ci sono cookie di statistica o pubblicità.'
@@ -197,7 +201,7 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
             ]
           ] },
           { title: 'Piani e pagamenti', body: [
-            'Il piano Free è disponibile per tutti. I piani a pagamento (Plus, Pro, Brand) vengono attivati dal gestore su tua richiesta; i pagamenti online non sono ancora disponibili, quindi prezzo e modalità di pagamento vengono concordati direttamente con te prima dell’attivazione, e gli eventuali rimborsi caso per caso, fatti salvi i diritti previsti dalla legge. Alla scadenza di un piano a pagamento il server torna al piano Free: le funzioni non incluse vengono disattivate e si applicano i suoi limiti, ma la configurazione non viene cancellata.'
+            'Il piano Free è disponibile per tutti. I piani a pagamento (Plus, Pro, Brand) si acquistano solo come abbonamenti Discord, tramite le App premium di Discord: il venditore è Discord, che elabora il pagamento e gestisce imposte, rinnovi, disdette e rimborsi secondo i propri termini. Un abbonamento vale per il server scelto al momento dell’acquisto e resta attivo fino alla fine del periodo pagato. Il gestore può concedere a sua discrezione periodi di prova o piani omaggio gratuiti. Alla fine di un piano a pagamento il server torna al piano Free: le funzioni non incluse vengono disattivate e si applicano i suoi limiti, ma la configurazione non viene cancellata.'
           ] },
           { title: 'Disponibilità', body: [
             'Lavoriamo per mantenere Sentinel disponibile e affidabile, ma il servizio è fornito “così com’è” e “come disponibile”, senza garanzie di continuità. Disservizi di Discord, permessi mancanti del bot o manutenzioni possono ritardare o impedire i log.'

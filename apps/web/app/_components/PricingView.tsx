@@ -7,7 +7,7 @@ import ContactList from './ContactList';
 import { StructuredData } from './StructuredData';
 import { SITE_URL } from './seo';
 import type { Locale } from '../i18n';
-import { TIER_ORDER, formatLimit, formatPrice, limitLabels, promotionText, tierLabel, type PlanLimits, type PublicInfo } from './plans';
+import { TIER_ORDER, formatLimit, formatPrice, limitLabels, tierLabel, type PaidTier, type PlanLimits, type PublicInfo } from './plans';
 
 const copy = {
   it: {
@@ -15,45 +15,41 @@ const copy = {
     kicker: 'Piani',
     title: 'Un piano per ogni server.',
     intro: 'Il piano Free copre il logging di moderazione e struttura del server. I livelli a pagamento sbloccano i logger ad alto volume, alzano i limiti e aggiungono il supporto prioritario.',
-    payments: 'I pagamenti online non sono ancora attivi. Per attivare un piano contattami direttamente, lo configuro io sul tuo server.',
+    payments: 'I piani a pagamento sono abbonamenti Discord: scegli il piano e il server e paghi direttamente su Discord, che gestisce pagamento, IVA e rinnovi.',
+    paymentsSoon: 'I piani a pagamento saranno presto disponibili come abbonamenti Discord. Nel frattempo ogni server può usare il piano Free.',
     monthly: 'Mensile',
     yearly: 'Annuale',
     perMonth: '/mese',
     perYear: '/anno',
     save: 'risparmi',
     current: 'Gratis per sempre',
-    promo: 'Promozione',
-    code: 'codice',
-    until: 'fino al',
     free: { cta: 'Aggiungi Sentinel', text: 'Tutti i logger standard: ban, kick, ruoli, permessi, canali, messaggi modificati ed eliminati, AutoMod.' },
     tiers: {
       TIER1: 'Sblocca i logger ad alto volume più utili: nuovi messaggi, reazioni, sondaggi, interazioni, Audit Log completo. Limiti più alti e supporto prioritario.',
-      TIER2: 'Tutte le funzioni sbloccate, compresi typing e Gateway raw, con i limiti più alti.',
+      TIER2: 'Tutti i logger, compresa la diagnostica Gateway, con limiti più alti e 60 giorni di storico.',
       TIER3: 'Tutto il Livello 2, più nome e banner del bot personalizzati nel tuo server.'
     },
-    contactCta: 'Contattami',
-    multiKicker: 'Più server',
-    multiTitle: 'Abbonamenti multipli, prezzo più basso.',
-    multiText: 'Attivi un piano su più server? Lo sconto si applica a tutti gli abbonamenti dello stesso cliente, mensili o annuali, anche di livelli diversi.',
-    multiUnit: (count: number, last: boolean) => `${count}${last ? ' o più' : ''} abbonamenti`,
-    multiExample: (servers: number, price: string, total: string) => `Esempio: ${servers} server Pro annuali a ${price} invece di ${total}.`,
+    subscribe: 'Abbonati su Discord',
+    soon: 'Presto su Discord',
     compare: 'Confronto completo',
     feature: 'Funzione',
     rows: {
       standard: 'Logger standard (moderazione, messaggi, struttura)',
       tier1: 'Logger ad alto volume: messaggi, reazioni, sondaggi, interazioni, Audit Log',
-      tier2: 'Logger avanzati: typing, Gateway raw, diagnostica',
+      tier2: 'Diagnostica Gateway e disponibilità del server',
       support: 'Supporto prioritario',
       branding: 'Nome e banner del bot personalizzati'
     },
     contactKicker: 'Contatti',
-    contactTitle: 'Vuoi attivare un piano?',
-    contactText: 'Scrivimi indicando l’ID del server e il piano che ti interessa (mensile o annuale, ed eventuale codice sconto). Ti rispondo e attivo il piano manualmente.',
+    contactTitle: 'Domande o una prova?',
+    contactText: 'Scrivimi per domande sui piani, per un periodo di prova gratuito o per una collaborazione. I piani a pagamento si acquistano solo tramite Discord.',
     faqTitle: 'Domande frequenti',
     faq: [
+      ['Come si paga?', 'Tramite Discord: apri il piano, scegli il server e abbonati. Discord elabora il pagamento e gestisce IVA e rinnovi; il piano si attiva da solo entro pochi minuti.'],
+      ['Come disdico?', 'Dalle impostazioni utente di Discord, nella sezione degli abbonamenti. Il piano resta attivo fino alla fine del periodo già pagato.'],
       ['Cosa succede alla scadenza?', 'Il server torna al piano Free: i logger non inclusi vengono disattivati e i limiti tornano quelli gratuiti. La configurazione non viene cancellata.'],
       ['Cosa vuol dire “eventi al giorno”?', 'È il numero di eventi salvati nello storico in un giorno (UTC). Raggiunto il limite, gli eventi successivi non vengono registrati fino al giorno dopo.'],
-      ['Posso provare prima di pagare?', 'Sì: il piano Free resta sempre disponibile e su richiesta posso attivare periodi di prova dei piani a pagamento.']
+      ['Posso provare prima di pagare?', 'Sì: il piano Free resta sempre disponibile e su richiesta posso attivare un periodo di prova gratuito dei piani a pagamento.']
     ],
     unavailable: 'Impossibile caricare i piani in questo momento. Riprova tra poco.',
     included: 'Incluso',
@@ -64,45 +60,41 @@ const copy = {
     kicker: 'Plans',
     title: 'A plan for every server.',
     intro: 'The Free plan covers moderation and server-structure logging. Paid levels unlock high-volume loggers, raise the limits and add priority support.',
-    payments: 'Online payments are not active yet. To activate a plan, contact me directly and I will set it up on your server.',
+    payments: 'Paid plans are Discord subscriptions: choose the plan and the server and pay directly in Discord, which handles payment, VAT and renewals.',
+    paymentsSoon: 'Paid plans will soon be available as Discord subscriptions. Meanwhile, every server can use the Free plan.',
     monthly: 'Monthly',
     yearly: 'Yearly',
     perMonth: '/month',
     perYear: '/year',
     save: 'save',
     current: 'Free forever',
-    promo: 'Promotion',
-    code: 'code',
-    until: 'until',
     free: { cta: 'Add Sentinel', text: 'Every standard logger: bans, kicks, roles, permissions, channels, edited and deleted messages, AutoMod.' },
     tiers: {
       TIER1: 'Unlocks the most useful high-volume loggers: new messages, reactions, polls, interactions, full Audit Log. Higher limits and priority support.',
-      TIER2: 'Every feature unlocked, including typing and raw Gateway, with the highest limits.',
+      TIER2: 'Every logger, including Gateway diagnostics, with higher limits and 60 days of history.',
       TIER3: 'Everything in Level 2, plus a custom bot name and banner in your server.'
     },
-    contactCta: 'Contact me',
-    multiKicker: 'More servers',
-    multiTitle: 'Multiple subscriptions, lower price.',
-    multiText: 'Running a plan on several servers? The discount applies to every subscription of the same customer, monthly or yearly, even on different levels.',
-    multiUnit: (count: number, last: boolean) => `${count}${last ? '+' : ''} subscriptions`,
-    multiExample: (servers: number, price: string, total: string) => `Example: ${servers} yearly Pro servers for ${price} instead of ${total}.`,
+    subscribe: 'Subscribe on Discord',
+    soon: 'Coming soon on Discord',
     compare: 'Full comparison',
     feature: 'Feature',
     rows: {
       standard: 'Standard loggers (moderation, messages, structure)',
       tier1: 'High-volume loggers: messages, reactions, polls, interactions, Audit Log',
-      tier2: 'Advanced loggers: typing, raw Gateway, diagnostics',
+      tier2: 'Gateway diagnostics and server availability',
       support: 'Priority support',
       branding: 'Custom bot name and banner'
     },
     contactKicker: 'Contact',
-    contactTitle: 'Want to activate a plan?',
-    contactText: 'Write to me with your server ID and the plan you want (monthly or yearly, plus any discount code). I will reply and activate it manually.',
+    contactTitle: 'Questions or a trial?',
+    contactText: 'Write to me with questions about the plans, for a free trial or for a partnership. Paid plans are bought only through Discord.',
     faqTitle: 'FAQ',
     faq: [
+      ['How do I pay?', 'Through Discord: open the plan, choose your server and subscribe. Discord processes the payment and handles VAT and renewals; the plan switches on by itself within a few minutes.'],
+      ['How do I cancel?', 'From your Discord user settings, in the subscriptions section. The plan stays active until the end of the period already paid.'],
       ['What happens when a plan expires?', 'The server goes back to Free: loggers outside the plan are switched off and the free limits apply again. Your configuration is not deleted.'],
       ['What does “events per day” mean?', 'The number of events stored in the history in one (UTC) day. Once reached, further events are not recorded until the next day.'],
-      ['Can I try before paying?', 'Yes: the Free plan is always available, and on request I can enable trial periods of the paid plans.']
+      ['Can I try before paying?', 'Yes: the Free plan is always available, and on request I can enable a free trial of the paid plans.']
     ],
     unavailable: 'Plans cannot be loaded right now. Please try again shortly.',
     included: 'Included',
@@ -114,6 +106,11 @@ export default function PricingView({ locale, info }: { locale: Locale; info: Pu
   const c = copy[locale];
   const [billing, setBilling] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
   const plans = info ? TIER_ORDER.map((tier) => info.plans.find((plan) => plan.tier === tier)).filter((plan) => plan !== undefined) : [];
+  const store = info?.discord ?? null;
+  // Yearly prices are shown only when Discord sells a yearly subscription.
+  const yearlyAvailable = Boolean(store && (['TIER1', 'TIER2', 'TIER3'] as const).some((tier) => store.links[tier].YEARLY));
+  const period = yearlyAvailable ? billing : 'MONTHLY';
+  const storeLink = (tier: string) => store?.links[tier as PaidTier]?.[period] ?? null;
   const labels = limitLabels(locale);
   const check = (value: boolean) => value
     ? <span className="cell-yes" aria-label={c.included}><Icon name="check" size={16} /></span>
@@ -133,7 +130,7 @@ export default function PricingView({ locale, info }: { locale: Locale; info: Pu
             ? [{ '@type': 'Offer', name: plan.name, price: '0', priceCurrency: 'EUR' }]
             : [
                 { '@type': 'Offer', name: `${plan.name} (${c.monthly})`, price: (plan.monthlyCents / 100).toFixed(2), priceCurrency: 'EUR' },
-                { '@type': 'Offer', name: `${plan.name} (${c.yearly})`, price: (plan.yearlyCents / 100).toFixed(2), priceCurrency: 'EUR' }
+                ...(yearlyAvailable ? [{ '@type': 'Offer', name: `${plan.name} (${c.yearly})`, price: (plan.yearlyCents / 100).toFixed(2), priceCurrency: 'EUR' }] : [])
               ])
         }] : []),
         {
@@ -160,42 +157,31 @@ export default function PricingView({ locale, info }: { locale: Locale; info: Pu
             <p>{c.intro}</p>
           </div>
 
-          <div className="notice premium-notice pricing-notice"><Icon name="clock" size={16} />{c.payments}</div>
-
-          {info?.promotions.map((promo) => {
-            const text = promotionText(promo, locale);
-            return (
-              <div className="promo-banner" key={promo.code}>
-                <span className="tag tag-premium">{c.promo}</span>
-                <strong>{text.amount}</strong>
-                <span>{promo.description || text.scope}</span>
-                <span className="mono">{c.code}: {promo.code}</span>
-                {promo.validUntil && <span className="promo-until">{c.until} {new Date(promo.validUntil).toLocaleDateString(locale === 'it' ? 'it-IT' : 'en-GB')}</span>}
-              </div>
-            );
-          })}
+          {info && <div className="notice premium-notice pricing-notice"><Icon name="clock" size={16} />{store?.enabled ? c.payments : c.paymentsSoon}</div>}
 
           {!info && <div className="notice notice-error">{c.unavailable}</div>}
 
           {info && <>
-            <div className="billing-toggle" role="tablist" aria-label={`${c.monthly} / ${c.yearly}`}>
+            {yearlyAvailable && <div className="billing-toggle" role="tablist" aria-label={`${c.monthly} / ${c.yearly}`}>
               <button role="tab" aria-selected={billing === 'MONTHLY'} className={billing === 'MONTHLY' ? 'active' : ''} onClick={() => setBilling('MONTHLY')}>{c.monthly}</button>
               <button role="tab" aria-selected={billing === 'YEARLY'} className={billing === 'YEARLY' ? 'active' : ''} onClick={() => setBilling('YEARLY')}>{c.yearly}</button>
-            </div>
+            </div>}
 
             <div className="plan-grid">
               {plans.map((plan) => {
                 const free = plan.tier === 'FREE';
-                const price = billing === 'YEARLY' ? plan.yearlyCents : plan.monthlyCents;
+                const price = period === 'YEARLY' ? plan.yearlyCents : plan.monthlyCents;
+                const link = free ? null : storeLink(plan.tier);
+                const buttonClass = `button button-lg ${!free && plan.tier === 'TIER2' ? 'button-primary' : 'button-secondary'}`;
                 const saving = plan.monthlyCents * 12 - plan.yearlyCents;
                 return (
                   <article className={`plan-card ${plan.tier === 'TIER2' ? 'plan-featured' : ''}`} key={plan.tier}>
                     <span className="plan-level mono">{free ? 'FREE' : `${locale === 'it' ? 'LIVELLO' : 'LEVEL'} ${plan.level}`}</span>
                     <h2>{plan.name}</h2>
                     <div className="plan-price">
-                      {free ? <strong>{formatPrice(0, locale)}</strong> : <><strong>{formatPrice(price, locale)}</strong><span>{billing === 'YEARLY' ? c.perYear : c.perMonth}</span></>}
+                      {free ? <strong>{formatPrice(0, locale)}</strong> : <><strong>{formatPrice(price, locale)}</strong><span>{period === 'YEARLY' ? c.perYear : c.perMonth}</span></>}
                     </div>
-                    <p className="plan-sub">{free ? c.current : billing === 'YEARLY' && saving > 0 ? `${c.save} ${formatPrice(saving, locale)}` : ' '}</p>
+                    <p className="plan-sub">{free ? c.current : period === 'YEARLY' && saving > 0 ? `${c.save} ${formatPrice(saving, locale)}` : ' '}</p>
                     <p className="plan-text">{free ? c.free.text : c.tiers[plan.tier as 'TIER1' | 'TIER2' | 'TIER3']}</p>
                     <ul className="plan-points">
                       <li><Icon name="clock" size={15} />{formatLimit('retentionDays', plan.limits.retentionDays, locale)} {locale === 'it' ? 'di storico' : 'of history'}</li>
@@ -204,41 +190,15 @@ export default function PricingView({ locale, info }: { locale: Locale; info: Pu
                       {plan.prioritySupport && <li><Icon name="users" size={15} />{c.rows.support}</li>}
                       {plan.customBranding && <li><Icon name="sliders" size={15} />{c.rows.branding}</li>}
                     </ul>
-                    <a className={`button button-lg ${free ? 'button-secondary' : plan.tier === 'TIER2' ? 'button-primary' : 'button-secondary'}`} href={free ? `/backend/bot/invite?lang=${locale}` : '#contact'}>
-                      {free ? c.free.cta : c.contactCta}<Icon name="arrowRight" size={15} />
-                    </a>
+                    {free
+                      ? <a className={buttonClass} href={`/backend/bot/invite?lang=${locale}`}>{c.free.cta}<Icon name="arrowRight" size={15} /></a>
+                      : link
+                        ? <a className={buttonClass} href={link} target="_blank" rel="noopener noreferrer">{c.subscribe}<Icon name="arrowRight" size={15} /></a>
+                        : <span className="button button-lg button-secondary" aria-disabled="true">{c.soon}</span>}
                   </article>
                 );
               })}
             </div>
-
-            {info.multiSubscriptionDiscounts?.length > 0 && (() => {
-              const tiers = [...info.multiSubscriptionDiscounts].sort((a, b) => a.minSubscriptions - b.minSubscriptions);
-              const pro = info.plans.find((plan) => plan.tier === 'TIER2');
-              const example = tiers[tiers.length - 1]!;
-              return (
-                <section className="multi-discount">
-                  <div>
-                    <span className="kicker">{c.multiKicker}</span>
-                    <h2>{c.multiTitle}</h2>
-                    <p>{c.multiText}</p>
-                    {pro && <p className="multi-example">{c.multiExample(
-                      example.minSubscriptions,
-                      formatPrice(Math.round(pro.yearlyCents * example.minSubscriptions * (100 - example.percentOff) / 100), locale),
-                      formatPrice(pro.yearlyCents * example.minSubscriptions, locale)
-                    )}</p>}
-                  </div>
-                  <ol className="multi-tiers">
-                    {tiers.map((tier, index) => (
-                      <li key={tier.minSubscriptions}>
-                        <strong className="mono">-{tier.percentOff}%</strong>
-                        <span>{c.multiUnit(tier.minSubscriptions, index === tiers.length - 1)}</span>
-                      </li>
-                    ))}
-                  </ol>
-                </section>
-              );
-            })()}
 
             <section className="compare">
               <h2>{c.compare}</h2>

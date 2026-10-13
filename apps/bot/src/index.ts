@@ -7,7 +7,7 @@ import {
 import { prisma } from '@sentinel/db';
 import { config } from './config.js';
 import { logger } from './logger.js';
-import { ensureGuild, isGuildInstallBlocked, runRetentionCleanup } from './store.js';
+import { REMOVED_GUILD_GRACE_DAYS, ensureGuild, isGuildInstallBlocked, markMissingGuildsRemoved, purgeRemovedGuilds, runRetentionCleanup } from './store.js';
 import { registerHandlers } from './handlers.js';
 import { startDispatcher } from './dispatcher.js';
 import { onQuotaExceeded } from './recorder.js';
@@ -32,7 +32,6 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMessageReactions,
-    GatewayIntentBits.GuildMessageTyping,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildScheduledEvents,
     GatewayIntentBits.AutoModerationConfiguration,
@@ -90,8 +89,30 @@ client.once(Events.ClientReady, async (ready) => {
       { name: 'Avvio', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
     ]
   });
-  await runRetentionCleanup().catch((error) => logger.error({ error: errorText(error) }, 'Initial retention cleanup failed'));
+  await markMissingGuildsRemoved(ready.guilds.cache.keys())
+    .then((count) => { if (count) logger.info({ count }, 'Servers removed while offline'); })
+    .catch((error) => logger.error({ error: errorText(error) }, 'Unable to reconcile removed servers'));
+  await runMaintenance();
 });
+
+/** Retention cleanup, then deletion of servers removed more than 30 days ago. */
+async function runMaintenance() {
+  await runRetentionCleanup().catch((error) => logger.error({ error: errorText(error) }, 'Retention cleanup failed'));
+  try {
+    const purged = await purgeRemovedGuilds();
+    if (purged.length) {
+      logger.info({ count: purged.length }, 'Deleted data of removed servers');
+      status.notify({
+        level: 'info',
+        title: 'Dati di server rimossi cancellati',
+        description: `Cancellati i dati di ${purged.length} server da cui Sentinel è stato rimosso da più di ${REMOVED_GUILD_GRACE_DAYS} giorni.`,
+        fields: [{ name: 'Server', value: purged.slice(0, 20).map((id) => `\`${id}\``).join('\n') }]
+      });
+    }
+  } catch (error) {
+    logger.error({ error: errorText(error) }, 'Removed servers cleanup failed');
+  }
+}
 
 // Bot health goes to the instance status channel chosen in the super
 // console, not to the servers being logged.
@@ -109,9 +130,7 @@ client.on(Events.ShardResume, (shardId, replayed) => {
   status.notify({ level: 'info', title: 'Connessione a Discord ripristinata', description: `Shard ${shardId}: ${replayed} eventi recuperati.`, dedupeKey: 'shard-resume' });
 });
 
-setInterval(() => {
-  runRetentionCleanup().catch((error) => logger.error({ error: errorText(error) }, 'Retention cleanup failed'));
-}, 6 * 60 * 60 * 1000).unref();
+setInterval(() => void runMaintenance(), 6 * 60 * 60 * 1000).unref();
 
 let shuttingDown = false;
 const shutdown = async (signal: string) => {

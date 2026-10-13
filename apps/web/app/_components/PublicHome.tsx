@@ -26,10 +26,10 @@ const copy = {
         ['20:33:51', 'message.delete', '#generale · messaggio di giulia.r', 'stored'],
         ['20:31:07', 'member.join', 'nuovo_utente · account creato 2 giorni fa', 'filtered']
       ] as const,
-      footer: ['72 eventi', 'consegna ok', 'storico cifrato']
+      footer: ['70 eventi', 'consegna ok', 'storico cifrato']
     },
     stats: [
-      ['72', 'tipi di evento Discord'],
+      ['70', 'tipi di evento Discord'],
       ['AES-256', 'cifratura dello storico'],
       ['4', 'livelli di accesso RBAC'],
       ['0', 'permessi di moderazione richiesti']
@@ -123,10 +123,10 @@ const copy = {
         ['20:33:51', 'message.delete', '#general · message by julia.r', 'stored'],
         ['20:31:07', 'member.join', 'new_user · account created 2 days ago', 'filtered']
       ] as const,
-      footer: ['72 events', 'delivery ok', 'encrypted history']
+      footer: ['70 events', 'delivery ok', 'encrypted history']
     },
     stats: [
-      ['72', 'Discord event types'],
+      ['70', 'Discord event types'],
       ['AES-256', 'history encryption'],
       ['4', 'RBAC access levels'],
       ['0', 'moderation permissions required']

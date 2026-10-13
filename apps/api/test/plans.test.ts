@@ -3,14 +3,10 @@ import { test } from 'node:test';
 import {
   EVENT_CATALOG,
   PLANS,
-  couponProblem,
-  discountedPriceCents,
   effectiveTier,
-  multiSubscriptionPercent,
   planLimits,
   requiredTierForEvent,
-  tierAllows,
-  type CouponLike
+  tierAllows
 } from '@sentinel/shared';
 import { filterEntryCount, logChannelSet, planAdjustments, publicGuildSettings, trimFilters, type PlanRoute } from '../src/plan-rules.ts';
 
@@ -29,9 +25,7 @@ const route = (eventKey: string, patch: Partial<PlanRoute> = {}): PlanRoute => (
 
 const settings = {
   defaultLogChannelId: '100000000000000001',
-  defaultRetentionDays: 30,
-  typingLoggingEnabled: false,
-  rawGatewayEnabled: false
+  defaultRetentionDays: 30
 };
 
 test('every high-volume logger needs a paid plan and limits grow with the tier', () => {
@@ -41,7 +35,8 @@ test('every high-volume logger needs a paid plan and limits grow with the tier',
     else assert.equal(required, 'FREE', event.key);
   }
   assert.equal(requiredTierForEvent({ key: 'message.create', noisy: true }), 'TIER1');
-  assert.equal(requiredTierForEvent({ key: 'typing.start', noisy: true }), 'TIER2');
+  assert.equal(requiredTierForEvent({ key: 'voice.server_update', noisy: true }), 'TIER2');
+  assert.ok(!EVENT_CATALOG.some((event) => ['typing.start', 'raw.gateway'].includes(event.key)), 'typing and raw Gateway are never logged');
   assert.ok(!EVENT_CATALOG.some((event) => event.key === 'presence.update'), 'presence is never logged');
   assert.ok(!EVENT_CATALOG.some((event) => event.key.startsWith('system.')), 'bot status is instance-wide, not per server');
 
@@ -55,13 +50,7 @@ test('every high-volume logger needs a paid plan and limits grow with the tier',
   assert.ok(tierAllows('TIER3', 'TIER2') && !tierAllows('TIER1', 'TIER2'));
 });
 
-test('multi-subscription discounts', () => {
-  assert.equal(multiSubscriptionPercent(1), 0);
-  assert.equal(multiSubscriptionPercent(2), 15);
-  assert.equal(multiSubscriptionPercent(3), 20);
-  assert.equal(multiSubscriptionPercent(4), 20);
-  assert.equal(multiSubscriptionPercent(5), 25);
-  assert.equal(multiSubscriptionPercent(12), 25);
+test('plan prices and limits', () => {
   assert.equal(PLANS.TIER1.monthlyCents, 199);
   assert.equal(PLANS.TIER3.limits.eventsPerDay, 25_000);
 });
@@ -74,24 +63,10 @@ test('expired plans fall back to Free', () => {
   assert.equal(effectiveTier({ planTier: 'GOLD', planExpiresAt: null }, now), 'FREE');
 });
 
-test('coupons validate scope, dates and redemptions', () => {
-  const now = new Date('2026-10-10T12:00:00Z');
-  const coupon: CouponLike = { code: 'BETA', percentOff: 50, amountOffCents: null, tiers: ['TIER1'], billing: 'YEARLY', maxRedemptions: 2, redemptions: 0, validFrom: null, validUntil: '2026-12-31T00:00:00Z', active: true };
-  assert.equal(couponProblem(coupon, 'TIER1', 'YEARLY', now), null);
-  assert.equal(couponProblem(coupon, 'TIER2', 'YEARLY', now), 'COUPON_WRONG_TIER');
-  assert.equal(couponProblem(coupon, 'TIER1', 'MONTHLY', now), 'COUPON_WRONG_BILLING');
-  assert.equal(couponProblem({ ...coupon, redemptions: 2 }, 'TIER1', 'YEARLY', now), 'COUPON_EXHAUSTED');
-  assert.equal(couponProblem({ ...coupon, validUntil: '2026-01-01T00:00:00Z' }, 'TIER1', 'YEARLY', now), 'COUPON_EXPIRED');
-  assert.equal(couponProblem({ ...coupon, active: false }, 'TIER1', 'YEARLY', now), 'COUPON_INACTIVE');
-  assert.equal(couponProblem(coupon, 'FREE', null, now), 'COUPON_FREE_PLAN');
-  assert.equal(discountedPriceCents(2000, coupon), 1000);
-  assert.equal(discountedPriceCents(200, { percentOff: null, amountOffCents: 500 }), 0);
-});
-
 test('a downgrade switches off loggers above the plan and clamps limits', () => {
   const routes = [
     route('message.create'),
-    route('typing.start'),
+    route('voice.server_update'),
     route('moderation.ban', { retentionDays: 365, mentionRoleIds: ['1', '2', '3'] }),
     route('message.delete', { ignoredUserIds: Array.from({ length: 12 }, (_, i) => `u${i}`), ignoredRoleIds: ['r1', 'r2', 'r3', 'r4', 'r5'] }),
     route('channel.create', { destinationChannelId: '200000000000000001' }),
@@ -99,12 +74,12 @@ test('a downgrade switches off loggers above the plan and clamps limits', () => 
     route('channel.update', { destinationChannelId: '200000000000000003' }),
     route('role.create', { destinationChannelId: '200000000000000001' })
   ];
-  const result = planAdjustments('FREE', { ...settings, defaultRetentionDays: 200, typingLoggingEnabled: true }, routes);
-  assert.deepEqual(result.settings, { defaultRetentionDays: 15, typingLoggingEnabled: false });
+  const result = planAdjustments('FREE', { ...settings, defaultRetentionDays: 200 }, routes);
+  assert.deepEqual(result.settings, { defaultRetentionDays: 15 });
 
   const patch = (key: string) => result.routes.find((item) => item.eventKey === key)?.data;
   assert.deepEqual(patch('message.create'), { captureEnabled: false, enabled: false });
-  assert.deepEqual(patch('typing.start'), { captureEnabled: false, enabled: false });
+  assert.deepEqual(patch('voice.server_update'), { captureEnabled: false, enabled: false });
   assert.deepEqual(patch('moderation.ban'), { retentionDays: 15, mentionRoleIds: ['1'] });
   assert.equal(filterEntryCount(patch('message.delete') as PlanRoute), 15);
   // Free allows 3 channels: the default one plus the first two distinct ones.
@@ -113,7 +88,7 @@ test('a downgrade switches off loggers above the plan and clamps limits', () => 
   assert.deepEqual(patch('channel.update'), { destinationChannelId: null });
   assert.equal(patch('role.create'), undefined);
 
-  assert.deepEqual(planAdjustments('TIER2', settings, [route('typing.start')]).routes, []);
+  assert.deepEqual(planAdjustments('TIER2', settings, [route('voice.server_update')]).routes, []);
 });
 
 test('plan helpers', () => {

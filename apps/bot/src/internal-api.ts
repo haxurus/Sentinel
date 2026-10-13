@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
-import { DiscordAPIError, type Client } from 'discord.js';
+import { DiscordAPIError, Routes, type Client } from 'discord.js';
 import { editOwnGuildProfile, leaveGuild } from './discord-actions.js';
 import type { StatusNotifier } from './status.js';
 
@@ -13,6 +13,42 @@ function authorized(header: string | undefined, secret: string) {
 }
 
 const MAX_BODY_BYTES = 128 * 1024;
+const MAX_ENTITLEMENT_PAGES = 50;
+
+type RawEntitlement = {
+  id: string;
+  sku_id: string;
+  guild_id?: string | null;
+  type: number;
+  deleted: boolean;
+  starts_at?: string | null;
+  ends_at?: string | null;
+};
+
+/**
+ * Active (not ended, not deleted) entitlements of the application, through a
+ * read-only REST call. Only what plan sync needs leaves the bot: the buyer's
+ * user ID is not passed on.
+ */
+async function activeEntitlements(client: Client) {
+  const applicationId = client.application?.id ?? client.user?.id;
+  if (!applicationId) throw new Error('APPLICATION_UNAVAILABLE');
+  const result: Array<{ id: string; skuId: string; guildId: string | null; type: number; startsAt: string | null; endsAt: string | null }> = [];
+  let after: string | null = null;
+  for (let page = 0; page < MAX_ENTITLEMENT_PAGES; page += 1) {
+    const query = new URLSearchParams({ exclude_ended: 'true', exclude_deleted: 'true', limit: '100' });
+    if (after) query.set('after', after);
+    const rows = await client.rest.get(Routes.entitlements(applicationId), { query }) as RawEntitlement[];
+    for (const row of rows) {
+      if (row.deleted) continue;
+      result.push({ id: row.id, skuId: row.sku_id, guildId: row.guild_id ?? null, type: row.type, startsAt: row.starts_at ?? null, endsAt: row.ends_at ?? null });
+    }
+    if (rows.length < 100) return result;
+    // Pages are ordered by ID; continue after the highest one seen.
+    after = rows.reduce((max, row) => (BigInt(row.id) > BigInt(max) ? row.id : max), rows[0]!.id);
+  }
+  throw new Error('TOO_MANY_ENTITLEMENTS');
+}
 const BANNER_URI = /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
 
 class RequestError extends Error {
@@ -69,6 +105,11 @@ export function startInternalApi(client: Client, secret: string, port = 3002, st
           iconUrl: guild.iconURL()
         })).sort((a, b) => a.name.localeCompare(b.name));
         res.end(JSON.stringify(guilds));
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/entitlements') {
+        res.end(JSON.stringify(await activeEntitlements(client)));
         return;
       }
 

@@ -5,7 +5,7 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 import { prisma } from '@sentinel/db';
-import { EVENT_CATALOG, SETTINGS_TIER, tierAllows } from '@sentinel/shared';
+import { EVENT_CATALOG, tierAllows } from '@sentinel/shared';
 import { config } from './config.js';
 import { createSession, destroySession, isSuperAdminUserId, randomToken, requireGuild, requireSession, requireSuperAdmin, resolveGuildAccess, type OAuthGuild } from './auth.js';
 import { getBotGuilds, getGuildResources, leaveBotGuild } from './discord.js';
@@ -15,6 +15,7 @@ import { unprotectJson } from './security.js';
 import { exportJsonChunks, findForeignReference, isValidTimeZone, rateLimitKey } from './helpers.js';
 import { planOverview, registerPlanRoutes } from './plan-routes.js';
 import { guildTier, sweepExpiredPlans } from './plan-service.js';
+import { syncDiscordPlans } from './discord-billing.js';
 import { filterEntryCount, logChannelSet, publicGuildSettings, requiredTierForKey } from './plan-rules.js';
 import { Readable } from 'node:stream';
 
@@ -93,6 +94,12 @@ setInterval(() => void cleanupPanelAudit().catch(() => null), 6 * 60 * 60 * 1000
 const runPlanSweep = () => sweepExpiredPlans(app.log).catch((error) => app.log.error({ err: error }, 'Plan expiry sweep failed'));
 void runPlanSweep();
 setInterval(() => void runPlanSweep(), 10 * 60 * 1000).unref();
+
+// Discord subscriptions: new purchases, renewals and cancellations reach the
+// plans within a couple of minutes. The first run waits for the bot to log in.
+const runDiscordSync = () => syncDiscordPlans(app.log).catch((error) => app.log.error({ err: error }, 'Discord plan sync failed'));
+setTimeout(() => void runDiscordSync(), 30_000).unref();
+setInterval(() => void runDiscordSync(), 2 * 60 * 1000).unref();
 
 app.get('/health/live', async () => ({ ok: true, service: 'api' }));
 app.get('/health', async (_request, reply) => {
@@ -247,9 +254,8 @@ app.get('/api/super/overview', async (request, reply) => {
     audit: audit.map((row) => ({ ...row, details: unprotectJson(row.details) })),
     config: beta.config,
     statusChannel: beta.statusChannel,
-    coupons: beta.coupons,
     planCatalog: beta.planCatalog,
-    multiSubscriptionDiscounts: beta.multiSubscriptionDiscounts
+    discord: beta.discord
   };
 });
 
@@ -364,9 +370,7 @@ const settingsSchema = z.object({
   embedColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   embedFooter: z.string().trim().max(200).optional(),
   messageSnapshotEnabled: z.boolean().optional(),
-  storeMessageContent: z.boolean().optional(),
-  rawGatewayEnabled: z.boolean().optional(),
-  typingLoggingEnabled: z.boolean().optional()
+  storeMessageContent: z.boolean().optional()
 });
 
 const routeSchema = z.object({
@@ -430,10 +434,7 @@ app.put('/api/guilds/:guildId/settings', async (request, reply) => {
   const parsed = settingsSchema.safeParse(request.body);
   if (!parsed.success) return reply.code(400).send({ error: 'INVALID_BODY', details: parsed.error.flatten() });
 
-  const { tier, limits } = await guildTier(guildId);
-  for (const [key, required] of Object.entries(SETTINGS_TIER) as Array<[keyof typeof SETTINGS_TIER, typeof SETTINGS_TIER[keyof typeof SETTINGS_TIER]]>) {
-    if (parsed.data[key] === true && !tierAllows(tier, required)) return reply.code(403).send({ error: 'PLAN_REQUIRED', required });
-  }
+  const { limits } = await guildTier(guildId);
   if (parsed.data.defaultRetentionDays !== undefined && parsed.data.defaultRetentionDays > limits.retentionDays) {
     return reply.code(403).send({ error: 'PLAN_LIMIT', limit: 'retentionDays', max: limits.retentionDays });
   }

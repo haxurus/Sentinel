@@ -70,6 +70,13 @@ export async function setBotBranding(guildId: string, profile: { nick?: string |
   return api<{ ok: true; guildId: string }>(`/guilds/${id(guildId)}/branding`, 'POST', profile, 15_000);
 }
 
+export type Entitlement = { id: string; skuId: string; guildId: string | null; type: number; startsAt: string | null; endsAt: string | null };
+
+/** Active Discord Premium Apps entitlements of the application. */
+export async function getEntitlements() {
+  return api<Entitlement[]>('/entitlements', 'GET', undefined, 15_000);
+}
+
 export async function sendStatusTest() {
   return api<{ ok: true } | { ok: false; error: string }>('/status/test', 'POST', {}, 10_000);
 }
