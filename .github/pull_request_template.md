@@ -14,4 +14,5 @@
 - [ ] Database changes are backward-compatible with the previous release (expand/contract)
 - [ ] No moderation capability or new data collection beyond the feature's needs ([scope](https://github.com/haxurus/Sentinel/blob/main/.github/CONTRIBUTING.md#project-scope))
 - [ ] New dependencies are necessary and pinned
+- [ ] Paid plans are not reduced (limits, loggers, features), or the reduction is described above and subscribers will be notified first
 - [ ] Documentation updated where needed

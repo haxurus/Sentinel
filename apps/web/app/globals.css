@@ -618,6 +618,7 @@ textarea { min-height: 84px; resize: vertical; line-height: 1.5; }
 .billing-toggle button { min-height: 34px; padding: 0 18px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: .86rem; font-weight: 600; }
 .billing-toggle button.active { background: var(--accent); color: var(--accent-ink); }
 .plan-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.plan-footnote { max-width: 860px; margin: 14px 0 0; color: var(--muted); font-size: .82rem; line-height: 1.55; }
 .plan-card { position: relative; display: flex; flex-direction: column; padding: 24px 22px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .plan-featured { border-color: var(--accent-line); background: radial-gradient(ellipse 80% 60% at 100% 0%, rgba(167,139,250,.10), transparent 70%), var(--surface); }
 .plan-level { color: var(--faint); font-size: .7rem; letter-spacing: .12em; }
