@@ -2,7 +2,7 @@ import { prisma } from '@sentinel/db';
 import { effectiveTier, eventDefinition, planLimits, requiredTierForEvent, tierAllows, type PlanTier } from '@sentinel/shared';
 import { logQueue, queueConnection } from './queue.js';
 import { jsonSafe, redactSecrets } from './utils.js';
-import { protectJson, redactText } from './security.js';
+import { encryptText, protectJson, redactText } from './security.js';
 import { DISPATCH_ATTEMPTS } from './dispatcher.js';
 import { logger } from './logger.js';
 
@@ -144,7 +144,8 @@ export async function recordEvent(input: RecordInput) {
       actorId: input.actorId ?? null,
       targetId: input.targetId ?? null,
       channelId: input.channelId ?? null,
-      summary: input.summary.slice(0, 2000),
+      // The summary names the people involved, so it is encrypted like the details.
+      summary: encryptText(input.summary.slice(0, 2000))!,
       details: protectJson(boundDetails(input.details)),
       dispatchState: route?.enabled === false ? 'DISABLED' : 'PENDING'
     }

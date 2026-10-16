@@ -334,18 +334,19 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
     if (snapshot?.authorId === client.user?.id || message.author?.id === client.user?.id) return;
     const settings = await getGuildSettings(message.guildId);
     const authorId = snapshot?.authorId ?? message.author?.id ?? null;
+    const snapshotTag = decryptText(snapshot?.authorTag);
     await recordEvent({
       guildId: message.guildId,
       eventKey: 'message.delete',
       targetId: authorId,
       channelId: message.channelId,
-      summary: `È stato eliminato un messaggio${snapshot?.authorTag ? ` di ${snapshot.authorTag}` : ''}.`,
+      summary: `È stato eliminato un messaggio${snapshotTag ? ` di ${snapshotTag}` : ''}.`,
       details: {
         messageId: message.id,
         content: settings?.storeMessageContent ? (decryptText(snapshot?.content) ?? message.content ?? null) : null,
         attachments: snapshot ? unprotectJson(snapshot.attachments) : attachmentData(message),
         authorId,
-        authorTag: snapshot?.authorTag ?? message.author?.tag ?? null,
+        authorTag: snapshotTag ?? message.author?.tag ?? null,
         actorBot: snapshot?.authorBot ?? message.author?.bot ?? false,
         actorRoleIds: snapshot?.roleIds ?? []
       }

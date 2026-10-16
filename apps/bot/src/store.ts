@@ -2,6 +2,7 @@ import { prisma, type GuildSettings } from '@sentinel/db';
 import { EVENT_CATALOG, effectiveTier, planLimits } from '@sentinel/shared';
 import type { Guild, Message } from 'discord.js';
 import { encryptText, protectJson } from './security.js';
+import { logger } from './logger.js';
 
 const cache = new Map<string, { value: GuildSettings; expires: number }>();
 
@@ -59,7 +60,7 @@ export async function snapshotMessage(message: Message) {
       guildId: message.guildId,
       channelId: message.channelId,
       authorId: message.author.id,
-      authorTag: message.author.tag,
+      authorTag: encryptText(message.author.tag),
       authorBot: message.author.bot,
       content,
       attachments: protectJson(attachments),
@@ -68,6 +69,31 @@ export async function snapshotMessage(message: Message) {
       createdAt: message.createdAt
     }
   });
+}
+
+/**
+ * Rows written before summaries and author names were encrypted. They expire
+ * with the retention anyway; this encrypts them in small batches so that no
+ * name stays in clear in the meantime.
+ */
+export async function encryptLegacyRows() {
+  let total = 0;
+  for (;;) {
+    const events = await prisma.logEvent.findMany({ where: { NOT: { summary: { startsWith: 'enc:v1:' } } }, select: { id: true, summary: true }, take: 500 });
+    const snapshots = await prisma.messageSnapshot.findMany({
+      where: { authorTag: { not: null }, NOT: { authorTag: { startsWith: 'enc:v1:' } } },
+      select: { messageId: true, authorTag: true },
+      take: 500
+    });
+    if (!events.length && !snapshots.length) break;
+    await prisma.$transaction([
+      ...events.map((row) => prisma.logEvent.update({ where: { id: row.id }, data: { summary: encryptText(row.summary)! } })),
+      ...snapshots.map((row) => prisma.messageSnapshot.update({ where: { messageId: row.messageId }, data: { authorTag: encryptText(row.authorTag) } }))
+    ]);
+    total += events.length + snapshots.length;
+  }
+  if (total) logger.info({ rows: total }, 'Encrypted legacy summaries and author names');
+  return total;
 }
 
 /** Days a server's data is kept after the bot is removed from it. */

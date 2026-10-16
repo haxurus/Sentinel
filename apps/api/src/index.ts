@@ -11,7 +11,7 @@ import { createSession, destroySession, isSuperAdminUserId, randomToken, require
 import { getBotGuilds, getGuildResources, leaveBotGuild } from './discord.js';
 import { panelAudit } from './audit.js';
 import { superAdminAudit } from './super-audit.js';
-import { unprotectJson } from './security.js';
+import { decryptText, unprotectJson } from './security.js';
 import { exportJsonChunks, findForeignReference, isValidTimeZone, rateLimitKey } from './helpers.js';
 import { planOverview, registerPlanRoutes } from './plan-routes.js';
 import { guildTier, sweepExpiredPlans } from './plan-service.js';
@@ -574,6 +574,17 @@ app.get('/api/guilds/:guildId/resources', async (request, reply) => {
   }
 });
 
+/** Most recent events scanned by a free-text history search. */
+const TEXT_SEARCH_WINDOW = 5_000;
+
+const safeDecrypt = (value: string) => {
+  try {
+    return decryptText(value) ?? '';
+  } catch {
+    return '';
+  }
+};
+
 app.get('/api/guilds/:guildId/events', async (request, reply) => {
   const { guildId } = request.params as { guildId: string };
   const session = await requireGuild(request, reply, guildId);
@@ -597,14 +608,44 @@ app.get('/api/guilds/:guildId/events', async (request, reply) => {
     ...(filters.actorId ? { actorId: filters.actorId } : {}),
     ...(filters.targetId ? { targetId: filters.targetId } : {}),
     ...(filters.channelId ? { channelId: filters.channelId } : {}),
-    ...(filters.q ? { summary: { contains: filters.q, mode: 'insensitive' as const } } : {}),
     ...((filters.from || filters.to) ? { createdAt: { ...(filters.from ? { gte: filters.from } : {}), ...(filters.to ? { lte: filters.to } : {}) } } : {})
   };
+  const readable = <T extends { summary: string; details: unknown }>(item: T) => ({ ...item, summary: safeDecrypt(item.summary), details: unprotectJson(item.details) });
+  const q = filters.q?.trim();
+
+  // An ID matches the actor, the target or the channel of an event.
+  if (q && /^\d{17,20}$/.test(q)) {
+    const idWhere = { ...where, OR: [{ actorId: q }, { targetId: q }, { channelId: q }] };
+    const [items, total] = await Promise.all([
+      prisma.logEvent.findMany({ where: idWhere, orderBy: { createdAt: 'desc' }, skip: (page - 1) * take, take }),
+      prisma.logEvent.count({ where: idWhere })
+    ]);
+    return { items: items.map(readable), total, page, take, pages: Math.max(1, Math.ceil(total / take)) };
+  }
+
+  // Summaries are encrypted, so the database cannot search them: free text is
+  // matched after decryption, within the most recent events of the filter.
+  if (q) {
+    const needle = q.toLocaleLowerCase();
+    const candidates = await prisma.logEvent.findMany({ where, orderBy: { createdAt: 'desc' }, take: TEXT_SEARCH_WINDOW, select: { id: true, summary: true } });
+    const matches = candidates.filter((row) => safeDecrypt(row.summary).toLocaleLowerCase().includes(needle)).map((row) => row.id);
+    const pageIds = matches.slice((page - 1) * take, page * take);
+    const rows = pageIds.length ? await prisma.logEvent.findMany({ where: { id: { in: pageIds } }, orderBy: { createdAt: 'desc' } }) : [];
+    return {
+      items: rows.map(readable),
+      total: matches.length,
+      page,
+      take,
+      pages: Math.max(1, Math.ceil(matches.length / take)),
+      searchWindow: candidates.length === TEXT_SEARCH_WINDOW ? TEXT_SEARCH_WINDOW : null
+    };
+  }
+
   const [items, total] = await Promise.all([
     prisma.logEvent.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * take, take }),
     prisma.logEvent.count({ where })
   ]);
-  return { items: items.map((item) => ({ ...item, details: unprotectJson(item.details) })), total, page, take, pages: Math.max(1, Math.ceil(total / take)) };
+  return { items: items.map(readable), total, page, take, pages: Math.max(1, Math.ceil(total / take)) };
 });
 
 app.get('/api/guilds/:guildId/stats', async (request, reply) => {
@@ -734,7 +775,7 @@ app.get('/api/guilds/:guildId/export', async (request, reply) => {
   return reply.send(Readable.from(exportJsonChunks(
     { exportedAt: new Date().toISOString(), guildId },
     pages(),
-    (event) => ({ ...event, details: decrypt(event) })
+    (event) => ({ ...event, summary: safeDecrypt(event.summary), details: decrypt(event) })
   )));
 });
 

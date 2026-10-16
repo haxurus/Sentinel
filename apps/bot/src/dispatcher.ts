@@ -5,7 +5,7 @@ import { effectiveTier, eventDefinition, requiredTierForEvent, tierAllows } from
 import { DiscordAPIError, EmbedBuilder, type Client } from 'discord.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
-import { unprotectJson, redactText } from './security.js';
+import { decryptText, unprotectJson, redactText } from './security.js';
 import { eventEmbedCopy, fieldLabel, normalizeEmbedLocale } from './embed-i18n.js';
 import {
   asObject,
@@ -77,8 +77,9 @@ export function startDispatcher(client: Client) {
     if (!channel || channel.guildId !== guild.id || !channel.isSendable()) { await mark('CHANNEL_UNAVAILABLE'); return; }
 
     const embedLocale = normalizeEmbedLocale(event.guild.locale);
-    const copy = eventEmbedCopy(event.eventKey, embedLocale, def?.label ?? event.eventKey, def?.description ?? event.summary);
-    const description = embedLocale === 'it' ? event.summary : copy.description;
+    const summary = decryptText(event.summary) ?? '';
+    const copy = eventEmbedCopy(event.eventKey, embedLocale, def?.label ?? event.eventKey, def?.description ?? summary);
+    const description = embedLocale === 'it' ? summary : copy.description;
 
     const fields: EmbedField[] = [];
     if (event.actorId && route?.showActor !== false) {
