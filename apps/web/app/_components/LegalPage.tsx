@@ -60,7 +60,7 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
             ]
           ] },
           { title: 'How we protect it', body: [
-            'Message content, attachments, embeds, event details and summaries, and the names of message authors are encrypted at rest with AES-256-GCM; database backups are encrypted with a key kept off the server. Session tokens are stored only as hashes. The bot cannot perform moderation actions, and each component has its own database permissions. The code is open source, so these measures can be verified on GitHub.'
+            'Message content, attachments, embeds, event details and summaries, and the names of message authors are encrypted at rest with AES-256-GCM, also inside database backups, which are readable only by the operator. Session tokens are stored only as hashes. The bot cannot perform moderation actions, and each component has its own database permissions. The code is open source, so these measures can be verified on GitHub.'
           ] },
           { title: 'Sharing', body: [
             'We do not sell data and we do not use it for advertising or profiling, or to train artificial intelligence or machine-learning models. Data is shared only with the providers needed to run the service: Discord (the platform the bot works on), Cloudflare (network delivery and protection) and our hosting provider. Log messages are posted only in the channels configured by each server’s administrators.'
@@ -168,7 +168,7 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
             ]
           ] },
           { title: 'Come li proteggiamo', body: [
-            'Contenuto dei messaggi, allegati, embed, dettagli e riepiloghi degli eventi e i nomi degli autori dei messaggi sono cifrati con AES-256-GCM; i backup del database sono cifrati con una chiave conservata fuori dal server. I token di sessione sono salvati solo come hash. Il bot non può eseguire azioni di moderazione e ogni componente ha permessi separati sul database. Il codice è open source, quindi queste misure sono verificabili su GitHub.'
+            'Contenuto dei messaggi, allegati, embed, dettagli e riepiloghi degli eventi e i nomi degli autori dei messaggi sono cifrati con AES-256-GCM, anche all’interno dei backup del database, accessibili solo al gestore. I token di sessione sono salvati solo come hash. Il bot non può eseguire azioni di moderazione e ogni componente ha permessi separati sul database. Il codice è open source, quindi queste misure sono verificabili su GitHub.'
           ] },
           { title: 'Condivisione', body: [
             'Non vendiamo i dati e non li usiamo per pubblicità o profilazione, né per addestrare modelli di intelligenza artificiale o di apprendimento automatico. Li condividiamo solo con i fornitori necessari al servizio: Discord (la piattaforma su cui opera il bot), Cloudflare (distribuzione e protezione di rete) e il nostro fornitore di hosting. I messaggi di log vengono pubblicati solo nei canali configurati dagli amministratori di ciascun server.'
