@@ -5,7 +5,7 @@ type Section = { title: string; body: Array<string | string[]> };
 type Doc = { id: string; kicker: string; title: string; intro: string; sections: Section[] };
 
 const CONTACT = 'haxurus@icloud.com';
-const UPDATED = { it: '13 ottobre 2026', en: '13 October 2026' };
+const UPDATED = { it: '16 ottobre 2026', en: '16 October 2026' };
 
 const copy: Record<Locale, { kicker: string; title: string; intro: string; updated: string; toc: string; docs: Doc[]; home: string; pricing: string }> = {
   en: {
@@ -95,7 +95,9 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
             ]
           ] },
           { title: 'Plans and payments', body: [
-            'The Free plan is available to everyone. Paid plans (Plus, Pro, Brand) are sold only as Discord subscriptions, through Discord’s Premium Apps: Discord is the seller, processes the payment and handles taxes, renewals, cancellations and refunds under its own terms. A subscription applies to the server chosen when buying it and stays active until the end of the period paid. The operator may grant free trials or complimentary plans at its discretion. When a paid plan ends, the server returns to the Free plan: features outside it are switched off and its limits apply, but your configuration is not deleted.'
+            'The Free plan is available to everyone. Paid plans (Plus, Pro, Brand) are sold only as Discord subscriptions, through Discord’s Premium Apps: Discord is the seller, processes the payment and handles taxes, renewals, cancellations and refunds under its own terms. A subscription applies to the server chosen when buying it and stays active until the end of the period paid. The operator may grant free trials or complimentary plans at its discretion. When a paid plan ends, the server returns to the Free plan: features outside it are switched off and its limits apply, but your configuration is not deleted.',
+            'If we reduce what a paid plan includes, for example by lowering a limit or removing a logger, we tell subscribers in advance, through the support server, the website and the dashboard, so that they can cancel or change their subscription before the change takes effect. Additions and improvements can apply at any time.',
+            `For any problem with a subscription, contact us at ${CONTACT} or on the support server and we will try to solve it with you; refund requests are decided by Discord under its refund policy.`
           ] },
           { title: 'Availability', body: [
             'We work to keep Sentinel available and reliable, but the service is provided “as is” and “as available”, without guaranteed uptime. Discord outages, missing bot permissions or maintenance can delay or prevent logs.'
@@ -201,7 +203,9 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
             ]
           ] },
           { title: 'Piani e pagamenti', body: [
-            'Il piano Free è disponibile per tutti. I piani a pagamento (Plus, Pro, Brand) si acquistano solo come abbonamenti Discord, tramite le App premium di Discord: il venditore è Discord, che elabora il pagamento e gestisce imposte, rinnovi, disdette e rimborsi secondo i propri termini. Un abbonamento vale per il server scelto al momento dell’acquisto e resta attivo fino alla fine del periodo pagato. Il gestore può concedere a sua discrezione periodi di prova o piani omaggio gratuiti. Alla fine di un piano a pagamento il server torna al piano Free: le funzioni non incluse vengono disattivate e si applicano i suoi limiti, ma la configurazione non viene cancellata.'
+            'Il piano Free è disponibile per tutti. I piani a pagamento (Plus, Pro, Brand) si acquistano solo come abbonamenti Discord, tramite le App premium di Discord: il venditore è Discord, che elabora il pagamento e gestisce imposte, rinnovi, disdette e rimborsi secondo i propri termini. Un abbonamento vale per il server scelto al momento dell’acquisto e resta attivo fino alla fine del periodo pagato. Il gestore può concedere a sua discrezione periodi di prova o piani omaggio gratuiti. Alla fine di un piano a pagamento il server torna al piano Free: le funzioni non incluse vengono disattivate e si applicano i suoi limiti, ma la configurazione non viene cancellata.',
+            'Se riduciamo ciò che un piano a pagamento include, per esempio abbassando un limite o togliendo un logger, lo comunichiamo prima agli abbonati, tramite il server di supporto, il sito e la dashboard, così che possano disdire o cambiare l’abbonamento prima che la modifica entri in vigore. Aggiunte e miglioramenti possono valere in qualsiasi momento.',
+            `Per qualsiasi problema con un abbonamento scrivici a ${CONTACT} o sul server di supporto e cercheremo di risolverlo insieme; le richieste di rimborso sono decise da Discord secondo la sua politica di rimborso.`
           ] },
           { title: 'Disponibilità', body: [
             'Lavoriamo per mantenere Sentinel disponibile e affidabile, ma il servizio è fornito “così com’è” e “come disponibile”, senza garanzie di continuità. Disservizi di Discord, permessi mancanti del bot o manutenzioni possono ritardare o impedire i log.'

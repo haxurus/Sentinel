@@ -38,7 +38,15 @@ Sentinel is a **read-only audit and logging bot**. To keep it safe and trustwort
 - **Moderation actions** (ban, kick, timeout, deleting messages, changing roles or channels): the bot's capability policy blocks them on purpose.
 - **Tracking people**: online status, activities, games, music or anything Discord's privileged Presence intent would provide.
 - Collecting data that is not needed to review moderation and server activity, or keeping it longer than the configured retention.
-- Anything that breaks Discord's Terms of Service or Developer Policy.
+- Anything that breaks Discord's Terms of Service, Developer Policy or Monetization Terms.
+
+### Paid plans
+
+Paid plans are sold as Discord subscriptions, and Discord's [Monetization Terms](https://support.discord.com/hc/articles/5330075836311-Monetization-Terms) require that buyers get exactly what was described. So:
+
+- A change that **reduces** a paid plan (lower limit, logger moved to a higher plan or removed, feature taken away) must say so in the pull request. It is released only after subscribers have been told in advance and given time to cancel; the maintainer handles the notice.
+- Plan names, prices and benefits must stay consistent across `packages/shared/src/plans.ts`, the pricing page and the Discord SKUs.
+- Never add a way to pay outside Discord, discounts or price differences.
 
 ## Pull requests
 

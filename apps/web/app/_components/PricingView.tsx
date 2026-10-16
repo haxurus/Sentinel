@@ -30,6 +30,8 @@ const copy = {
       TIER3: 'Tutto il Livello 2, più nome e banner del bot personalizzati nel tuo server.'
     },
     subscribe: 'Abbonati su Discord',
+    priceNote: 'Il prezzo finale nella tua valuta, tasse incluse, è quello mostrato da Discord prima del pagamento.',
+    scopeNote: 'Ogni abbonamento vale per un solo server e i limiti si contano per server. Sentinel registra solo ciò che Discord rende disponibile ai bot, con i permessi che gli hai dato.',
     soon: 'Presto su Discord',
     compare: 'Confronto completo',
     feature: 'Funzione',
@@ -75,6 +77,8 @@ const copy = {
       TIER3: 'Everything in Level 2, plus a custom bot name and banner in your server.'
     },
     subscribe: 'Subscribe on Discord',
+    priceNote: 'The final price in your currency, taxes included, is shown by Discord before you pay.',
+    scopeNote: 'Each subscription covers one server and the limits apply per server. Sentinel records only what Discord makes available to bots, with the permissions you give it.',
     soon: 'Coming soon on Discord',
     compare: 'Full comparison',
     feature: 'Feature',
@@ -199,6 +203,7 @@ export default function PricingView({ locale, info }: { locale: Locale; info: Pu
                 );
               })}
             </div>
+            <p className="plan-footnote">{c.priceNote} {c.scopeNote}</p>
 
             <section className="compare">
               <h2>{c.compare}</h2>
