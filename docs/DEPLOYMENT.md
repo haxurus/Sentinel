@@ -248,13 +248,35 @@ Automatic rollback cannot magically reverse a destructive migration. Migrations 
 3. migrate data if necessary;
 4. remove obsolete columns/tables only in a later release, once rollback no longer depends on them.
 
-Before every deployment after the first one, a PostgreSQL dump is stored in:
+### Backups
 
-```text
-/srv/docker/sentinel/backups/
+Before every deployment after the first one, a PostgreSQL dump is stored in `/srv/docker/sentinel/backups/` with root-only permissions and a local retention of 14 days. The dump is **encrypted with [age](https://age-encryption.org)** while it is written, so it never touches the disk in clear; the private key stays off the VPS. Without a valid key, `sentinel-deploy` refuses to deploy.
+
+One-time setup:
+
+1. On your computer, create the key pair and keep the file somewhere safe (password manager or encrypted storage); without it the backups cannot be restored:
+
+   ```bash
+   age-keygen -o sentinel-backup.key
+   ```
+
+   The command prints the public key, `age1…`.
+2. On the VPS, install age and store the public key:
+
+   ```bash
+   sudo apt install age
+   echo 'age1…' | sudo tee /srv/docker/sentinel/backup-recipients.txt
+   sudo chmod 600 /srv/docker/sentinel/backup-recipients.txt
+   ```
+3. Only then install the updated `sentinel-deploy`. At the first encrypted backup, the older unencrypted `.dump` files are deleted.
+
+Restore (copy the backup and the key to a trusted machine, or pipe the key in for the duration of the command):
+
+```bash
+age -d -i sentinel-backup.key predeploy-YYYYMMDDTHHMMSSZ.dump.age > restore.dump
+pg_restore --clean --if-exists -d "$DATABASE_URL" restore.dump
+shred -u restore.dump
 ```
-
-with root-only permissions and a local retention of 14 days.
 
 ## 10. Repository protection
 
@@ -266,3 +288,14 @@ Configured on GitHub for `haxurus/Sentinel`:
 - **Actions:** `GITHUB_TOKEN` read-only by default and unable to approve pull requests, every action must be pinned to a full commit SHA, workflows from outside contributors need approval.
 
 Changes to `deploy/`, `ops/`, `security/`, `.github/workflows/` and migrations should always be reviewed carefully: they reach production or the VPS.
+
+## 11. Shutting down the hosted instance
+
+The Discord Developer Terms require deleting all collected data when an application stops operating. To shut the hosted instance down for good:
+
+1. Unpublish the Discord subscription SKUs and tell subscribers in advance (see the terms of service).
+2. Announce the shutdown on the support server and the website, giving server administrators time to export their history.
+3. Stop the stack: `docker compose --project-name sentinel -f /srv/docker/sentinel/docker-compose.yml down -v` (the `-v` deletes the database and Redis volumes).
+4. Delete `/srv/docker/sentinel/backups/`, the secrets in `/srv/docker/sentinel/secrets/` and the container images.
+5. Reset the bot token and the OAuth client secret in the Developer Portal, then delete the application or remove the bot from every server.
+6. Revoke the deploy key on the VPS and the GitHub `production` secrets.

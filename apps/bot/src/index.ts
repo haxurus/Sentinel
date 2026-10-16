@@ -7,7 +7,7 @@ import {
 import { prisma } from '@sentinel/db';
 import { config } from './config.js';
 import { logger } from './logger.js';
-import { REMOVED_GUILD_GRACE_DAYS, ensureGuild, isGuildInstallBlocked, markMissingGuildsRemoved, purgeRemovedGuilds, runRetentionCleanup } from './store.js';
+import { REMOVED_GUILD_GRACE_DAYS, encryptLegacyRows, ensureGuild, isGuildInstallBlocked, markMissingGuildsRemoved, purgeRemovedGuilds, runRetentionCleanup } from './store.js';
 import { registerHandlers } from './handlers.js';
 import { startDispatcher } from './dispatcher.js';
 import { onQuotaExceeded } from './recorder.js';
@@ -93,6 +93,7 @@ client.once(Events.ClientReady, async (ready) => {
     .then((count) => { if (count) logger.info({ count }, 'Servers removed while offline'); })
     .catch((error) => logger.error({ error: errorText(error) }, 'Unable to reconcile removed servers'));
   await runMaintenance();
+  void encryptLegacyRows().catch((error) => logger.error({ error: errorText(error) }, 'Unable to encrypt legacy rows'));
 });
 
 /** Retention cleanup, then deletion of servers removed more than 30 days ago. */
