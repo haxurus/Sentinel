@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/sentinel-icon.png" width="128" height="128" alt="Sentinel icon"></p>
+
 # Sentinel — Discord logging & audit log bot
 
 [![CI](https://github.com/haxurus/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/haxurus/Sentinel/actions/workflows/ci.yml)

@@ -1,14 +1,8 @@
 import type { ReactNode } from 'react';
 
-/** Sentinel mark: a watchtower aperture — an eye inside a shield-like frame. */
+/** The Sentinel icon: a watchful eye on a shield, above a log entry. */
 export function BrandMark({ size = 28 }: { size?: number }) {
-  return (
-    <svg className="brand-mark" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <path d="M16 2.5 4.5 7v8.2c0 6.9 4.7 12.3 11.5 14.3 6.8-2 11.5-7.4 11.5-14.3V7L16 2.5Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-      <path d="M8.6 15.6c2-3.3 4.5-5 7.4-5s5.4 1.7 7.4 5c-2 3.3-4.5 5-7.4 5s-5.4-1.7-7.4-5Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-      <circle cx="16" cy="15.6" r="2.4" fill="var(--accent)" />
-    </svg>
-  );
+  return <img className="brand-mark" src="/sentinel-icon.png" width={size} height={size} alt="" aria-hidden="true" decoding="async" />;
 }
 
 export function Brand({ href, label = 'Sentinel - Home' }: { href: string; label?: string }) {
