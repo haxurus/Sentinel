@@ -176,7 +176,7 @@ select {
 }
 .site-nav { min-height: 64px; display: flex; align-items: center; gap: 32px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; flex: 0 0 auto; font-weight: 600; font-size: .98rem; letter-spacing: -.01em; }
-.brand-mark { color: var(--text); }
+.brand-mark { display: block; border-radius: 22%; }
 .site-nav-links { display: flex; align-items: center; gap: 4px; }
 .site-nav-links a { padding: 8px 11px; white-space: nowrap; border-radius: var(--radius-sm); color: var(--muted); font-size: .86rem; transition: color .15s ease, background .15s ease; }
 .site-nav-links a:hover { color: var(--text); background: var(--surface-2); }

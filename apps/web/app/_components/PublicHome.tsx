@@ -219,6 +219,7 @@ export default function PublicHome({ locale }: { locale: Locale }) {
           '@type': 'SoftwareApplication',
           name: 'Sentinel',
           url: `${SITE_URL}/${locale}`,
+          image: `${SITE_URL}/sentinel-icon.png`,
           description: c.hero.text,
           applicationCategory: 'UtilitiesApplication',
           applicationSubCategory: locale === 'it' ? 'Bot Discord per log e moderazione' : 'Discord logging and moderation bot',
