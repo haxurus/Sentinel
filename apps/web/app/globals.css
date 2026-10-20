@@ -685,6 +685,24 @@ textarea { min-height: 84px; resize: vertical; line-height: 1.5; }
 .segmented button span { color: var(--faint); font-size: .72rem; }
 .sku-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 12px; align-items: end; margin-bottom: 18px; padding: 4px 16px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-raised); }
 .sku-form > .button { margin: 14px 0; }
+.monitor-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 18px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-raised); color: var(--text-2); font-size: .88rem; }
+.monitor-status strong { color: var(--text); }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); }
+.status-up { background: #3ccf8e; box-shadow: 0 0 0 4px rgba(60,207,142,.15); }
+.status-down { background: #f2555a; box-shadow: 0 0 0 4px rgba(242,85,90,.15); }
+.level-badge { display: inline-block; min-width: 52px; padding: 2px 8px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); font: 600 .68rem var(--font-mono-stack); text-align: center; text-transform: uppercase; }
+.level-ok { background: rgba(60,207,142,.15); color: #3ccf8e; }
+.level-warn { background: rgba(245,165,36,.15); color: #f5a524; }
+.level-error, .level-fatal { background: rgba(242,85,90,.15); color: #ff9da0; }
+.event-row { grid-template-columns: auto minmax(0, 1fr) auto auto !important; align-items: start; }
+.event-row > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.event-row > div span { color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+.log-lines { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.log-line + .log-line { border-top: 1px solid var(--line); }
+.log-line summary { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 12px; align-items: center; padding: 8px 12px; cursor: pointer; font-size: .82rem; }
+.log-line .log-msg { overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
+.log-line pre { margin: 0; padding: 10px 14px; overflow-x: auto; background: var(--bg-raised); color: var(--text-2); font: .74rem/1.5 var(--font-mono-stack); }
+@media (max-width: 640px) { .log-line summary { grid-template-columns: auto minmax(0, 1fr); } .log-line summary time { grid-column: 1 / -1; } .event-row { grid-template-columns: auto minmax(0, 1fr) !important; } }
 
 /* Guild plan & branding */
 .guild-card-tags { display: flex; flex-wrap: wrap; gap: 6px; }

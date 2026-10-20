@@ -37,6 +37,27 @@ function id(value: string) {
   return value;
 }
 
+/**
+ * Bot liveness for the watchdog: null when the process does not answer,
+ * ok=false when it answers but is not connected to Discord.
+ */
+export async function botHealth(): Promise<{ ok: boolean; guilds: number } | null> {
+  try {
+    const response = await fetch(`${internalUrl}/healthz`, { signal: AbortSignal.timeout(5_000) });
+    const body = await response.json().catch(() => ({})) as { ok?: boolean; guilds?: number };
+    return { ok: response.ok && body.ok === true, guilds: Number(body.guilds) || 0 };
+  } catch {
+    return null;
+  }
+}
+
+export type BotLogEntry = { time: string; level: string; msg: string; context: Record<string, unknown> | null };
+
+export async function getBotLogs(level: string, limit: number) {
+  const query = new URLSearchParams({ level, limit: String(limit) });
+  return api<BotLogEntry[]>(`/logs?${query}`);
+}
+
 export async function getGuildResources(guildId: string) {
   return api<{
     channels: Array<{ id: string; name: string; type: number; parent_id?: string | null; position?: number }>;

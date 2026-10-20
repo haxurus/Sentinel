@@ -212,6 +212,8 @@ model InstanceConfig {
   // Discord Premium Apps SKU IDs by plan and billing period:
   // { "TIER1": { "MONTHLY": "<sku id>", "YEARLY": "<sku id>" }, ... }
   discordSkus    Json     @default("{}")
+  // Discord webhook for alarms that must work when the bot is down (encrypted).
+  alertWebhookUrl String?
   updatedAt      DateTime @updatedAt
 }
 
@@ -273,4 +275,18 @@ model Coupon {
   createdByUserId String
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+// Instance-wide notices shown in the super console: bot startup and errors,
+// servers added, removed or rejected, quotas, bot down/restored. The bot can
+// only insert; description and fields are encrypted in `details`.
+model InstanceEvent {
+  id        String   @id @default(cuid())
+  source    String
+  level     String
+  title     String
+  details   Json
+  createdAt DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
 }

@@ -278,6 +278,13 @@ pg_restore --clean --if-exists -d "$DATABASE_URL" restore.dump
 shred -u restore.dump
 ```
 
+## Monitoring
+
+- **Super console → Monitoring:** bot status, *down*/*restored* alarms to a Discord webhook (set it there) and the instance event feed.
+- **Super console → Logs:** latest bot and API log lines, redacted, in memory only.
+- **Docker logs** are capped by the Compose file (`json-file`, 5 × 10 MB per service). After updating `deploy/docker-compose.prod.yml`, reinstall it on the VPS and recreate the containers.
+- **External monitor:** check `https://<host>/backend/health` (API and database) and `https://<host>/backend/health/bot` (bot connected to Discord) from a service outside the VPS.
+
 ## 10. Repository protection
 
 Configured on GitHub for `haxurus/Sentinel`:

@@ -3,7 +3,7 @@ import { prisma } from '@sentinel/db';
 import { sendStatusMessage } from './dispatcher.js';
 import { truncate } from './embed-format.js';
 import { logger } from './logger.js';
-import { redactText } from './security.js';
+import { protectJson, redactText } from './security.js';
 
 export type StatusLevel = 'info' | 'ok' | 'warn' | 'error';
 
@@ -68,7 +68,22 @@ export function createStatusNotifier(client: Client): StatusNotifier {
     return windowCount > BURST_MAX;
   };
 
+  /**
+   * Every notice also goes to the super console's event feed, even when no
+   * status channel is set. createMany: the bot may insert but not read back.
+   */
+  const record = async (notice: StatusNotice) => {
+    const description = notice.description ? redactText(notice.description).slice(0, 4000) : null;
+    const fields = (notice.fields ?? []).filter((field) => field.value).slice(0, 20)
+      .map((field) => ({ name: field.name.slice(0, 256), value: redactText(field.value).slice(0, 1024) }));
+    await prisma.instanceEvent.createMany({
+      data: [{ source: 'bot', level: notice.level, title: notice.title.slice(0, 256), details: protectJson({ description, fields }) }]
+    }).catch((error: unknown) => logger.warn({ error: redactText(String(error)) }, 'Unable to record instance event'));
+  };
+
   const deliver: StatusNotifier['deliver'] = async (notice, options = {}) => {
+    if (!options.force && throttled(notice)) return { ok: false, error: 'THROTTLED' };
+    if (!options.force) await record(notice);
     let config: Target;
     try {
       config = await target();
@@ -76,7 +91,6 @@ export function createStatusNotifier(client: Client): StatusNotifier {
       return { ok: false, error: 'STATUS_CONFIG_UNAVAILABLE' };
     }
     if (!config) return { ok: false, error: 'STATUS_CHANNEL_NOT_SET' };
-    if (!options.force && throttled(notice)) return { ok: false, error: 'THROTTLED' };
 
     const embed = new EmbedBuilder()
       .setTitle(truncate(notice.title, 256))

@@ -5,19 +5,24 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 import { prisma } from '@sentinel/db';
-import { EVENT_CATALOG, tierAllows } from '@sentinel/shared';
+import { EVENT_CATALOG, createLogBuffer, tierAllows } from '@sentinel/shared';
+import pino from 'pino';
+import { registerMonitoringRoutes, startMonitoring } from './monitoring.js';
 import { config } from './config.js';
 import { createSession, destroySession, isSuperAdminUserId, randomToken, requireGuild, requireSession, requireSuperAdmin, resolveGuildAccess, type OAuthGuild } from './auth.js';
 import { getBotGuilds, getGuildResources, leaveBotGuild } from './discord.js';
 import { panelAudit } from './audit.js';
 import { superAdminAudit } from './super-audit.js';
-import { decryptText, unprotectJson } from './security.js';
+import { decryptText, redactText, unprotectJson } from './security.js';
 import { exportJsonChunks, findForeignReference, isValidTimeZone, rateLimitKey } from './helpers.js';
 import { planOverview, registerPlanRoutes } from './plan-routes.js';
 import { guildTier, sweepExpiredPlans } from './plan-service.js';
 import { syncDiscordPlans } from './discord-billing.js';
 import { filterEntryCount, logChannelSet, publicGuildSettings, requiredTierForKey } from './plan-rules.js';
 import { Readable } from 'node:stream';
+
+/** Latest API log lines, shown in the super console. */
+const apiLogs = createLogBuffer(2_000, redactText);
 
 const app = Fastify({
   // Trust exactly one hop (the Next.js proxy in front of the API), as the
@@ -29,6 +34,11 @@ const app = Fastify({
   maxParamLength: 256,
   logger: {
     level: process.env.LOG_LEVEL ?? 'info',
+    // stdout for Docker, plus the latest lines in memory for the super console.
+    stream: pino.multistream([
+      { level: (process.env.LOG_LEVEL ?? 'info') as pino.Level, stream: process.stdout },
+      { level: (process.env.LOG_LEVEL ?? 'info') as pino.Level, stream: apiLogs }
+    ]),
     redact: {
       paths: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]', 'client_secret', '*.client_secret', '*.token', '*.password', '*.secret'],
       censor: '[REDACTED]'
@@ -101,8 +111,9 @@ const runDiscordSync = () => syncDiscordPlans(app.log).catch((error) => app.log.
 setTimeout(() => void runDiscordSync(), 30_000).unref();
 setInterval(() => void runDiscordSync(), 2 * 60 * 1000).unref();
 
-app.get('/health/live', async () => ({ ok: true, service: 'api' }));
-app.get('/health', async (_request, reply) => {
+// Health checks run every few seconds: only problems are logged.
+app.get('/health/live', { logLevel: 'warn' }, async () => ({ ok: true, service: 'api' }));
+app.get('/health', { logLevel: 'warn' }, async (_request, reply) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     return { ok: true, service: 'api', database: 'ready' };
@@ -780,6 +791,8 @@ app.get('/api/guilds/:guildId/export', async (request, reply) => {
 });
 
 await registerPlanRoutes(app);
+await registerMonitoringRoutes(app, apiLogs);
+startMonitoring(app.log);
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, 'Shutting down');

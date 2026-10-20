@@ -78,7 +78,8 @@ export async function registerPlanRoutes(app: FastifyInstance) {
     };
     const config = await prisma.instanceConfig.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
     await superAdminAudit(request, session, 'instance.config', null, null, data);
-    return config;
+    const { alertWebhookUrl: _webhook, ...visible } = config;
+    return visible;
   });
 
   // ------------------------------------------ super: Discord subscriptions
@@ -261,7 +262,7 @@ export async function planOverview(botGuildIds: string[]) {
       select: { guildId: true, planTier: true, planBilling: true, planExpiresAt: true, planSource: true, planNote: true, planUpdatedAt: true }
     })
   ]);
-  const { discordSkus, ...settings } = config;
+  const { discordSkus, alertWebhookUrl: _webhook, ...settings } = config;
   return {
     config: settings,
     statusChannel,

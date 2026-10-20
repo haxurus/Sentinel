@@ -1,5 +1,13 @@
+# Docker keeps container logs in local files: cap them so they never fill the disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   postgres:
+    logging: *logging
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
@@ -23,6 +31,7 @@ services:
       - /var/run/postgresql:rw,nosuid,size=8m
 
   redis:
+    logging: *logging
     image: redis:8-alpine
     restart: unless-stopped
     secrets: [redis_password]
@@ -50,6 +59,7 @@ services:
       - /tmp:rw,noexec,nosuid,size=16m
 
   migrate:
+    logging: *logging
     build:
       context: .
       target: migrate
@@ -74,6 +84,7 @@ services:
     pids_limit: 100
 
   secure-db:
+    logging: *logging
     image: postgres:17-alpine
     restart: "no"
     environment:
@@ -98,6 +109,7 @@ services:
     pids_limit: 50
 
   api:
+    logging: *logging
     build:
       context: .
       target: runtime
@@ -136,6 +148,7 @@ services:
     cpus: 1.0
 
   bot:
+    logging: *logging
     build:
       context: .
       target: runtime
@@ -172,6 +185,7 @@ services:
     cpus: 1.5
 
   web:
+    logging: *logging
     build:
       context: .
       target: runtime
@@ -197,6 +211,7 @@ services:
     cpus: 1.0
 
   caddy:
+    logging: *logging
     profiles: ["standalone"]
     image: caddy:2.10-alpine
     restart: unless-stopped
