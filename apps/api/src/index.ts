@@ -8,6 +8,7 @@ import { prisma } from '@sentinel/db';
 import { EVENT_CATALOG, createLogBuffer, tierAllows } from '@sentinel/shared';
 import pino from 'pino';
 import { registerMonitoringRoutes, startMonitoring } from './monitoring.js';
+import { registerAlertRoutes, startAlerting } from './alerting.js';
 import { config } from './config.js';
 import { createSession, destroySession, isSuperAdminUserId, randomToken, requireGuild, requireSession, requireSuperAdmin, resolveGuildAccess, type OAuthGuild } from './auth.js';
 import { getBotGuilds, getGuildResources, leaveBotGuild } from './discord.js';
@@ -792,7 +793,9 @@ app.get('/api/guilds/:guildId/export', async (request, reply) => {
 
 await registerPlanRoutes(app);
 await registerMonitoringRoutes(app, apiLogs);
+await registerAlertRoutes(app);
 startMonitoring(app.log);
+startAlerting(app.log);
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, 'Shutting down');

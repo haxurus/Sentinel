@@ -96,6 +96,8 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
     }[reason];
     status.notify({
       level: 'warn',
+      category: 'security',
+      severity: 'warning',
       title: 'Installazione rifiutata',
       description: `Sentinel è uscito da **${guild.name}**: ${why}.`,
       fields: [
@@ -124,6 +126,8 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
     await ensureGuild(guild);
     status.notify({
       level: 'ok',
+      category: 'installations',
+      severity: 'info',
       title: 'Sentinel aggiunto a un server',
       fields: [
         { name: 'Server', value: `${guild.name}\n\`${guild.id}\`` },
@@ -744,6 +748,8 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
     if (!intentionalLeaves.delete(guild.id)) {
       status.notify({
         level: 'info',
+        category: 'installations',
+        severity: 'info',
         title: 'Sentinel rimosso da un server',
         fields: [{ name: 'Server', value: `${guild.name ?? 'sconosciuto'}\n\`${guild.id}\`` }]
       });

@@ -103,6 +103,7 @@ model LogEvent {
   @@index([guildId, createdAt(sort: Desc)])
   @@index([guildId, eventKey, createdAt(sort: Desc)])
   @@index([guildId, dispatchState, createdAt(sort: Desc)])
+  @@index([dispatchState, createdAt])
   @@index([actorId])
   @@index([targetId])
   @@index([channelId])
@@ -214,6 +215,9 @@ model InstanceConfig {
   discordSkus    Json     @default("{}")
   // Discord webhook for alarms that must work when the bot is down (encrypted).
   alertWebhookUrl String?
+  // Alert routing, quiet hours and daily digest (see apps/api/src/alert-rules.ts).
+  alertSettings  Json      @default("{}")
+  lastDigestAt   DateTime?
   updatedAt      DateTime @updatedAt
 }
 
@@ -281,12 +285,39 @@ model Coupon {
 // servers added, removed or rejected, quotas, bot down/restored. The bot can
 // only insert; description and fields are encrypted in `details`.
 model InstanceEvent {
-  id        String   @id @default(cuid())
-  source    String
-  level     String
-  title     String
-  details   Json
-  createdAt DateTime @default(now())
+  id            String    @id @default(cuid())
+  source        String
+  level         String
+  // Routing: category (where it goes) and severity (how loudly).
+  category      String    @default("errors")
+  severity      String    @default("info")
+  title         String
+  details       Json
+  // pending → sent | digest → digested | log | failed
+  deliveryState String    @default("pending")
+  deliveredAt   DateTime?
+  createdAt     DateTime  @default(now())
 
   @@index([createdAt(sort: Desc)])
+  @@index([deliveryState, createdAt])
+}
+
+// A problem that lasts: opened and resolved by key (bot.down, discord.sync,
+// delivery.backlog, ...), reminded until resolved or acknowledged.
+model Incident {
+  id                String    @id @default(cuid())
+  key               String
+  category          String
+  severity          String
+  title             String
+  description       String?
+  openedAt          DateTime  @default(now())
+  resolvedAt        DateTime?
+  acknowledgedAt    DateTime?
+  acknowledgedBy    String?
+  lastRemindedAt    DateTime?
+  reminders         Int       @default(0)
+
+  @@index([key, resolvedAt])
+  @@index([openedAt(sort: Desc)])
 }

@@ -88,6 +88,37 @@ const copy = {
       url: 'Link: server Discord, sito o modulo (https)',
       save: 'Salva recapiti'
     },
+    alerts: {
+      routingTitle: 'Instradamento degli allarmi',
+      routingText: 'Scegli dove va ogni categoria. Gli avvisi uguali entro 10 minuti diventano un solo messaggio; i critici ti menzionano e ignorano gli orari di silenzio. “Bot giù” lo segnala il monitor esterno (e il webhook, se impostato).',
+      categories: { availability: 'Disponibilità', security: 'Sicurezza', errors: 'Errori', delivery: 'Consegna dei log', billing: 'Abbonamenti', installations: 'Installazioni', usage: 'Utilizzo' },
+      modes: { status: 'Canale di stato', channel: 'Altro canale', digest: 'Riepilogo giornaliero', log: 'Solo registro' },
+      server: 'Server',
+      channel: 'Canale',
+      choose: 'Scegli…',
+      mention: 'Menzionami per i critici',
+      quiet: 'Orari di silenzio',
+      quietText: 'In questa fascia arrivano solo gli avvisi critici; gli altri partono tutti insieme alla fine.',
+      from: 'Dalle',
+      to: 'alle',
+      timezone: 'Fuso orario',
+      digest: 'Riepilogo giornaliero',
+      digestText: 'Un messaggio al giorno con il conteggio degli avvisi informativi.',
+      digestAt: 'Ora di invio',
+      digestWhere: 'Destinazione',
+      save: 'Salva instradamento',
+      incidents: 'Incidenti',
+      incidentsText: 'Problemi che durano: restano aperti finché non si risolvono e mandano promemoria dopo 15 minuti, dopo un’ora e poi ogni 6 ore, finché non li segni come presi in carico.',
+      open: 'Aperti',
+      none: 'Nessun incidente aperto.',
+      recent: 'Risolti di recente',
+      ack: 'Preso in carico',
+      acked: 'preso in carico da',
+      openedAt: 'aperto',
+      resolvedAt: 'risolto',
+      reminders: 'promemoria',
+      states: { pending: 'in attesa', sent: 'inviato', digest: 'nel riepilogo', digested: 'riepilogato', log: 'solo registro', failed: 'non consegnato' }
+    },
     monitor: {
       title: 'Stato e allarmi',
       text: 'L’API controlla il bot ogni 30 secondi. Se non risponde per circa due minuti invia un allarme al webhook qui sotto, e un altro quando torna attivo. Gli avvisi passano da un webhook perché devono arrivare proprio quando il bot è fermo.',
@@ -138,7 +169,7 @@ const copy = {
     },
     status: {
       title: 'Canale notifiche di stato',
-      text: 'Il bot invia qui avvio, errori, warning, quote raggiunte e server aggiunti, rimossi o rifiutati. Non sono più visibili nei singoli server.',
+      text: 'Destinazione predefinita degli allarmi: in Monitoraggio scegli quali categorie arrivano qui, in un altro canale o nel riepilogo giornaliero. Non sono mai visibili nei server registrati.',
       guild: 'Server',
       channel: 'Canale',
       choose: 'Scegli…',
@@ -176,6 +207,7 @@ const copy = {
     errors: {
       INVALID_SKU: 'ID SKU non valido (17-20 cifre).',
       INVALID_WEBHOOK: 'URL del webhook non valido: copialo da Integrazioni → Webhook.',
+      CHANNEL_REQUIRED: 'Scegli server e canale per ogni categoria impostata su “Altro canale”.',
       WEBHOOK_NOT_SET: 'Nessun webhook configurato.',
       WEBHOOK_FAILED: 'Discord ha rifiutato il messaggio: controlla che il webhook esista ancora.',
       DUPLICATE_SKU: 'Lo stesso SKU non può valere per due piani.',
@@ -228,6 +260,37 @@ const copy = {
       url: 'Link: Discord server, website or form (https)',
       save: 'Save contacts'
     },
+    alerts: {
+      routingTitle: 'Alert routing',
+      routingText: 'Choose where each category goes. Identical alerts within 10 minutes become a single message; critical ones mention you and ignore quiet hours. “Bot down” is reported by the external monitor (and by the webhook, if set).',
+      categories: { availability: 'Availability', security: 'Security', errors: 'Errors', delivery: 'Log delivery', billing: 'Subscriptions', installations: 'Installations', usage: 'Usage' },
+      modes: { status: 'Status channel', channel: 'Another channel', digest: 'Daily digest', log: 'Log only' },
+      server: 'Server',
+      channel: 'Channel',
+      choose: 'Choose…',
+      mention: 'Mention me for critical alerts',
+      quiet: 'Quiet hours',
+      quietText: 'Only critical alerts arrive in this window; the others leave together when it ends.',
+      from: 'From',
+      to: 'to',
+      timezone: 'Time zone',
+      digest: 'Daily digest',
+      digestText: 'One message a day with the count of informational alerts.',
+      digestAt: 'Send at',
+      digestWhere: 'Destination',
+      save: 'Save routing',
+      incidents: 'Incidents',
+      incidentsText: 'Problems that last: they stay open until resolved and send reminders after 15 minutes, after an hour and then every 6 hours, until you acknowledge them.',
+      open: 'Open',
+      none: 'No open incidents.',
+      recent: 'Recently resolved',
+      ack: 'Acknowledge',
+      acked: 'acknowledged by',
+      openedAt: 'opened',
+      resolvedAt: 'resolved',
+      reminders: 'reminders',
+      states: { pending: 'pending', sent: 'sent', digest: 'in digest', digested: 'digested', log: 'log only', failed: 'not delivered' }
+    },
     monitor: {
       title: 'Status and alarms',
       text: 'The API checks the bot every 30 seconds. If it does not answer for about two minutes, an alarm is posted to the webhook below, and another one when it is back. Alarms use a webhook because they must arrive precisely when the bot is not running.',
@@ -278,7 +341,7 @@ const copy = {
     },
     status: {
       title: 'Status notification channel',
-      text: 'The bot posts startup, errors, warnings, reached quotas and servers added, removed or rejected here. They are no longer visible in individual servers.',
+      text: 'Default destination for alerts: in Monitoring choose which categories arrive here, in another channel or in the daily digest. They are never visible in the logged servers.',
       guild: 'Server',
       channel: 'Channel',
       choose: 'Choose…',
@@ -316,6 +379,7 @@ const copy = {
     errors: {
       INVALID_SKU: 'Invalid SKU ID (17-20 digits).',
       INVALID_WEBHOOK: 'Invalid webhook URL: copy it from Integrations → Webhooks.',
+      CHANNEL_REQUIRED: 'Choose a server and a channel for every category set to “Another channel”.',
       WEBHOOK_NOT_SET: 'No webhook configured.',
       WEBHOOK_FAILED: 'Discord rejected the message: check that the webhook still exists.',
       DUPLICATE_SKU: 'The same SKU cannot be used for two plans.',
@@ -434,7 +498,7 @@ export default function SuperConsole({ locale }: { locale: Locale }) {
             </nav>
 
             {tab === 'servers' && <ServersTab data={data} c={c} locale={locale} action={action} fmt={fmt} />}
-            {tab === 'monitor' && <MonitorTab c={c} action={action} fmt={fmt} setStatus={setStatus} />}
+            {tab === 'monitor' && <MonitorTab data={data} c={c} action={action} fmt={fmt} setStatus={setStatus} />}
             {tab === 'logs' && <LogsTab c={c} fmt={fmt} />}
             {tab === 'contacts' && <ContactsTab data={data} c={c} action={action} />}
             {tab === 'discord' && <DiscordTab data={data} c={c} locale={locale} action={action} fmt={fmt} />}
@@ -574,14 +638,14 @@ function PlanEditor({ guild, c, locale, action, onDone }: { guild: Guild; c: Cop
 
 /* ------------------------------------------------------------------ monitor */
 
-type MonitorEvent = { id: string; source: string; level: string; title: string; description: string | null; fields: Array<{ name: string; value: string }>; createdAt: string };
+type MonitorEvent = { id: string; source: string; level: string; category: string; severity: string; deliveryState: string; title: string; description: string | null; fields: Array<{ name: string; value: string }>; createdAt: string };
 type Monitor = {
   bot: { status: 'unknown' | 'up' | 'down'; since: string; lastCheck: string | null; guilds: number | null };
   events: MonitorEvent[];
   webhook: { configured: boolean; hint: string | null };
 };
 
-function MonitorTab({ c, action, fmt, setStatus }: { c: Copy; action: Action; fmt: (value: string) => string; setStatus: SetStatus }) {
+function MonitorTab({ data, c, action, fmt, setStatus }: { data: Overview; c: Copy; action: Action; fmt: (value: string) => string; setStatus: SetStatus }) {
   const [monitor, setMonitor] = useState<Monitor | null>(null);
   const [url, setUrl] = useState('');
   const load = useCallback(() => fetch('/backend/api/super/monitor').then((response) => response.ok ? response.json() : null).then((value) => { if (value) setMonitor(value); }).catch(() => null), []);
@@ -624,15 +688,19 @@ function MonitorTab({ c, action, fmt, setStatus }: { c: Copy; action: Action; fm
         </div>
       </section>
 
+      <IncidentsCard c={c} action={action} fmt={fmt} />
+      <RoutingCard data={data} c={c} action={action} />
+
       <section className="card">
         <div className="card-head"><div><span className="kicker">{c.tabs.monitor}</span><h2>{c.monitor.events}</h2><p>{c.monitor.eventsText}</p></div></div>
         {monitor && !monitor.events.length && <div className="empty">{c.monitor.noEvents}</div>}
         <div className="log-table">
           {monitor?.events.map((event) => (
             <div className="log-row event-row" key={event.id}>
-              <span className={`level-badge level-${event.level}`}>{event.level}</span>
+              <span className={`level-badge level-${event.level}`}>{event.severity}</span>
               <div>
                 <strong>{event.title}</strong>
+                <span className="event-meta">{c.alerts.categories[event.category as AlertCategoryKey] ?? event.category} · {c.alerts.states[event.deliveryState as keyof Copy['alerts']['states']] ?? event.deliveryState}</span>
                 {event.description && <span>{event.description}</span>}
                 {event.fields.map((field) => <span key={field.name} className="event-field"><b>{field.name}:</b> {field.value}</span>)}
               </div>
@@ -643,6 +711,154 @@ function MonitorTab({ c, action, fmt, setStatus }: { c: Copy; action: Action; fm
         </div>
       </section>
     </>
+  );
+}
+
+/* ------------------------------------------------------------------- alerts */
+
+const ALERT_CATEGORY_KEYS = ['availability', 'security', 'errors', 'delivery', 'billing', 'installations', 'usage'] as const;
+type AlertCategoryKey = (typeof ALERT_CATEGORY_KEYS)[number];
+type RouteMode = 'status' | 'channel' | 'digest' | 'log';
+type AlertRoute = { mode: RouteMode; guildId: string | null; channelId: string | null; mention: boolean };
+type AlertSettings = {
+  routes: Record<AlertCategoryKey, AlertRoute>;
+  quietHours: { enabled: boolean; start: string; end: string };
+  digest: { time: string; mode: 'status' | 'channel'; guildId: string | null; channelId: string | null };
+  timezone: string;
+};
+type Incident = { id: string; key: string; category: string; severity: string; title: string; description: string | null; openedAt: string; resolvedAt: string | null; acknowledgedAt: string | null; acknowledgedBy: string | null; reminders: number };
+type AlertsData = { settings: AlertSettings; incidents: { open: Incident[]; recent: Incident[] }; mentionAvailable: boolean };
+
+function useAlerts() {
+  const [alerts, setAlerts] = useState<AlertsData | null>(null);
+  const load = useCallback(() => fetch('/backend/api/super/alerts').then((response) => response.ok ? response.json() : null).then((value) => { if (value) setAlerts(value); }).catch(() => null), []);
+  useEffect(() => { void load(); }, [load]);
+  return { alerts, load };
+}
+
+/** Text channels of a server the bot is in, loaded on demand. */
+function useChannels(guildId: string | null) {
+  const [channels, setChannels] = useState<Array<{ id: string; name: string }>>([]);
+  useEffect(() => {
+    if (!guildId) { setChannels([]); return; }
+    let cancelled = false;
+    fetch(`/backend/api/super/status-channel/channels?guildId=${guildId}`)
+      .then((response) => response.ok ? response.json() : [])
+      .then((rows) => { if (!cancelled) setChannels(rows); })
+      .catch(() => { if (!cancelled) setChannels([]); });
+    return () => { cancelled = true; };
+  }, [guildId]);
+  return channels;
+}
+
+function ChannelPicker({ data, c, guildId, channelId, onChange }: { data: Overview; c: Copy; guildId: string | null; channelId: string | null; onChange: (guildId: string | null, channelId: string | null) => void }) {
+  const channels = useChannels(guildId);
+  return (
+    <div className="inline-fields alert-picker">
+      <label>{c.alerts.server}<select value={guildId ?? ''} onChange={(e) => onChange(e.target.value || null, null)}>
+        <option value="">{c.alerts.choose}</option>
+        {data.guilds.map((guild) => <option key={guild.id} value={guild.id}>{guild.name}</option>)}
+      </select></label>
+      <label>{c.alerts.channel}<select value={channelId ?? ''} disabled={!guildId} onChange={(e) => onChange(guildId, e.target.value || null)}>
+        <option value="">{c.alerts.choose}</option>
+        {channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
+      </select></label>
+    </div>
+  );
+}
+
+function IncidentsCard({ c, action, fmt }: { c: Copy; action: Action; fmt: (value: string) => string }) {
+  const { alerts, load } = useAlerts();
+  useEffect(() => {
+    const timer = window.setInterval(() => void load(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+  const ack = (incident: Incident) => action(`/backend/api/super/incidents/${incident.id}/ack`, { method: 'POST', body: '{}' }, { reload: false }).then(() => void load(), ignore);
+  const row = (incident: Incident, open: boolean) => (
+    <div className="log-row event-row" key={incident.id}>
+      <span className={`level-badge level-${incident.severity === 'critical' ? 'error' : incident.severity === 'warning' ? 'warn' : 'info'}`}>{incident.severity}</span>
+      <div>
+        <strong>{incident.title}</strong>
+        {incident.description && <span>{incident.description}</span>}
+        <span className="event-meta">
+          {c.alerts.categories[incident.category as AlertCategoryKey] ?? incident.category} · {c.alerts.openedAt} {fmt(incident.openedAt)}
+          {incident.resolvedAt ? ` · ${c.alerts.resolvedAt} ${fmt(incident.resolvedAt)}` : ''}
+          {incident.reminders ? ` · ${incident.reminders} ${c.alerts.reminders}` : ''}
+          {incident.acknowledgedAt ? ` · ${c.alerts.acked} ${incident.acknowledgedBy ?? '—'}` : ''}
+        </span>
+      </div>
+      <span className="mono">{incident.key}</span>
+      {open && !incident.acknowledgedAt ? <button className="button button-sm button-secondary" onClick={() => ack(incident)}>{c.alerts.ack}</button> : <span />}
+    </div>
+  );
+  return (
+    <section className="card">
+      <div className="card-head"><div><span className="kicker">{c.tabs.monitor}</span><h2>{c.alerts.incidents}</h2><p>{c.alerts.incidentsText}</p></div></div>
+      <h3 className="console-subtitle">{c.alerts.open}</h3>
+      {alerts && !alerts.incidents.open.length && <div className="empty">{c.alerts.none}</div>}
+      <div className="log-table">{alerts?.incidents.open.map((incident) => row(incident, true))}</div>
+      {alerts && alerts.incidents.recent.length > 0 && <>
+        <h3 className="console-subtitle">{c.alerts.recent}</h3>
+        <div className="log-table">{alerts.incidents.recent.map((incident) => row(incident, false))}</div>
+      </>}
+    </section>
+  );
+}
+
+function RoutingCard({ data, c, action }: { data: Overview; c: Copy; action: Action }) {
+  const { alerts } = useAlerts();
+  const [draft, setDraft] = useState<AlertSettings | null>(null);
+  useEffect(() => { if (alerts && !draft) setDraft(alerts.settings); }, [alerts, draft]);
+  if (!draft) return null;
+
+  const setRoute = (category: AlertCategoryKey, patch: Partial<AlertRoute>) =>
+    setDraft({ ...draft, routes: { ...draft.routes, [category]: { ...draft.routes[category], ...patch } } });
+  const save = () => action('/backend/api/super/alerts/settings', { method: 'PUT', body: JSON.stringify(draft) }, { reload: false })
+    .then((body) => { if (body.settings) setDraft(body.settings as AlertSettings); }, ignore);
+
+  return (
+    <section className="card">
+      <div className="card-head"><div><span className="kicker">{c.tabs.monitor}</span><h2>{c.alerts.routingTitle}</h2><p>{c.alerts.routingText}</p></div></div>
+      <div className="alert-routes">
+        {ALERT_CATEGORY_KEYS.map((category) => {
+          const route = draft.routes[category];
+          return (
+            <div className="alert-route" key={category}>
+              <strong>{c.alerts.categories[category]}</strong>
+              <select value={route.mode} onChange={(e) => setRoute(category, { mode: e.target.value as RouteMode, ...(e.target.value === 'channel' ? {} : { guildId: null, channelId: null }) })}>
+                {(['status', 'channel', 'digest', 'log'] as const).map((mode) => <option key={mode} value={mode}>{c.alerts.modes[mode]}</option>)}
+              </select>
+              {alerts?.mentionAvailable && (route.mode === 'status' || route.mode === 'channel') && (
+                <label className="check"><input type="checkbox" checked={route.mention} onChange={(e) => setRoute(category, { mention: e.target.checked })} />{c.alerts.mention}</label>
+              )}
+              {route.mode === 'channel' && <ChannelPicker data={data} c={c} guildId={route.guildId} channelId={route.channelId} onChange={(guildId, channelId) => setRoute(category, { guildId, channelId })} />}
+            </div>
+          );
+        })}
+      </div>
+
+      <h3 className="console-subtitle">{c.alerts.quiet}</h3>
+      <p className="muted">{c.alerts.quietText}</p>
+      <div className="inline-fields">
+        <label className="check"><input type="checkbox" checked={draft.quietHours.enabled} onChange={(e) => setDraft({ ...draft, quietHours: { ...draft.quietHours, enabled: e.target.checked } })} />{c.alerts.quiet}</label>
+        <label>{c.alerts.from}<input type="time" value={draft.quietHours.start} onChange={(e) => setDraft({ ...draft, quietHours: { ...draft.quietHours, start: e.target.value } })} /></label>
+        <label>{c.alerts.to}<input type="time" value={draft.quietHours.end} onChange={(e) => setDraft({ ...draft, quietHours: { ...draft.quietHours, end: e.target.value } })} /></label>
+        <label>{c.alerts.timezone}<input value={draft.timezone} onChange={(e) => setDraft({ ...draft, timezone: e.target.value })} placeholder="Europe/Rome" /></label>
+      </div>
+
+      <h3 className="console-subtitle">{c.alerts.digest}</h3>
+      <p className="muted">{c.alerts.digestText}</p>
+      <div className="inline-fields">
+        <label>{c.alerts.digestAt}<input type="time" value={draft.digest.time} onChange={(e) => setDraft({ ...draft, digest: { ...draft.digest, time: e.target.value } })} /></label>
+        <label>{c.alerts.digestWhere}<select value={draft.digest.mode} onChange={(e) => setDraft({ ...draft, digest: { ...draft.digest, mode: e.target.value as 'status' | 'channel', ...(e.target.value === 'channel' ? {} : { guildId: null, channelId: null }) } })}>
+          <option value="status">{c.alerts.modes.status}</option>
+          <option value="channel">{c.alerts.modes.channel}</option>
+        </select></label>
+      </div>
+      {draft.digest.mode === 'channel' && <ChannelPicker data={data} c={c} guildId={draft.digest.guildId} channelId={draft.digest.channelId} onChange={(guildId, channelId) => setDraft({ ...draft, digest: { ...draft.digest, guildId, channelId } })} />}
+
+      <button className="button button-primary" onClick={save}>{c.alerts.save}</button>
+    </section>
   );
 }
 
