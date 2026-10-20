@@ -116,15 +116,30 @@ keep_refs() {
 
 # Each deploy pulls ~1-2 GB of immutable images that were never removed; on
 # 2026-10-06 they filled the disk (97/99 GB) and crashed PostgreSQL.
+#
+# Images are compared and removed by image ID: with Docker's containerd image
+# store a repo@digest reference may not match what `image rm` expects, which
+# silently left old releases behind. IDs used by any container (running or
+# stopped) and the IDs of the current and previous release are kept; every
+# failed removal is logged with Docker's reason.
+image_id() {
+  docker image inspect --format '{{.Id}}' "$1" 2>/dev/null || true
+}
+
 prune_images() {
-  keep="$(keep_refs "$@")"
-  docker image ls --no-trunc --format '{{.Repository}}@{{.Digest}}' ghcr.io/haxurus/sentinel 2>/dev/null |
-    while IFS= read -r ref; do
-      case "$ref" in *@sha256:*) ;; *) continue ;; esac
-      printf '%s
-' "$keep" | grep -Fxq "$ref" && continue
-      docker image rm "$ref" >/dev/null 2>&1 || true
-    done
+  keep_ids="$(keep_refs "$@" | while IFS= read -r ref; do [ -n "$ref" ] && image_id "$ref"; done)"
+  used_ids="$(docker ps -aq 2>/dev/null | while IFS= read -r cid; do docker inspect --format '{{.Image}}' "$cid" 2>/dev/null || true; done)"
+  removed=0
+  for id in $(docker image ls --no-trunc --quiet ghcr.io/haxurus/sentinel 2>/dev/null | sort -u); do
+    printf '%s\n' "$keep_ids" | grep -Fxq "$id" && continue
+    printf '%s\n' "$used_ids" | grep -Fxq "$id" && continue
+    if reason="$(docker image rm --force "$id" 2>&1 >/dev/null)"; then
+      removed=$((removed + 1))
+    else
+      log "could not remove image ${id#sha256:}: $(printf '%s' "$reason" | head -n 1)"
+    fi
+  done
+  if [ "$removed" -gt 0 ]; then log "removed $removed old Sentinel image(s)"; fi
   docker image prune -f >/dev/null 2>&1 || true
 }
 
