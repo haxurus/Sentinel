@@ -44,7 +44,7 @@ type Overview = {
   planCatalog: Plan[];
   discord: DiscordOverview;
 };
-type Tab = 'servers' | 'contacts' | 'discord' | 'status' | 'blacklist' | 'audit';
+type Tab = 'servers' | 'monitor' | 'logs' | 'contacts' | 'discord' | 'status' | 'blacklist' | 'audit';
 
 const copy = {
   it: {
@@ -53,7 +53,7 @@ const copy = {
     intro: 'Area riservata al proprietario dell’istanza. Le azioni qui sotto hanno effetto su tutti i server collegati al bot.',
     dashboard: 'Dashboard',
     pricing: 'Prezzi',
-    tabs: { servers: 'Server e piani', contacts: 'Contatti', discord: 'Abbonamenti Discord', status: 'Notifiche', blacklist: 'Blacklist', audit: 'Audit' },
+    tabs: { servers: 'Server e piani', monitor: 'Monitoraggio', logs: 'Log', contacts: 'Contatti', discord: 'Abbonamenti Discord', status: 'Notifiche', blacklist: 'Blacklist', audit: 'Audit' },
     liveServers: 'Server collegati',
     liveServersText: 'Elenco live dalla sessione Discord del bot. Da qui assegni il piano di ogni server.',
     members: 'membri',
@@ -87,6 +87,38 @@ const copy = {
       discord: 'Discord (username o link https)',
       url: 'Link: server Discord, sito o modulo (https)',
       save: 'Salva recapiti'
+    },
+    monitor: {
+      title: 'Stato e allarmi',
+      text: 'L’API controlla il bot ogni 30 secondi. Se non risponde per circa due minuti invia un allarme al webhook qui sotto, e un altro quando torna attivo. Gli avvisi passano da un webhook perché devono arrivare proprio quando il bot è fermo.',
+      bot: 'Bot',
+      up: 'Connesso',
+      down: 'Non raggiungibile',
+      unknown: 'In verifica',
+      since: 'dal',
+      lastCheck: 'ultimo controllo',
+      servers: 'server',
+      webhook: 'Webhook Discord per gli allarmi',
+      webhookHelp: 'In un canale privato: Modifica canale → Integrazioni → Webhook → Nuovo webhook → Copia URL.',
+      webhookSet: 'Webhook configurato',
+      webhookNotSet: 'Nessun webhook: gli allarmi restano solo nel registro eventi.',
+      save: 'Salva webhook',
+      remove: 'Rimuovi',
+      test: 'Invia prova',
+      testOk: 'Messaggio di prova inviato.',
+      events: 'Eventi dell’istanza',
+      eventsText: 'Avvio e errori del bot, server aggiunti, rimossi o rifiutati, quote raggiunte, bot giù e ripristinato. Conservati 90 giorni.',
+      noEvents: 'Nessun evento registrato.',
+      refresh: 'Aggiorna'
+    },
+    logs: {
+      title: 'Log recenti',
+      text: 'Le ultime righe di log di bot e API dall’ultimo riavvio, già ripulite da token e segreti. Restano solo in memoria; i file di Docker sono limitati a 50 MB per servizio.',
+      service: 'Servizio',
+      level: 'Livello minimo',
+      empty: 'Nessuna riga per questo filtro.',
+      refresh: 'Aggiorna',
+      auto: 'Aggiornamento automatico'
     },
     discord: {
       title: 'Abbonamenti Discord',
@@ -143,6 +175,9 @@ const copy = {
     guild: 'Server',
     errors: {
       INVALID_SKU: 'ID SKU non valido (17-20 cifre).',
+      INVALID_WEBHOOK: 'URL del webhook non valido: copialo da Integrazioni → Webhook.',
+      WEBHOOK_NOT_SET: 'Nessun webhook configurato.',
+      WEBHOOK_FAILED: 'Discord ha rifiutato il messaggio: controlla che il webhook esista ancora.',
       DUPLICATE_SKU: 'Lo stesso SKU non può valere per due piani.',
       DISCORD_SYNC_FAILED: 'Sincronizzazione non riuscita: il bot non ha potuto leggere gli abbonamenti.',
       EXPIRY_IN_PAST: 'La scadenza è nel passato.',
@@ -158,7 +193,7 @@ const copy = {
     intro: 'Instance-owner area. Actions here affect every server connected to the bot.',
     dashboard: 'Dashboard',
     pricing: 'Pricing',
-    tabs: { servers: 'Servers & plans', contacts: 'Contacts', discord: 'Discord subscriptions', status: 'Notifications', blacklist: 'Blacklist', audit: 'Audit' },
+    tabs: { servers: 'Servers & plans', monitor: 'Monitoring', logs: 'Logs', contacts: 'Contacts', discord: 'Discord subscriptions', status: 'Notifications', blacklist: 'Blacklist', audit: 'Audit' },
     liveServers: 'Connected servers',
     liveServersText: 'Live list from the bot Discord session. Assign each server’s plan from here.',
     members: 'members',
@@ -192,6 +227,38 @@ const copy = {
       discord: 'Discord (username or https link)',
       url: 'Link: Discord server, website or form (https)',
       save: 'Save contacts'
+    },
+    monitor: {
+      title: 'Status and alarms',
+      text: 'The API checks the bot every 30 seconds. If it does not answer for about two minutes, an alarm is posted to the webhook below, and another one when it is back. Alarms use a webhook because they must arrive precisely when the bot is not running.',
+      bot: 'Bot',
+      up: 'Connected',
+      down: 'Unreachable',
+      unknown: 'Checking',
+      since: 'since',
+      lastCheck: 'last check',
+      servers: 'servers',
+      webhook: 'Discord webhook for alarms',
+      webhookHelp: 'In a private channel: Edit channel → Integrations → Webhooks → New webhook → Copy URL.',
+      webhookSet: 'Webhook configured',
+      webhookNotSet: 'No webhook: alarms are only kept in the event log.',
+      save: 'Save webhook',
+      remove: 'Remove',
+      test: 'Send test',
+      testOk: 'Test message sent.',
+      events: 'Instance events',
+      eventsText: 'Bot startup and errors, servers added, removed or rejected, quotas reached, bot down and restored. Kept for 90 days.',
+      noEvents: 'No events recorded.',
+      refresh: 'Refresh'
+    },
+    logs: {
+      title: 'Recent logs',
+      text: 'The latest log lines of the bot and the API since their last restart, with tokens and secrets redacted. They stay in memory only; Docker log files are capped at 50 MB per service.',
+      service: 'Service',
+      level: 'Minimum level',
+      empty: 'No lines for this filter.',
+      refresh: 'Refresh',
+      auto: 'Auto refresh'
     },
     discord: {
       title: 'Discord subscriptions',
@@ -248,6 +315,9 @@ const copy = {
     guild: 'Server',
     errors: {
       INVALID_SKU: 'Invalid SKU ID (17-20 digits).',
+      INVALID_WEBHOOK: 'Invalid webhook URL: copy it from Integrations → Webhooks.',
+      WEBHOOK_NOT_SET: 'No webhook configured.',
+      WEBHOOK_FAILED: 'Discord rejected the message: check that the webhook still exists.',
       DUPLICATE_SKU: 'The same SKU cannot be used for two plans.',
       DISCORD_SYNC_FAILED: 'Sync failed: the bot could not read the subscriptions.',
       EXPIRY_IN_PAST: 'The expiry date is in the past.',
@@ -315,6 +385,8 @@ export default function SuperConsole({ locale }: { locale: Locale }) {
 
   const tabs: Array<{ key: Tab; icon: IconName; label: string; badge?: number }> = [
     { key: 'servers', icon: 'grid', label: c.tabs.servers },
+    { key: 'monitor', icon: 'globe', label: c.tabs.monitor },
+    { key: 'logs', icon: 'code', label: c.tabs.logs },
     { key: 'contacts', icon: 'users', label: c.tabs.contacts },
     { key: 'discord', icon: 'key', label: c.tabs.discord },
     { key: 'status', icon: 'bolt', label: c.tabs.status },
@@ -362,6 +434,8 @@ export default function SuperConsole({ locale }: { locale: Locale }) {
             </nav>
 
             {tab === 'servers' && <ServersTab data={data} c={c} locale={locale} action={action} fmt={fmt} />}
+            {tab === 'monitor' && <MonitorTab c={c} action={action} fmt={fmt} setStatus={setStatus} />}
+            {tab === 'logs' && <LogsTab c={c} fmt={fmt} />}
             {tab === 'contacts' && <ContactsTab data={data} c={c} action={action} />}
             {tab === 'discord' && <DiscordTab data={data} c={c} locale={locale} action={action} fmt={fmt} />}
             {tab === 'status' && <StatusTab data={data} c={c} action={action} fmt={fmt} setStatus={setStatus} />}
@@ -495,6 +569,129 @@ function PlanEditor({ guild, c, locale, action, onDone }: { guild: Guild; c: Cop
       <label>{c.plan.note}<input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder={c.plan.notePlaceholder} /></label>
       <button className="button button-primary" onClick={save}>{c.plan.save}</button>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ monitor */
+
+type MonitorEvent = { id: string; source: string; level: string; title: string; description: string | null; fields: Array<{ name: string; value: string }>; createdAt: string };
+type Monitor = {
+  bot: { status: 'unknown' | 'up' | 'down'; since: string; lastCheck: string | null; guilds: number | null };
+  events: MonitorEvent[];
+  webhook: { configured: boolean; hint: string | null };
+};
+
+function MonitorTab({ c, action, fmt, setStatus }: { c: Copy; action: Action; fmt: (value: string) => string; setStatus: SetStatus }) {
+  const [monitor, setMonitor] = useState<Monitor | null>(null);
+  const [url, setUrl] = useState('');
+  const load = useCallback(() => fetch('/backend/api/super/monitor').then((response) => response.ok ? response.json() : null).then((value) => { if (value) setMonitor(value); }).catch(() => null), []);
+
+  useEffect(() => {
+    void load();
+    const timer = window.setInterval(() => void load(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
+  const saveWebhook = (value: string | null) => action('/backend/api/super/alert-webhook', { method: 'PUT', body: JSON.stringify({ url: value }) }, { reload: false })
+    .then(() => { setUrl(''); void load(); }, ignore);
+  const test = () => action('/backend/api/super/alert-webhook/test', { method: 'POST', body: '{}' }, { reload: false, quiet: true })
+    .then(() => setStatus({ kind: 'ok', text: c.monitor.testOk }), ignore);
+
+  const bot = monitor?.bot;
+  const label = bot ? { up: c.monitor.up, down: c.monitor.down, unknown: c.monitor.unknown }[bot.status] : c.monitor.unknown;
+
+  return (
+    <>
+      <section className="card">
+        <div className="card-head">
+          <div><span className="kicker">{c.tabs.monitor}</span><h2>{c.monitor.title}</h2><p>{c.monitor.text}</p></div>
+          <button className="button button-sm button-secondary" onClick={() => void load()}>{c.monitor.refresh}</button>
+        </div>
+        <div className="monitor-status">
+          <span className={`status-dot status-${bot?.status ?? 'unknown'}`} aria-hidden="true" />
+          <strong>{c.monitor.bot}: {label}</strong>
+          {bot && <span>{c.monitor.since} {fmt(bot.since)}{bot.lastCheck ? ` · ${c.monitor.lastCheck} ${fmt(bot.lastCheck)}` : ''}{bot.guilds !== null && bot.status === 'up' ? ` · ${bot.guilds} ${c.monitor.servers}` : ''}</span>}
+        </div>
+        <label>{c.monitor.webhook}
+          <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={monitor?.webhook.configured ? `${c.monitor.webhookSet} (${monitor.webhook.hint})` : 'https://discord.com/api/webhooks/…'} />
+          <small className="field-help">{c.monitor.webhookHelp}</small>
+        </label>
+        {!monitor?.webhook.configured && <p className="muted">{c.monitor.webhookNotSet}</p>}
+        <div className="guide-actions">
+          <button className="button button-primary" disabled={!url.trim()} onClick={() => saveWebhook(url.trim())}>{c.monitor.save}</button>
+          {monitor?.webhook.configured && <button className="button button-secondary" onClick={test}>{c.monitor.test}</button>}
+          {monitor?.webhook.configured && <button className="button button-danger" onClick={() => saveWebhook(null)}>{c.monitor.remove}</button>}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-head"><div><span className="kicker">{c.tabs.monitor}</span><h2>{c.monitor.events}</h2><p>{c.monitor.eventsText}</p></div></div>
+        {monitor && !monitor.events.length && <div className="empty">{c.monitor.noEvents}</div>}
+        <div className="log-table">
+          {monitor?.events.map((event) => (
+            <div className="log-row event-row" key={event.id}>
+              <span className={`level-badge level-${event.level}`}>{event.level}</span>
+              <div>
+                <strong>{event.title}</strong>
+                {event.description && <span>{event.description}</span>}
+                {event.fields.map((field) => <span key={field.name} className="event-field"><b>{field.name}:</b> {field.value}</span>)}
+              </div>
+              <span className="mono">{event.source}</span>
+              <time className="mono">{fmt(event.createdAt)}</time>
+            </div>
+          ))}
+        </div>
+      </section>
+    </>
+  );
+}
+
+/* --------------------------------------------------------------------- logs */
+
+type LogLine = { time: string; level: string; msg: string; context: Record<string, unknown> | null };
+
+function LogsTab({ c, fmt }: { c: Copy; fmt: (value: string) => string }) {
+  const [service, setService] = useState<'bot' | 'api'>('bot');
+  const [level, setLevel] = useState('info');
+  const [auto, setAuto] = useState(false);
+  const [lines, setLines] = useState<LogLine[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  const load = useCallback(() => {
+    const query = new URLSearchParams({ service, level, limit: '300' });
+    return fetch(`/backend/api/super/logs?${query}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error(String(response.status))))
+      .then((value: { entries: LogLine[] }) => { setLines(value.entries); setFailed(false); })
+      .catch(() => setFailed(true));
+  }, [service, level]);
+
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!auto) return;
+    const timer = window.setInterval(() => void load(), 10_000);
+    return () => window.clearInterval(timer);
+  }, [auto, load]);
+
+  return (
+    <section className="card">
+      <div className="card-head"><div><span className="kicker">{c.tabs.logs}</span><h2>{c.logs.title}</h2><p>{c.logs.text}</p></div></div>
+      <div className="inline-fields">
+        <label>{c.logs.service}<select value={service} onChange={(e) => setService(e.target.value as 'bot' | 'api')}><option value="bot">Bot</option><option value="api">API</option></select></label>
+        <label>{c.logs.level}<select value={level} onChange={(e) => setLevel(e.target.value)}>{['debug', 'info', 'warn', 'error'].map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+        <label className="check"><input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />{c.logs.auto}</label>
+        <button className="button button-sm button-secondary" onClick={() => void load()}>{c.logs.refresh}</button>
+      </div>
+      {failed && <div className="notice notice-error">{c.errors.BOT_UNAVAILABLE}</div>}
+      {lines && !lines.length && <div className="empty">{c.logs.empty}</div>}
+      <div className="log-lines">
+        {lines?.map((line, index) => (
+          <details className={`log-line level-${line.level}`} key={`${line.time}-${index}`}>
+            <summary><time className="mono">{fmt(line.time)}</time><span className={`level-badge level-${line.level}`}>{line.level}</span><span className="log-msg">{line.msg || '—'}</span></summary>
+            {line.context && <pre>{JSON.stringify(line.context, null, 2)}</pre>}
+          </details>
+        ))}
+      </div>
+    </section>
   );
 }
 

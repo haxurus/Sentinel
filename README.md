@@ -201,7 +201,11 @@ The full list of limits lives in [`packages/shared/src/plans.ts`](packages/share
 - public contact details shown on the pricing page;
 - **Discord subscriptions**: the SKU ID of each plan and billing period, the last sync and a manual "sync now";
 - the **status channel**: one server and channel, chosen among those the bot can see, that receives bot startup, errors, warnings, reached quotas and servers added, removed or rejected — these notices are no longer posted in individual servers;
+- **monitoring**: the bot watchdog (checked every 30 seconds by the API) with *down* and *restored* alarms posted to a Discord webhook, which works even when the bot is stopped, and the feed of instance events (startup, errors, servers added, removed or rejected, quotas), kept for 90 days;
+- **logs**: the latest log lines of the bot and the API since their last restart, redacted and kept in memory only; Docker log files are capped at 5 × 10 MB per service;
 - installation blacklist and an audit log of every action, including automatic plan expiries.
+
+For an external uptime monitor, `/backend/health` reports the API and the database and `/backend/health/bot` the bot's connection to Discord (200 or 503, no details).
 
 ## Discord limitations
 

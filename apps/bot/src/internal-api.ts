@@ -3,6 +3,8 @@ import http from 'node:http';
 import { DiscordAPIError, Routes, type Client } from 'discord.js';
 import { editOwnGuildProfile, leaveGuild } from './discord-actions.js';
 import type { StatusNotifier } from './status.js';
+import { LOG_LEVEL_RANK, type LogLevelName } from '@sentinel/shared';
+import { logBuffer } from './logger.js';
 
 const SNOWFLAKE = /^\d{17,20}$/;
 
@@ -105,6 +107,14 @@ export function startInternalApi(client: Client, secret: string, port = 3002, st
           iconUrl: guild.iconURL()
         })).sort((a, b) => a.name.localeCompare(b.name));
         res.end(JSON.stringify(guilds));
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/logs') {
+        const requested = url.searchParams.get('level') ?? 'info';
+        const level = (requested in LOG_LEVEL_RANK ? requested : 'info') as LogLevelName;
+        const limit = Math.min(1_000, Math.max(1, Number(url.searchParams.get('limit')) || 500));
+        res.end(JSON.stringify(logBuffer.list(level, limit)));
         return;
       }
 

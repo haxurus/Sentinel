@@ -1,7 +1,15 @@
 name: sentinel
 
+# Docker keeps container logs in local files: cap them so they never fill the disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   postgres:
+    logging: *logging
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
@@ -25,6 +33,7 @@ services:
       - /var/run/postgresql:rw,nosuid,size=8m
 
   redis:
+    logging: *logging
     image: redis:8-alpine
     restart: unless-stopped
     secrets: [redis_password]
@@ -52,6 +61,7 @@ services:
       - /tmp:rw,noexec,nosuid,size=16m
 
   migrate:
+    logging: *logging
     image: ${SENTINEL_MIGRATE_IMAGE:?SENTINEL_MIGRATE_IMAGE is required}
     restart: "no"
     secrets: [postgres_admin_password]
@@ -76,6 +86,7 @@ services:
     cpus: 1.0
 
   secure-db:
+    logging: *logging
     image: postgres:17-alpine
     restart: "no"
     environment:
@@ -100,6 +111,7 @@ services:
     pids_limit: 50
 
   api:
+    logging: *logging
     image: ${SENTINEL_APP_IMAGE:?SENTINEL_APP_IMAGE is required}
     restart: unless-stopped
     secrets: [discord_client_secret, session_secret, log_data_encryption_key, bot_internal_api_key, api_db_password]
@@ -144,6 +156,7 @@ services:
     cpus: 1.0
 
   bot:
+    logging: *logging
     image: ${SENTINEL_APP_IMAGE:?SENTINEL_APP_IMAGE is required}
     restart: unless-stopped
     secrets: [discord_token, bot_internal_api_key, log_data_encryption_key, bot_db_password, redis_password]
@@ -184,6 +197,7 @@ services:
     cpus: 1.5
 
   web:
+    logging: *logging
     image: ${SENTINEL_APP_IMAGE:?SENTINEL_APP_IMAGE is required}
     restart: unless-stopped
     environment:
@@ -213,6 +227,7 @@ services:
     cpus: 1.0
 
   edge:
+    logging: *logging
     image: nginx:1.29-alpine
     restart: unless-stopped
     user: "101:101"

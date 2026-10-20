@@ -82,3 +82,4 @@ export const EVENT_CATALOG: EventDefinition[] = [
 export const eventDefinition = (key: string) => EVENT_CATALOG.find((event) => event.key === key);
 
 export * from './plans.js';
+export * from './log-buffer.js';
