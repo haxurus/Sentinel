@@ -1,5 +1,6 @@
 import { ChannelType, EmbedBuilder, PermissionFlagsBits, type Guild, type TextChannel } from 'discord.js';
 import { config } from './config.js';
+import { postWelcome, sendOwnerWelcome } from './discord-actions.js';
 import { logger } from './logger.js';
 
 /**
@@ -86,14 +87,14 @@ export async function sendWelcome(guild: Guild) {
   const locale = welcomeLocale(guild.preferredLocale);
   const channel = welcomeChannel(guild);
   if (channel) {
-    await channel.send({ embeds: [welcomeEmbed(locale, guild.id, guild.name, false)], allowedMentions: { parse: [] } })
+    await postWelcome(channel, welcomeEmbed(locale, guild.id, guild.name, false))
       .catch((error: unknown) => logger.warn({ guildId: guild.id, error: String(error) }, 'Welcome message not delivered'));
   }
   // Owners may have direct messages from server members turned off: that is
   // their choice and the message is simply skipped.
   const owner = await guild.fetchOwner().catch(() => null);
   if (owner && !owner.user.bot) {
-    await owner.send({ embeds: [welcomeEmbed(locale, guild.id, guild.name, true)], allowedMentions: { parse: [] } })
+    await sendOwnerWelcome(owner, welcomeEmbed(locale, guild.id, guild.name, true))
       .catch((error: unknown) => logger.info({ guildId: guild.id, error: String(error) }, 'Welcome DM to the owner not delivered'));
   }
 }
