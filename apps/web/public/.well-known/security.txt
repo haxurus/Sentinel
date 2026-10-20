@@ -1,0 +1,7 @@
+# Security contact for Sentinel (https://sentinel.haxurus.com)
+Contact: https://github.com/haxurus/Sentinel/security/advisories/new
+Contact: mailto:haxurus@icloud.com
+Expires: 2027-10-20T00:00:00.000Z
+Preferred-Languages: en, it
+Canonical: https://sentinel.haxurus.com/.well-known/security.txt
+Policy: https://github.com/haxurus/Sentinel/blob/main/SECURITY.md

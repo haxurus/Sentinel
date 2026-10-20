@@ -5,7 +5,7 @@ type Section = { title: string; body: Array<string | string[]> };
 type Doc = { id: string; kicker: string; title: string; intro: string; sections: Section[] };
 
 const CONTACT = 'haxurus@icloud.com';
-const UPDATED = { it: '16 ottobre 2026', en: '16 October 2026' };
+const UPDATED = { it: '20 ottobre 2026', en: '20 October 2026' };
 
 const copy: Record<Locale, { kicker: string; title: string; intro: string; updated: string; toc: string; docs: Doc[]; home: string; pricing: string }> = {
   en: {
@@ -38,6 +38,7 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
             ],
             'When you sign in to the dashboard with Discord: your Discord user ID, username, avatar and the list of servers you belong to (scopes identify and guilds), plus a log of the changes you make in the panel with a one-way hash of your IP address.',
             'Sentinel does not collect members’ online status or activities (games, music, custom status), nor when they are typing.',
+            'When Sentinel is added to a server, it sends one welcome message with the setup steps to that server and one direct message to its owner. It uses the owner’s ID only for that message and sends no other direct messages.',
             'If you buy a subscription, Discord processes the payment: we receive from Discord only the subscription’s status (the server, the plan and its validity), never your payment details.',
             'Technical data: our web server and Cloudflare, which protects and delivers the site, process IP addresses and request data to deliver pages and prevent abuse.'
           ] },
@@ -146,6 +147,7 @@ const copy: Record<Locale, { kicker: string; title: string; intro: string; updat
             ],
             'Quando accedi alla dashboard con Discord: il tuo ID utente, username, avatar e l’elenco dei server di cui fai parte (scope identify e guilds), più un registro delle modifiche che fai nel pannello con un hash non reversibile del tuo indirizzo IP.',
             'Sentinel non raccoglie lo stato online né le attività dei membri (giochi, musica, stato personalizzato), né quando stanno scrivendo.',
+            'Quando Sentinel viene aggiunto a un server, invia un messaggio di benvenuto con i passaggi di configurazione in quel server e un messaggio privato al suo proprietario. Usa l’ID del proprietario solo per quel messaggio e non invia altri messaggi privati.',
             'Se acquisti un abbonamento, il pagamento è gestito da Discord: da Discord riceviamo solo lo stato dell’abbonamento (il server, il piano e la sua validità), mai i tuoi dati di pagamento.',
             'Dati tecnici: il nostro server web e Cloudflare, che protegge e distribuisce il sito, trattano indirizzi IP e dati delle richieste per mostrare le pagine e prevenire abusi.'
           ] },

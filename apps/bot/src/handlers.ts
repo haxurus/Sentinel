@@ -11,6 +11,7 @@ import {
 } from 'discord.js';
 import { prisma } from '@sentinel/db';
 import { ensureGuild, getGuildSettings, isGuildInstallBlocked, isUserInstallBlocked, markGuildRemoved, snapshotMessage } from './store.js';
+import { sendWelcome } from './welcome.js';
 import { recordEvent, shouldCapture } from './recorder.js';
 import { findRecentAuditEntry, jsonSafe } from './utils.js';
 import { decryptText, redactText, unprotectJson } from './security.js';
@@ -130,6 +131,7 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
         { name: 'Aggiunto da', value: installerId ? `<@${installerId}>\n\`${installerId}\`` : 'sconosciuto' }
       ]
     });
+    await sendWelcome(guild);
   });
 
   on(Events.GuildMemberAdd, async (member) => {

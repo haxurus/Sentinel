@@ -19,5 +19,8 @@ export const config = {
   internalApiKey,
   internalApiPort: Number(process.env.BOT_INTERNAL_PORT ?? 3002),
   redisUrl,
-  logLevel: process.env.LOG_LEVEL ?? 'info'
+  logLevel: process.env.LOG_LEVEL ?? 'info',
+  // Public links in the welcome message. Self-hosted instances set their own.
+  webUrl: (process.env.WEB_URL?.trim() || 'https://sentinel.haxurus.com').replace(/\/$/, ''),
+  supportUrl: process.env.SUPPORT_URL?.trim() || 'https://discord.gg/DDBGWP5fMX'
 };

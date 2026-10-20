@@ -26,6 +26,7 @@ If people outside your organisation can use your instance (for example, a public
 ### Source code (AGPL §13)
 
 - Users of your instance must be able to get **the complete source code of the version you run**, including your changes, under the AGPL-3.0. A public fork that matches what you deploy is the simplest way.
+- Set `WEB_URL` and `SUPPORT_URL` for the bot, so that its welcome message links to your website and your support server.
 - Point the website's source links to your fork. They are defined in `apps/web/app/_components/seo.ts` (`REPO_URL`), `apps/web/app/_components/SiteChrome.tsx` and `apps/web/app/_components/PublicHome.tsx`.
 - Keep `LICENSE` and the existing copyright notices, and mark your modifications (for example in your fork's README or commit history).
 - You may charge for your instance; the source obligations stay the same.
