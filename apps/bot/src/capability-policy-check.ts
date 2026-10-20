@@ -56,6 +56,18 @@ for (const [method, route] of allowed) {
   evaluateDiscordCapability(method, route);
 }
 evaluateDiscordCapability('PATCH', '/guilds/123456789012345678/members/@me', { nick: 'Sentinel', banner: null });
+evaluateDiscordCapability('POST', '/users/@me/channels', { recipient_id: '234567890123456789' });
+
+// Only a one-to-one DM may be opened: no group DMs, no extra fields.
+for (const body of [undefined, {}, { recipient_id: 'x' }, { recipient_id: '234567890123456789', nicks: {} }, { access_tokens: [], nicks: {} }, [{ recipient_id: '234567890123456789' }]]) {
+  let rejected = false;
+  try {
+    evaluateDiscordCapability('POST', '/users/@me/channels', body);
+  } catch {
+    rejected = true;
+  }
+  if (!rejected) throw new Error(`Capability policy allowed a DM channel body: ${JSON.stringify(body)}`);
+}
 
 // The own-profile route must never carry moderation fields.
 for (const body of [{ roles: [] }, { mute: true }, { deaf: true }, { channel_id: null }, { communication_disabled_until: '2030-01-01' }, { nick: 'x', roles: [] }, 'nick=x', null]) {

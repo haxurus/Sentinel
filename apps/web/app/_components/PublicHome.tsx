@@ -9,7 +9,7 @@ type StreamRow = { time: string; key: string; text: string; state: 'sent' | 'sto
 
 const copy = {
   it: {
-    nav: { features: 'Funzioni', pipeline: 'Pipeline', security: 'Sicurezza', openSource: 'Open source', pricing: 'Prezzi', signIn: 'Accedi', add: 'Aggiungi a Discord' },
+    nav: { features: 'Funzioni', pipeline: 'Pipeline', security: 'Sicurezza', openSource: 'Open source', guide: 'Guida', pricing: 'Prezzi', signIn: 'Accedi', add: 'Aggiungi a Discord' },
     hero: {
       kicker: 'Bot di log e audit log per Discord',
       title: ['Ogni azione', 'sul tuo server,', 'registrata.'],
@@ -106,7 +106,7 @@ const copy = {
     footer: 'Logging e auditing self-hosted per server Discord.'
   },
   en: {
-    nav: { features: 'Features', pipeline: 'Pipeline', security: 'Security', openSource: 'Open source', pricing: 'Pricing', signIn: 'Sign in', add: 'Add to Discord' },
+    nav: { features: 'Features', pipeline: 'Pipeline', security: 'Security', openSource: 'Open source', guide: 'Guide', pricing: 'Pricing', signIn: 'Sign in', add: 'Add to Discord' },
     hero: {
       kicker: 'Discord logging & audit log bot',
       title: ['Every action', 'on your server,', 'on the record.'],
@@ -249,6 +249,7 @@ export default function PublicHome({ locale }: { locale: Locale }) {
           { href: '#features', label: c.nav.features },
           { href: '#security', label: c.nav.security },
           { href: '#open-source', label: c.nav.openSource },
+          { href: `/${locale}/getting-started`, label: c.nav.guide },
           { href: `/${locale}/pricing`, label: c.nav.pricing }
         ]}
         actions={<>
@@ -420,6 +421,7 @@ export default function PublicHome({ locale }: { locale: Locale }) {
           <nav>
             <a href="#features">{c.nav.features}</a>
             <a href="#faq">FAQ</a>
+            <a href={`/${locale}/getting-started`}>{c.nav.guide}</a>
             <a href={dashboard}>Dashboard</a>
             <a href={`/${locale}/pricing`}>{c.nav.pricing}</a>
             <a href={invite}>{c.nav.add}</a>

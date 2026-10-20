@@ -111,6 +111,7 @@ services:
       DISCORD_CLIENT_SECRET_FILE: /run/secrets/discord_client_secret
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
       WEB_URL: ${WEB_URL}
+      SUPPORT_URL: ${SUPPORT_URL:-}
       SESSION_SECRET_FILE: /run/secrets/session_secret
       LOG_DATA_ENCRYPTION_KEY_FILE: /run/secrets/log_data_encryption_key
       BOT_INTERNAL_URL: http://bot:3002
@@ -147,6 +148,7 @@ services:
       BOT_INTERNAL_API_KEY_FILE: /run/secrets/bot_internal_api_key
       BOT_INTERNAL_PORT: 3002
       LOG_DATA_ENCRYPTION_KEY_FILE: /run/secrets/log_data_encryption_key
+      WEB_URL: ${WEB_URL}
     command:
       - sh
       - -c

@@ -3,7 +3,7 @@ import type { Client } from 'discord.js';
 export type DiscordCapabilityDecision = {
   method: string;
   route: string;
-  capability: 'read' | 'send-log-message' | 'leave-guild' | 'edit-own-profile';
+  capability: 'read' | 'send-log-message' | 'leave-guild' | 'edit-own-profile' | 'open-dm';
 };
 
 export class DiscordCapabilityViolation extends Error {
@@ -27,6 +27,10 @@ const LEAVE_GUILD_ROUTE = /^\/users\/@me\/guilds\/\d{17,20}$/;
 // channel moves and timeouts live on /members/:userId and stay blocked.
 const OWN_MEMBER_ROUTE = /^\/guilds\/\d{17,20}\/members\/@me$/;
 const OWN_PROFILE_FIELDS = new Set(['nick', 'banner']);
+// Opening a direct-message channel with one user, used only for the one-time
+// welcome to a server owner. Group DMs (access_tokens, nicks) stay blocked.
+const OPEN_DM_ROUTE = /^\/users\/@me\/channels$/;
+const SNOWFLAKE = /^\d{17,20}$/;
 
 function normalizeMethod(value: unknown) {
   return String(value ?? '').trim().toUpperCase();
@@ -55,6 +59,13 @@ function ownProfileBodyAllowed(body: unknown) {
   return Object.keys(body).every((key) => OWN_PROFILE_FIELDS.has(key));
 }
 
+function openDmBodyAllowed(body: unknown) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  const keys = Object.keys(body);
+  const recipient = (body as Record<string, unknown>).recipient_id;
+  return keys.length === 1 && keys[0] === 'recipient_id' && typeof recipient === 'string' && SNOWFLAKE.test(recipient);
+}
+
 export function evaluateDiscordCapability(methodValue: unknown, routeValue: unknown, body?: unknown): DiscordCapabilityDecision {
   const method = normalizeMethod(methodValue);
   const route = normalizeDiscordRoute(routeValue);
@@ -71,6 +82,10 @@ export function evaluateDiscordCapability(methodValue: unknown, routeValue: unkn
 
   if (method === 'PATCH' && OWN_MEMBER_ROUTE.test(route) && ownProfileBodyAllowed(body)) {
     return { method, route, capability: 'edit-own-profile' };
+  }
+
+  if (method === 'POST' && OPEN_DM_ROUTE.test(route) && openDmBodyAllowed(body)) {
+    return { method, route, capability: 'open-dm' };
   }
 
   throw new DiscordCapabilityViolation(method || '<unknown>', route);

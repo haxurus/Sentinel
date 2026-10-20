@@ -328,6 +328,13 @@ select {
 .legal-toc a:hover { color: var(--text); border-left-color: var(--accent); }
 .legal-toc .legal-toc-doc { margin-bottom: 4px; border-left-color: var(--line-strong); color: var(--text); font-weight: 600; }
 .legal-content { max-width: 780px; }
+.guide-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.guide-states { list-style: none; padding-left: 0 !important; }
+.guide-states code { display: inline-block; min-width: 190px; color: var(--accent); font: .82rem var(--font-mono-stack); }
+.not-found { display: flex; flex-direction: column; align-items: flex-start; max-width: 640px; }
+.not-found-code { color: var(--accent); font-size: clamp(3.5rem, 12vw, 6rem); font-weight: 700; letter-spacing: -.04em; line-height: 1; }
+.not-found h1 { margin: 18px 0 12px; font-size: clamp(1.9rem, 4.4vw, 2.8rem); letter-spacing: -.03em; }
+.not-found p { color: var(--text-2); line-height: 1.7; }
 .legal-head h1 { margin: 16px 0 14px; font-size: clamp(2.1rem, 4.6vw, 3.2rem); letter-spacing: -.04em; }
 .legal-head p { color: var(--text-2); line-height: 1.7; }
 .legal-updated { margin-top: 12px; color: var(--faint) !important; font-size: .78rem; }

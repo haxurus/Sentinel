@@ -3,6 +3,7 @@ import { DEFAULT_LOCALE, SITE_URL } from './_components/seo';
 
 const PAGES = [
   { path: '', priority: 1, changeFrequency: 'weekly' as const },
+  { path: '/getting-started', priority: 0.8, changeFrequency: 'monthly' as const },
   { path: '/pricing', priority: 0.8, changeFrequency: 'monthly' as const },
   { path: '/legal', priority: 0.3, changeFrequency: 'yearly' as const }
 ];
