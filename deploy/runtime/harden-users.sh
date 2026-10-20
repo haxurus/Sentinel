@@ -23,7 +23,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
   "PanelAudit", "PanelSession", "PanelRoleBinding",
   "InstallBlock", "SuperAdminAudit",
   "InstanceConfig", "StatusChannel", "WaitlistEntry", "InstallGrant", "Coupon",
-  "InstanceEvent"
+  "InstanceEvent", "Incident"
 TO sentinel_api;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
@@ -32,7 +32,7 @@ TO sentinel_bot;
 GRANT SELECT ON TABLE "InstallBlock", "InstallGrant", "StatusChannel" TO sentinel_bot;
 GRANT INSERT ON TABLE "InstanceEvent" TO sentinel_bot;
 REVOKE ALL ON TABLE "PanelAudit", "PanelSession", "PanelRoleBinding", "SuperAdminAudit",
-  "InstanceConfig", "WaitlistEntry", "Coupon" FROM sentinel_bot;
+  "InstanceConfig", "WaitlistEntry", "Coupon", "Incident" FROM sentinel_bot;
 ALTER ROLE sentinel_api NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION;
 ALTER ROLE sentinel_bot NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION;
 SQL

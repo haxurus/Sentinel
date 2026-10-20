@@ -173,10 +173,13 @@ export function startDispatcher(client: Client) {
  * servers being logged. Like log delivery, the target must belong to the
  * configured guild.
  */
-export async function sendStatusMessage(client: Client, guildId: string, channelId: string, embed: EmbedBuilder) {
+export async function sendStatusMessage(client: Client, guildId: string, channelId: string, embed: EmbedBuilder, mentionUserId: string | null = null) {
   const guild = client.guilds.cache.get(guildId);
   if (!guild) throw new Error('STATUS_GUILD_UNAVAILABLE');
   const channel = await guild.channels.fetch(channelId).catch(() => null);
   if (!channel || channel.guildId !== guild.id || !channel.isSendable()) throw new Error('STATUS_CHANNEL_UNAVAILABLE');
-  await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+  // Only critical alerts mention someone: the instance owner, by ID.
+  await channel.send(mentionUserId
+    ? { content: `<@${mentionUserId}>`, embeds: [embed], allowedMentions: { parse: [], users: [mentionUserId] } }
+    : { embeds: [embed], allowedMentions: { parse: [] } });
 }

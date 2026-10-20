@@ -43,6 +43,15 @@ const client = new Client({
 
 installDiscordCapabilityPolicy(client, ({ method, route }) => {
   logger.error({ method, route }, 'Blocked Discord mutation by capability policy');
+  // Never expected: some code tried a mutation outside the read-only policy.
+  status.notify({
+    level: 'error',
+    category: 'security',
+    severity: 'critical',
+    title: 'Operazione bloccata dalla politica di sicurezza',
+    description: `Il bot ha tentato una chiamata non consentita e la politica l’ha bloccata: \`${method} ${route}\`.`,
+    dedupeKey: `policy:${method}:${route}`
+  });
 });
 
 const status = createStatusNotifier(client);
@@ -51,6 +60,8 @@ onQuotaExceeded((guildId, limit, tier) => {
   const guild = client.guilds.cache.get(guildId);
   status.notify({
     level: 'warn',
+    category: 'usage',
+    severity: 'info',
     title: 'Quota giornaliera raggiunta',
     description: `**${guild?.name ?? guildId}** ha superato ${limit.toLocaleString('it-IT')} eventi oggi (piano ${tier}): gli eventi successivi non vengono registrati fino a mezzanotte UTC.`,
     fields: [{ name: 'Server', value: `\`${guildId}\`` }],
@@ -82,6 +93,8 @@ client.once(Events.ClientReady, async (ready) => {
   }
   status.notify({
     level: 'ok',
+    category: 'availability',
+    severity: 'info',
     title: 'Sentinel online',
     description: `Connesso a Discord come **${ready.user.tag}**.`,
     fields: [
@@ -105,6 +118,8 @@ async function runMaintenance() {
       logger.info({ count: purged.length }, 'Deleted data of removed servers');
       status.notify({
         level: 'info',
+        category: 'installations',
+        severity: 'info',
         title: 'Dati di server rimossi cancellati',
         description: `Cancellati i dati di ${purged.length} server da cui Sentinel è stato rimosso da più di ${REMOVED_GUILD_GRACE_DAYS} giorni.`,
         fields: [{ name: 'Server', value: purged.slice(0, 20).map((id) => `\`${id}\``).join('\n') }]
@@ -119,16 +134,16 @@ async function runMaintenance() {
 // console, not to the servers being logged.
 client.on(Events.Warn, (warning) => {
   logger.warn({ warning: redactText(warning) }, 'Discord client warning');
-  status.notify({ level: 'warn', title: 'Warning del client Discord', description: redactText(warning) });
+  status.notify({ level: 'warn', category: 'errors', severity: 'warning', title: 'Warning del client Discord', description: redactText(warning) });
 });
 
 client.on(Events.Error, (error) => {
   logger.error({ error: errorText(error) }, 'Discord client error');
-  status.notify({ level: 'error', title: 'Errore del client Discord', description: errorText(error) });
+  status.notify({ level: 'error', category: 'errors', severity: 'warning', title: 'Errore del client Discord', description: errorText(error) });
 });
 
 client.on(Events.ShardResume, (shardId, replayed) => {
-  status.notify({ level: 'info', title: 'Connessione a Discord ripristinata', description: `Shard ${shardId}: ${replayed} eventi recuperati.`, dedupeKey: 'shard-resume' });
+  status.notify({ level: 'info', category: 'availability', severity: 'info', title: 'Connessione a Discord ripristinata', description: `Shard ${shardId}: ${replayed} eventi recuperati.`, dedupeKey: 'shard-resume' });
 });
 
 setInterval(() => void runMaintenance(), 6 * 60 * 60 * 1000).unref();
@@ -156,7 +171,7 @@ const shutdown = async (signal: string) => {
 
 process.on('unhandledRejection', (reason) => {
   logger.error({ reason: errorText(reason) }, 'Unhandled promise rejection');
-  status.notify({ level: 'error', title: 'Errore non gestito nel bot', description: errorText(reason) });
+  status.notify({ level: 'error', category: 'errors', severity: 'warning', title: 'Errore non gestito nel bot', description: errorText(reason) });
 });
 
 process.on('uncaughtException', (error) => {

@@ -1,10 +1,13 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
-import { DiscordAPIError, Routes, type Client } from 'discord.js';
+import { DiscordAPIError, EmbedBuilder, Routes, type Client } from 'discord.js';
 import { editOwnGuildProfile, leaveGuild } from './discord-actions.js';
 import type { StatusNotifier } from './status.js';
 import { LOG_LEVEL_RANK, type LogLevelName } from '@sentinel/shared';
 import { logBuffer } from './logger.js';
+import { sendStatusMessage } from './dispatcher.js';
+import { truncate } from './embed-format.js';
+import { redactText } from './security.js';
 
 const SNOWFLAKE = /^\d{17,20}$/;
 
@@ -186,11 +189,42 @@ export function startInternalApi(client: Client, secret: string, port = 3002, st
         return;
       }
 
+      // Alerts routed by the API (super console → Monitoring) to a channel of a
+      // server the bot is in. The channel check matches log delivery.
+      if (req.method === 'POST' && url.pathname === '/alerts/deliver') {
+        const body = await readJson(req);
+        const guildId = String(body.guildId ?? '');
+        const channelId = String(body.channelId ?? '');
+        const mention = body.mentionUserId == null ? null : String(body.mentionUserId);
+        if (!SNOWFLAKE.test(guildId) || !SNOWFLAKE.test(channelId) || (mention !== null && !SNOWFLAKE.test(mention))) throw new RequestError(400, 'INVALID_TARGET');
+        const embed = new EmbedBuilder()
+          .setTitle(truncate(String(body.title ?? 'Sentinel'), 256))
+          .setColor(Number(body.color) || 0xa78bfa)
+          .setFooter({ text: truncate(String(body.footer ?? 'Sentinel · allarmi'), 200) })
+          .setTimestamp(new Date());
+        if (body.description) embed.setDescription(truncate(redactText(String(body.description)), 4000));
+        const fields = Array.isArray(body.fields) ? body.fields as Array<{ name?: unknown; value?: unknown }> : [];
+        const safeFields = fields.filter((field) => field?.value).slice(0, 20)
+          .map((field) => ({ name: truncate(String(field.name ?? '—'), 256), value: truncate(redactText(String(field.value)), 1024), inline: true }));
+        if (safeFields.length) embed.addFields(safeFields);
+        try {
+          await sendStatusMessage(client, guildId, channelId, embed, mention);
+        } catch (error) {
+          res.statusCode = 502;
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message.slice(0, 200) : 'SEND_FAILED' }));
+          return;
+        }
+        res.end('{"ok":true}');
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname === '/status/test') {
         if (!status) throw new Error('STATUS_UNAVAILABLE');
         status.invalidate();
         const result = await status.deliver({
           level: 'info',
+          category: 'availability',
+          severity: 'info',
           title: 'Notifiche di stato attive',
           description: 'Messaggio di prova inviato dalla super console. Qui arriveranno avvio del bot, errori e server aggiunti o rimossi.'
         }, { force: true });

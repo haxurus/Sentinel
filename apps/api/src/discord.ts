@@ -98,6 +98,14 @@ export async function getEntitlements() {
   return api<Entitlement[]>('/entitlements', 'GET', undefined, 15_000);
 }
 
+/** Posts a routed alert through the bot to a channel of a server it is in. */
+export async function deliverAlert(alert: {
+  guildId: string; channelId: string; title: string; description: string | null;
+  fields: Array<{ name: string; value: string }>; color: number; footer: string; mentionUserId: string | null;
+}) {
+  return api<{ ok: true }>('/alerts/deliver', 'POST', alert, 10_000);
+}
+
 export async function sendStatusTest() {
   return api<{ ok: true } | { ok: false; error: string }>('/status/test', 'POST', {}, 10_000);
 }

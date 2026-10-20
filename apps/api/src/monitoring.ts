@@ -4,19 +4,20 @@ import { prisma } from '@sentinel/db';
 import { LOG_LEVEL_RANK, type LogBuffer, type LogLevelName } from '@sentinel/shared';
 import { requireSuperAdmin } from './auth.js';
 import { botHealth, getBotLogs } from './discord.js';
-import { decryptText, encryptText, protectJson, unprotectJson } from './security.js';
+import { encryptText, unprotectJson } from './security.js';
 import { superAdminAudit } from './super-audit.js';
+import { alertWebhookUrl, openIncident, postAlertWebhook, resolveIncident } from './alerting.js';
 
 /**
- * Super console monitoring: the bot watchdog with "down" and "restored"
- * alarms, the instance event feed and the latest logs of the API and the bot.
+ * Super console monitoring: the bot watchdog, the instance event feed and the
+ * latest logs of the API and the bot.
  *
- * Alarms go to a Discord webhook, not through the bot: they must reach you
- * precisely when the bot is not running.
+ * "Bot down" cannot be posted by the bot: it is recorded as an incident, sent
+ * to the optional webhook and caught by the external monitor on
+ * /health/bot. "Bot restored" is routed like any other alert.
  */
 
 type Logger = { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void };
-type Level = 'info' | 'ok' | 'warn' | 'error';
 
 const CHECK_INTERVAL_MS = 30_000;
 /**
@@ -26,47 +27,14 @@ const CHECK_INTERVAL_MS = 30_000;
 const FAILURES_BEFORE_DOWN = 4;
 const EVENT_RETENTION_DAYS = 90;
 const WEBHOOK = /^https:\/\/(?:canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[\w-]{20,}$/;
-const COLORS: Record<Level, number> = { info: 0xa78bfa, ok: 0x3ccf8e, warn: 0xf5a524, error: 0xf2555a };
 
 type BotState = { status: 'unknown' | 'up' | 'down'; since: string; lastCheck: string | null; failures: number; guilds: number | null };
 const state: BotState = { status: 'unknown', since: new Date().toISOString(), lastCheck: null, failures: 0, guilds: null };
 export const botState = () => ({ ...state });
 
-const formatDuration = (ms: number) => {
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours} h ${minutes % 60} min`;
-};
-
-export async function recordEvent(level: Level, title: string, description: string | null = null) {
-  await prisma.instanceEvent.create({ data: { source: 'api', level, title, details: protectJson({ description, fields: [] }) } });
-}
-
-async function webhookUrl() {
-  const row = await prisma.instanceConfig.findUnique({ where: { id: 1 }, select: { alertWebhookUrl: true } });
-  return row?.alertWebhookUrl ? decryptText(row.alertWebhookUrl) : null;
-}
-
-async function postWebhook(url: string, level: Level, title: string, description: string) {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      username: 'Sentinel monitor',
-      allowed_mentions: { parse: [] },
-      embeds: [{ title, description, color: COLORS[level], timestamp: new Date().toISOString(), footer: { text: 'Sentinel · monitoraggio' } }]
-    }),
-    signal: AbortSignal.timeout(8_000)
-  });
-  if (!response.ok) throw new Error(`Webhook responded ${response.status}`);
-}
-
-async function alarm(level: Level, title: string, description: string, log: Logger) {
-  await recordEvent(level, title, description).catch((error) => log.warn({ err: error }, 'Unable to record instance event'));
-  const url = await webhookUrl().catch(() => null);
-  if (!url) return;
-  await postWebhook(url, level, title, description).catch((error) => log.warn({ err: error }, 'Alarm webhook failed'));
+async function webhook(level: 'ok' | 'error', title: string, description: string, log: Logger) {
+  const url = await alertWebhookUrl().catch(() => null);
+  if (url) await postAlertWebhook(url, level, title, description).catch((error) => log.warn({ err: error }, 'Alarm webhook failed'));
 }
 
 async function checkBot(log: Logger) {
@@ -76,14 +44,16 @@ async function checkBot(log: Logger) {
   if (health?.ok) {
     state.guilds = health.guilds;
     state.failures = 0;
-    if (state.status === 'down') {
-      const downtime = formatDuration(now.getTime() - new Date(state.since).getTime());
-      await alarm('ok', 'Bot ripristinato', `Sentinel è di nuovo connesso a Discord dopo ${downtime} di interruzione (${health.guilds} server).`, log);
-    }
     if (state.status !== 'up') {
       state.status = 'up';
       state.since = now.toISOString();
     }
+    // Also closes an incident left open by a previous API process.
+    const downtime = await resolveIncident('bot.down', {
+      title: 'Bot ripristinato',
+      description: (duration) => `Sentinel è di nuovo connesso a Discord dopo ${duration} di interruzione (${health.guilds} server).`
+    }).catch(() => null);
+    if (downtime) await webhook('ok', 'Bot ripristinato', `Sentinel è di nuovo connesso a Discord dopo ${downtime} di interruzione.`, log);
     return;
   }
   state.failures += 1;
@@ -91,9 +61,12 @@ async function checkBot(log: Logger) {
     const wasUp = state.status === 'up';
     state.status = 'down';
     state.since = now.toISOString();
-    await alarm('error', 'Bot non raggiungibile', health
+    const description = health
       ? 'Il processo del bot risponde ma non è connesso a Discord: i log non vengono registrati.'
-      : `Il bot non risponde da circa ${Math.round(FAILURES_BEFORE_DOWN * CHECK_INTERVAL_MS / 60_000)} minuti${wasUp ? '' : ' (dall’avvio dell’API)'}: i log non vengono registrati.`, log);
+      : `Il bot non risponde da circa ${Math.round(FAILURES_BEFORE_DOWN * CHECK_INTERVAL_MS / 60_000)} minuti${wasUp ? '' : ' (dall’avvio dell’API)'}: i log non vengono registrati.`;
+    // logOnly: the bot cannot post it; the webhook and the external monitor do.
+    const opened = await openIncident('bot.down', { category: 'availability', severity: 'critical', title: 'Bot non raggiungibile', description, logOnly: true }).catch(() => false);
+    if (opened) await webhook('error', 'Bot non raggiungibile', description, log);
   }
 }
 
@@ -117,7 +90,7 @@ export async function registerMonitoringRoutes(app: FastifyInstance, apiLogs: Lo
     if (!session) return;
     const [rows, url] = await Promise.all([
       prisma.instanceEvent.findMany({ orderBy: { createdAt: 'desc' }, take: 200 }),
-      webhookUrl().catch(() => null)
+      alertWebhookUrl().catch(() => null)
     ]);
     const events = rows.map((row) => {
       let details: { description?: string | null; fields?: Array<{ name: string; value: string }> } = {};
@@ -126,7 +99,7 @@ export async function registerMonitoringRoutes(app: FastifyInstance, apiLogs: Lo
       } catch {
         details = { description: null, fields: [] };
       }
-      return { id: row.id, source: row.source, level: row.level, title: row.title, description: details.description ?? null, fields: details.fields ?? [], createdAt: row.createdAt };
+      return { id: row.id, source: row.source, level: row.level, category: row.category, severity: row.severity, deliveryState: row.deliveryState, title: row.title, description: details.description ?? null, fields: details.fields ?? [], createdAt: row.createdAt };
     });
     return { bot: botState(), events, webhook: url ? { configured: true, hint: `…${url.slice(-6)}` } : { configured: false, hint: null } };
   });
@@ -164,10 +137,10 @@ export async function registerMonitoringRoutes(app: FastifyInstance, apiLogs: Lo
   app.post('/api/super/alert-webhook/test', async (request, reply) => {
     const session = await requireSuperAdmin(request, reply);
     if (!session) return;
-    const url = await webhookUrl().catch(() => null);
+    const url = await alertWebhookUrl().catch(() => null);
     if (!url) return reply.code(400).send({ error: 'WEBHOOK_NOT_SET' });
     try {
-      await postWebhook(url, 'info', 'Allarmi attivi', 'Messaggio di prova dalla super console: qui arriveranno gli avvisi quando il bot non è raggiungibile e quando torna attivo.');
+      await postAlertWebhook(url, 'info', 'Allarmi attivi', 'Messaggio di prova dalla super console: qui arriveranno l’avviso e i promemoria quando il bot non è raggiungibile, e la notizia del ripristino.');
     } catch {
       return reply.code(502).send({ error: 'WEBHOOK_FAILED' });
     }

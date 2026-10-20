@@ -1,0 +1,351 @@
+import type { FastifyInstance } from 'fastify';
+import { prisma } from '@sentinel/db';
+import { ALERT_CATEGORIES, isAlertCategory, type AlertCategory, type AlertSeverity } from '@sentinel/shared';
+import { requireSuperAdmin } from './auth.js';
+import { config } from './config.js';
+import { deliverAlert, getGuildResources } from './discord.js';
+import { findForeignReference } from './helpers.js';
+import { decryptText, protectJson, unprotectJson } from './security.js';
+import { superAdminAudit } from './super-audit.js';
+import {
+  SEVERITY_COLOR,
+  digestDue,
+  formatDuration,
+  groupForDelivery,
+  inQuietHours,
+  parseAlertSettings,
+  reminderDue,
+  routeTarget,
+  type AlertSettings,
+  type AlertTarget
+} from './alert-rules.js';
+
+/**
+ * Instance alert routing. The bot and the API record alerts as InstanceEvent
+ * rows; this router sends them where the super console says (status channel,
+ * another channel, daily digest, log only), merges repeats, defers
+ * non-critical alerts during quiet hours and reminds open incidents. Discord
+ * messages are posted by the bot, so an outage of the bot itself is reported
+ * by the external monitor (and the optional webhook), not here.
+ */
+
+type Logger = { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void };
+type Level = 'info' | 'ok' | 'warn' | 'error';
+type Details = { description?: string | null; fields?: Array<{ name: string; value: string }> };
+
+const ROUTER_INTERVAL_MS = 20_000;
+const DELIVERY_CHECK_MS = 2 * 60_000;
+const PENDING_MAX_AGE_MS = 24 * 60 * 60_000;
+
+export const CATEGORY_LABELS: Record<AlertCategory, string> = {
+  availability: 'Disponibilità',
+  security: 'Sicurezza',
+  errors: 'Errori',
+  delivery: 'Consegna dei log',
+  billing: 'Abbonamenti',
+  installations: 'Installazioni',
+  usage: 'Utilizzo'
+};
+
+const LEVEL_COLOR: Record<Level, number> = { ok: SEVERITY_COLOR.ok, info: SEVERITY_COLOR.info, warn: SEVERITY_COLOR.warning, error: SEVERITY_COLOR.critical };
+const levelFor = (severity: AlertSeverity): Level => severity === 'critical' ? 'error' : severity === 'warning' ? 'warn' : 'info';
+
+const readDetails = (value: unknown): Details => {
+  try {
+    return unprotectJson(value) as Details;
+  } catch {
+    return {};
+  }
+};
+
+/* ------------------------------------------------------------- recording */
+
+export async function recordAlert(input: {
+  category: AlertCategory; severity: AlertSeverity; title: string; description?: string | null;
+  fields?: Array<{ name: string; value: string }>; level?: Level; logOnly?: boolean;
+}) {
+  await prisma.instanceEvent.create({
+    data: {
+      source: 'api',
+      level: input.level ?? levelFor(input.severity),
+      category: input.category,
+      severity: input.severity,
+      title: input.title.slice(0, 256),
+      details: protectJson({ description: input.description ?? null, fields: input.fields ?? [] }),
+      deliveryState: input.logOnly ? 'log' : 'pending'
+    }
+  });
+}
+
+/** Opens an incident once per key; repeated calls while it is open do nothing. */
+export async function openIncident(key: string, input: {
+  category: AlertCategory; severity: AlertSeverity; title: string; description: string; logOnly?: boolean;
+}) {
+  const open = await prisma.incident.findFirst({ where: { key, resolvedAt: null } });
+  if (open) return false;
+  await prisma.incident.create({ data: { key, category: input.category, severity: input.severity, title: input.title, description: input.description } });
+  await recordAlert({ category: input.category, severity: input.severity, title: input.title, description: input.description, logOnly: input.logOnly });
+  return true;
+}
+
+/** Resolves the open incident of a key and announces it with its duration. */
+export async function resolveIncident(key: string, message: { title: string; description: (duration: string) => string }) {
+  const open = await prisma.incident.findFirst({ where: { key, resolvedAt: null } });
+  if (!open) return null;
+  const now = new Date();
+  await prisma.incident.update({ where: { id: open.id }, data: { resolvedAt: now } });
+  const duration = formatDuration(now.getTime() - open.openedAt.getTime());
+  await recordAlert({ category: isAlertCategory(open.category) ? open.category : 'errors', severity: 'info', level: 'ok', title: message.title, description: message.description(duration) });
+  return duration;
+}
+
+/* --------------------------------------------------------------- webhook */
+
+const WEBHOOK_COLORS: Record<Level, number> = LEVEL_COLOR;
+
+export async function alertWebhookUrl() {
+  const row = await prisma.instanceConfig.findUnique({ where: { id: 1 }, select: { alertWebhookUrl: true } });
+  return row?.alertWebhookUrl ? decryptText(row.alertWebhookUrl) : null;
+}
+
+/** Optional fallback for "bot down": a webhook works while the bot is stopped. */
+export async function postAlertWebhook(url: string, level: Level, title: string, description: string) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: 'Sentinel monitor',
+      allowed_mentions: { parse: [] },
+      embeds: [{ title, description, color: WEBHOOK_COLORS[level], timestamp: new Date().toISOString(), footer: { text: 'Sentinel · monitoraggio' } }]
+    }),
+    signal: AbortSignal.timeout(8_000)
+  });
+  if (!response.ok) throw new Error(`Webhook responded ${response.status}`);
+}
+
+/* ---------------------------------------------------------------- router */
+
+async function loadSettings() {
+  const row = await prisma.instanceConfig.upsert({ where: { id: 1 }, update: {}, create: { id: 1 }, select: { alertSettings: true, lastDigestAt: true } });
+  return { settings: parseAlertSettings(row.alertSettings), lastDigestAt: row.lastDigestAt };
+}
+
+async function statusTarget(): Promise<AlertTarget | null> {
+  const row = await prisma.statusChannel.findUnique({ where: { id: 1 }, select: { guildId: true, channelId: true } });
+  return row ? { guildId: row.guildId, channelId: row.channelId } : null;
+}
+
+const mentionFor = (mention: boolean, severity: string) => (mention && severity === 'critical' && config.superAdminUserId ? config.superAdminUserId : null);
+
+const lastSent = new Map<string, number>();
+let routing = false;
+
+export async function runAlertRouter(log: Logger) {
+  if (routing) return;
+  routing = true;
+  try {
+    const now = new Date();
+    const [{ settings, lastDigestAt }, status] = await Promise.all([loadSettings(), statusTarget()]);
+    const quiet = inQuietHours(settings, now);
+    const pending = await prisma.instanceEvent.findMany({ where: { deliveryState: 'pending' }, orderBy: { createdAt: 'asc' }, take: 300 });
+
+    const toLog: string[] = [];
+    const toDigest: string[] = [];
+    const expired: string[] = [];
+    const sendable: Array<{ key: string; event: (typeof pending)[number]; target: AlertTarget; mention: string | null; category: AlertCategory }> = [];
+    for (const event of pending) {
+      if (now.getTime() - event.createdAt.getTime() > PENDING_MAX_AGE_MS) { expired.push(event.id); continue; }
+      const category: AlertCategory = isAlertCategory(event.category) ? event.category : 'errors';
+      const route = settings.routes[category];
+      if (route.mode === 'log') { toLog.push(event.id); continue; }
+      if (route.mode === 'digest') { toDigest.push(event.id); continue; }
+      const target = routeTarget(route, status);
+      if (!target) { toLog.push(event.id); continue; }
+      // Quiet hours: non-critical alerts wait and leave together in the morning.
+      if (quiet && event.severity !== 'critical') continue;
+      sendable.push({ key: `${target.guildId}:${target.channelId}:${event.title}`, event, target, mention: mentionFor(route.mention, event.severity), category });
+    }
+    await Promise.all([
+      toLog.length ? prisma.instanceEvent.updateMany({ where: { id: { in: toLog } }, data: { deliveryState: 'log' } }) : null,
+      toDigest.length ? prisma.instanceEvent.updateMany({ where: { id: { in: toDigest } }, data: { deliveryState: 'digest' } }) : null,
+      expired.length ? prisma.instanceEvent.updateMany({ where: { id: { in: expired } }, data: { deliveryState: 'failed' } }) : null
+    ]);
+
+    for (const group of groupForDelivery(sendable, lastSent, now.getTime())) {
+      const first = group.members[0]!;
+      const latest = group.members[group.members.length - 1]!;
+      const details = readDetails(latest.event.details);
+      const count = group.members.length;
+      const since = first.event.createdAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', timeZone: settings.timezone });
+      try {
+        await deliverAlert({
+          ...latest.target,
+          title: count > 1 ? `${latest.event.title} ×${count}` : latest.event.title,
+          description: [details.description, count > 1 ? `${count} avvisi uguali dalle ${since}; qui sopra il più recente.` : null].filter(Boolean).join('\n\n'),
+          fields: details.fields ?? [],
+          color: LEVEL_COLOR[(latest.event.level as Level)] ?? LEVEL_COLOR.info,
+          footer: `Sentinel · ${CATEGORY_LABELS[latest.category]}`,
+          mentionUserId: group.members.some((member) => member.mention) ? latest.mention ?? first.mention : null
+        });
+        lastSent.set(group.key, now.getTime());
+        await prisma.instanceEvent.updateMany({ where: { id: { in: group.members.map((member) => member.event.id) } }, data: { deliveryState: 'sent', deliveredAt: now } });
+      } catch (error) {
+        // Stays pending: retried at the next run (e.g. while the bot restarts).
+        log.warn({ err: error }, 'Alert delivery failed');
+      }
+    }
+
+    if (digestDue(settings, now, lastDigestAt)) await sendDigest(settings, status, now, log);
+    await sendReminders(settings, status, now, quiet, log);
+  } finally {
+    routing = false;
+  }
+}
+
+async function sendDigest(settings: AlertSettings, status: AlertTarget | null, now: Date, log: Logger) {
+  const target = settings.digest.mode === 'channel' ? routeTarget({ mode: 'channel', guildId: settings.digest.guildId, channelId: settings.digest.channelId }, status) : status;
+  const events = await prisma.instanceEvent.findMany({ where: { deliveryState: 'digest' }, orderBy: { createdAt: 'asc' }, take: 2_000 });
+  const done = () => prisma.instanceConfig.update({ where: { id: 1 }, data: { lastDigestAt: now } });
+  if (!events.length) { await done(); return; }
+  if (!target) {
+    await prisma.instanceEvent.updateMany({ where: { id: { in: events.map((event) => event.id) } }, data: { deliveryState: 'log' } });
+    await done();
+    return;
+  }
+
+  const byCategory = new Map<AlertCategory, Map<string, number>>();
+  for (const event of events) {
+    const category: AlertCategory = isAlertCategory(event.category) ? event.category : 'errors';
+    const titles = byCategory.get(category) ?? new Map<string, number>();
+    titles.set(event.title, (titles.get(event.title) ?? 0) + 1);
+    byCategory.set(category, titles);
+  }
+  const fields = ALERT_CATEGORIES.filter((category) => byCategory.has(category)).map((category) => ({
+    name: CATEGORY_LABELS[category],
+    value: [...byCategory.get(category)!.entries()].sort((a, b) => b[1] - a[1]).map(([title, count]) => `• ${title}: **${count}**`).join('\n').slice(0, 1024)
+  }));
+  try {
+    await deliverAlert({
+      ...target,
+      title: 'Riepilogo giornaliero',
+      description: `${events.length} avvisi informativi dall’ultimo riepilogo. I dettagli sono nella super console → Monitoraggio.`,
+      fields,
+      color: SEVERITY_COLOR.info,
+      footer: 'Sentinel · riepilogo',
+      mentionUserId: null
+    });
+    await prisma.instanceEvent.updateMany({ where: { id: { in: events.map((event) => event.id) } }, data: { deliveryState: 'digested', deliveredAt: now } });
+    await done();
+  } catch (error) {
+    log.warn({ err: error }, 'Daily digest delivery failed');
+  }
+}
+
+async function sendReminders(settings: AlertSettings, status: AlertTarget | null, now: Date, quiet: boolean, log: Logger) {
+  const open = await prisma.incident.findMany({ where: { resolvedAt: null, acknowledgedAt: null } });
+  for (const incident of open) {
+    if (!reminderDue(incident, now)) continue;
+    if (quiet && incident.severity !== 'critical') continue;
+    const description = `Ancora aperto da ${formatDuration(now.getTime() - incident.openedAt.getTime())}. Segnalo come preso in carico nella super console → Monitoraggio per non ricevere altri promemoria.`;
+    try {
+      if (incident.key === 'bot.down') {
+        // The bot cannot post while it is down: only the webhook can remind.
+        const url = await alertWebhookUrl().catch(() => null);
+        if (url) await postAlertWebhook(url, 'error', `Promemoria: ${incident.title}`, description);
+      } else {
+        const category: AlertCategory = isAlertCategory(incident.category) ? incident.category : 'errors';
+        const route = settings.routes[category];
+        const target = route.mode === 'status' || route.mode === 'channel' ? routeTarget(route, status) : status;
+        if (target) {
+          await deliverAlert({
+            ...target,
+            title: `Promemoria: ${incident.title}`,
+            description: [incident.description, description].filter(Boolean).join('\n\n'),
+            fields: [],
+            color: incident.severity === 'critical' ? SEVERITY_COLOR.critical : SEVERITY_COLOR.warning,
+            footer: `Sentinel · ${CATEGORY_LABELS[category]}`,
+            mentionUserId: mentionFor(route.mention, incident.severity)
+          });
+        }
+      }
+      await prisma.incident.update({ where: { id: incident.id }, data: { reminders: { increment: 1 }, lastRemindedAt: now } });
+    } catch (error) {
+      log.warn({ err: error, incident: incident.key }, 'Incident reminder failed');
+    }
+  }
+}
+
+/* ------------------------------------------------------- delivery health */
+
+/** Opens or resolves the incidents about log delivery across all servers. */
+async function checkDelivery() {
+  const now = Date.now();
+  const [backlog, failures] = await Promise.all([
+    prisma.logEvent.count({ where: { dispatchState: 'PENDING', createdAt: { lt: new Date(now - 10 * 60_000), gt: new Date(now - PENDING_MAX_AGE_MS) } } }),
+    prisma.logEvent.count({ where: { dispatchState: 'FAILED', createdAt: { gt: new Date(now - 15 * 60_000) } } })
+  ]);
+  if (backlog >= 100) {
+    await openIncident('delivery.backlog', { category: 'delivery', severity: 'warning', title: 'Coda dei log in accumulo', description: `${backlog} log attendono la consegna da più di 10 minuti: il dispatcher del bot è fermo o rallentato.` });
+  } else if (backlog <= 20) {
+    await resolveIncident('delivery.backlog', { title: 'Coda dei log smaltita', description: (duration) => `La consegna dei log è tornata regolare dopo ${duration}.` });
+  }
+  if (failures >= 25) {
+    await openIncident('delivery.failures', { category: 'delivery', severity: 'warning', title: 'Molti invii dei log falliti', description: `${failures} log rifiutati da Discord negli ultimi 15 minuti.` });
+  } else if (failures < 5) {
+    await resolveIncident('delivery.failures', { title: 'Invii dei log tornati regolari', description: (duration) => `Gli invii falliti sono rientrati dopo ${duration}.` });
+  }
+}
+
+export function startAlerting(log: Logger) {
+  setInterval(() => void runAlertRouter(log).catch((error) => log.warn({ err: error }, 'Alert router failed')), ROUTER_INTERVAL_MS).unref();
+  setInterval(() => void checkDelivery().catch((error) => log.warn({ err: error }, 'Delivery check failed')), DELIVERY_CHECK_MS).unref();
+}
+
+/* ---------------------------------------------------------------- routes */
+
+export async function registerAlertRoutes(app: FastifyInstance) {
+  app.get('/api/super/alerts', async (request, reply) => {
+    const session = await requireSuperAdmin(request, reply);
+    if (!session) return;
+    const [{ settings }, open, recent] = await Promise.all([
+      loadSettings(),
+      prisma.incident.findMany({ where: { resolvedAt: null }, orderBy: { openedAt: 'desc' } }),
+      prisma.incident.findMany({ where: { resolvedAt: { not: null } }, orderBy: { openedAt: 'desc' }, take: 30 })
+    ]);
+    return { settings, incidents: { open, recent }, mentionAvailable: Boolean(config.superAdminUserId) };
+  });
+
+  app.put('/api/super/alerts/settings', async (request, reply) => {
+    const session = await requireSuperAdmin(request, reply);
+    if (!session) return;
+    const settings = parseAlertSettings(request.body);
+    // Every chosen channel must belong to its server and accept messages.
+    const targets = [
+      ...Object.values(settings.routes).filter((route) => route.mode === 'channel'),
+      ...(settings.digest.mode === 'channel' ? [settings.digest] : [])
+    ];
+    if (targets.some((target) => !target.guildId || !target.channelId)) return reply.code(400).send({ error: 'CHANNEL_REQUIRED' });
+    try {
+      for (const target of targets) {
+        const resources = await getGuildResources(target.guildId!);
+        if (findForeignReference(resources, { sendableChannelIds: [target.channelId!] })) return reply.code(400).send({ error: 'UNKNOWN_GUILD_REFERENCE' });
+      }
+    } catch {
+      return reply.code(502).send({ error: 'DISCORD_RESOURCES_FAILED' });
+    }
+    await prisma.instanceConfig.upsert({ where: { id: 1 }, update: { alertSettings: settings }, create: { id: 1, alertSettings: settings } });
+    await superAdminAudit(request, session, 'alerts.settings', null, null, settings);
+    return { settings };
+  });
+
+  app.post('/api/super/incidents/:id/ack', async (request, reply) => {
+    const session = await requireSuperAdmin(request, reply);
+    if (!session) return;
+    const { id } = request.params as { id: string };
+    const incident = await prisma.incident.findUnique({ where: { id } });
+    if (!incident || incident.resolvedAt) return reply.code(404).send({ error: 'NOT_FOUND' });
+    await prisma.incident.update({ where: { id }, data: { acknowledgedAt: new Date(), acknowledgedBy: session.username } });
+    await superAdminAudit(request, session, 'incident.ack', 'INCIDENT', incident.key);
+    return { ok: true };
+  });
+}
