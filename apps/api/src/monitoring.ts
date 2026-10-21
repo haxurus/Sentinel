@@ -4,9 +4,10 @@ import { prisma } from '@sentinel/db';
 import { LOG_LEVEL_RANK, type LogBuffer, type LogLevelName } from '@sentinel/shared';
 import { requireSuperAdmin } from './auth.js';
 import { botHealth, getBotLogs } from './discord.js';
-import { encryptText, unprotectJson } from './security.js';
+import { encryptText } from './security.js';
 import { superAdminAudit } from './super-audit.js';
-import { alertWebhookUrl, openIncident, postAlertWebhook, resolveIncident } from './alerting.js';
+import { alertWebhookUrl, openIncident, postAlertWebhook, renderEvent, resolveIncident, statusLocale } from './alerting.js';
+import { normalizeAlertLocale, renderAlertMessage, type AlertMessageKey, type AlertParams } from '@sentinel/shared';
 
 /**
  * Super console monitoring: the bot watchdog, the instance event feed and the
@@ -32,9 +33,12 @@ type BotState = { status: 'unknown' | 'up' | 'down'; since: string; lastCheck: s
 const state: BotState = { status: 'unknown', since: new Date().toISOString(), lastCheck: null, failures: 0, guilds: null };
 export const botState = () => ({ ...state });
 
-async function webhook(level: 'ok' | 'error', title: string, description: string, log: Logger) {
+async function webhook(level: 'ok' | 'error', key: AlertMessageKey, params: AlertParams, log: Logger) {
   const url = await alertWebhookUrl().catch(() => null);
-  if (url) await postAlertWebhook(url, level, title, description).catch((error) => log.warn({ err: error }, 'Alarm webhook failed'));
+  if (!url) return;
+  const locale = await statusLocale().catch(() => 'en' as const);
+  const text = renderAlertMessage(key, params, locale);
+  await postAlertWebhook(url, level, text.title, text.description ?? '', locale).catch((error) => log.warn({ err: error }, 'Alarm webhook failed'));
 }
 
 async function checkBot(log: Logger) {
@@ -49,11 +53,8 @@ async function checkBot(log: Logger) {
       state.since = now.toISOString();
     }
     // Also closes an incident left open by a previous API process.
-    const downtime = await resolveIncident('bot.down', {
-      title: 'Bot ripristinato',
-      description: (duration) => `Sentinel è di nuovo connesso a Discord dopo ${duration} di interruzione (${health.guilds} server).`
-    }).catch(() => null);
-    if (downtime) await webhook('ok', 'Bot ripristinato', `Sentinel è di nuovo connesso a Discord dopo ${downtime} di interruzione.`, log);
+    const durationMs = await resolveIncident('bot.down', 'bot.restored', { guilds: health.guilds }).catch(() => null);
+    if (durationMs) await webhook('ok', 'bot.restored', { guilds: health.guilds, durationMs }, log);
     return;
   }
   state.failures += 1;
@@ -61,12 +62,10 @@ async function checkBot(log: Logger) {
     const wasUp = state.status === 'up';
     state.status = 'down';
     state.since = now.toISOString();
-    const description = health
-      ? 'Il processo del bot risponde ma non è connesso a Discord: i log non vengono registrati.'
-      : `Il bot non risponde da circa ${Math.round(FAILURES_BEFORE_DOWN * CHECK_INTERVAL_MS / 60_000)} minuti${wasUp ? '' : ' (dall’avvio dell’API)'}: i log non vengono registrati.`;
+    const params = { mode: health ? 'disconnected' : 'silent', minutes: Math.round(FAILURES_BEFORE_DOWN * CHECK_INTERVAL_MS / 60_000), sinceStart: wasUp ? null : 1 };
     // logOnly: the bot cannot post it; the webhook and the external monitor do.
-    const opened = await openIncident('bot.down', { category: 'availability', severity: 'critical', title: 'Bot non raggiungibile', description, logOnly: true }).catch(() => false);
-    if (opened) await webhook('error', 'Bot non raggiungibile', description, log);
+    const opened = await openIncident('bot.down', { category: 'availability', severity: 'critical', message: 'bot.down', params, logOnly: true }).catch(() => false);
+    if (opened) await webhook('error', 'bot.down', params, log);
   }
 }
 
@@ -88,18 +87,14 @@ export async function registerMonitoringRoutes(app: FastifyInstance, apiLogs: Lo
   app.get('/api/super/monitor', async (request, reply) => {
     const session = await requireSuperAdmin(request, reply);
     if (!session) return;
+    const locale = normalizeAlertLocale((request.query as { locale?: string }).locale);
     const [rows, url] = await Promise.all([
       prisma.instanceEvent.findMany({ orderBy: { createdAt: 'desc' }, take: 200 }),
       alertWebhookUrl().catch(() => null)
     ]);
     const events = rows.map((row) => {
-      let details: { description?: string | null; fields?: Array<{ name: string; value: string }> } = {};
-      try {
-        details = unprotectJson(row.details) as typeof details;
-      } catch {
-        details = { description: null, fields: [] };
-      }
-      return { id: row.id, source: row.source, level: row.level, category: row.category, severity: row.severity, deliveryState: row.deliveryState, title: row.title, description: details.description ?? null, fields: details.fields ?? [], createdAt: row.createdAt };
+      const text = renderEvent(row, locale);
+      return { id: row.id, source: row.source, level: row.level, category: row.category, severity: row.severity, deliveryState: row.deliveryState, title: text.title, description: text.description, fields: text.fields, createdAt: row.createdAt };
     });
     return { bot: botState(), events, webhook: url ? { configured: true, hint: `…${url.slice(-6)}` } : { configured: false, hint: null } };
   });
@@ -140,7 +135,9 @@ export async function registerMonitoringRoutes(app: FastifyInstance, apiLogs: Lo
     const url = await alertWebhookUrl().catch(() => null);
     if (!url) return reply.code(400).send({ error: 'WEBHOOK_NOT_SET' });
     try {
-      await postAlertWebhook(url, 'info', 'Allarmi attivi', 'Messaggio di prova dalla super console: qui arriveranno l’avviso e i promemoria quando il bot non è raggiungibile, e la notizia del ripristino.');
+      const locale = await statusLocale().catch(() => 'en' as const);
+      const text = renderAlertMessage('webhook.test', {}, locale);
+      await postAlertWebhook(url, 'info', text.title, text.description ?? '', locale);
     } catch {
       return reply.code(502).send({ error: 'WEBHOOK_FAILED' });
     }

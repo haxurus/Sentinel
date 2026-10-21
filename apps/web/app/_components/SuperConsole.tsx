@@ -90,7 +90,7 @@ const copy = {
     },
     alerts: {
       routingTitle: 'Instradamento degli allarmi',
-      routingText: 'Scegli dove va ogni categoria. Gli avvisi uguali entro 10 minuti diventano un solo messaggio; i critici ti menzionano e ignorano gli orari di silenzio. “Bot giù” lo segnala il monitor esterno (e il webhook, se impostato).',
+      routingText: 'Scegli dove va ogni categoria. I messaggi usano la lingua impostata nel server di destinazione (dashboard → Lingua dei messaggi). Gli avvisi uguali entro 10 minuti diventano un solo messaggio; i critici ti menzionano e ignorano gli orari di silenzio. “Bot giù” lo segnala il monitor esterno (e il webhook, se impostato).',
       categories: { availability: 'Disponibilità', security: 'Sicurezza', errors: 'Errori', delivery: 'Consegna dei log', billing: 'Abbonamenti', installations: 'Installazioni', usage: 'Utilizzo' },
       modes: { status: 'Canale di stato', channel: 'Altro canale', digest: 'Riepilogo giornaliero', log: 'Solo registro' },
       server: 'Server',
@@ -262,7 +262,7 @@ const copy = {
     },
     alerts: {
       routingTitle: 'Alert routing',
-      routingText: 'Choose where each category goes. Identical alerts within 10 minutes become a single message; critical ones mention you and ignore quiet hours. “Bot down” is reported by the external monitor (and by the webhook, if set).',
+      routingText: 'Choose where each category goes. Messages use the language set in the destination server (dashboard → Message language). Identical alerts within 10 minutes become a single message; critical ones mention you and ignore quiet hours. “Bot down” is reported by the external monitor (and by the webhook, if set).',
       categories: { availability: 'Availability', security: 'Security', errors: 'Errors', delivery: 'Log delivery', billing: 'Subscriptions', installations: 'Installations', usage: 'Usage' },
       modes: { status: 'Status channel', channel: 'Another channel', digest: 'Daily digest', log: 'Log only' },
       server: 'Server',
@@ -498,7 +498,7 @@ export default function SuperConsole({ locale }: { locale: Locale }) {
             </nav>
 
             {tab === 'servers' && <ServersTab data={data} c={c} locale={locale} action={action} fmt={fmt} />}
-            {tab === 'monitor' && <MonitorTab data={data} c={c} action={action} fmt={fmt} setStatus={setStatus} />}
+            {tab === 'monitor' && <MonitorTab data={data} c={c} locale={locale} action={action} fmt={fmt} setStatus={setStatus} />}
             {tab === 'logs' && <LogsTab c={c} fmt={fmt} />}
             {tab === 'contacts' && <ContactsTab data={data} c={c} action={action} />}
             {tab === 'discord' && <DiscordTab data={data} c={c} locale={locale} action={action} fmt={fmt} />}
@@ -645,10 +645,10 @@ type Monitor = {
   webhook: { configured: boolean; hint: string | null };
 };
 
-function MonitorTab({ data, c, action, fmt, setStatus }: { data: Overview; c: Copy; action: Action; fmt: (value: string) => string; setStatus: SetStatus }) {
+function MonitorTab({ data, c, locale, action, fmt, setStatus }: { data: Overview; c: Copy; locale: Locale; action: Action; fmt: (value: string) => string; setStatus: SetStatus }) {
   const [monitor, setMonitor] = useState<Monitor | null>(null);
   const [url, setUrl] = useState('');
-  const load = useCallback(() => fetch('/backend/api/super/monitor').then((response) => response.ok ? response.json() : null).then((value) => { if (value) setMonitor(value); }).catch(() => null), []);
+  const load = useCallback(() => fetch(`/backend/api/super/monitor?locale=${locale}`).then((response) => response.ok ? response.json() : null).then((value) => { if (value) setMonitor(value); }).catch(() => null), []);
 
   useEffect(() => {
     void load();
@@ -688,8 +688,8 @@ function MonitorTab({ data, c, action, fmt, setStatus }: { data: Overview; c: Co
         </div>
       </section>
 
-      <IncidentsCard c={c} action={action} fmt={fmt} />
-      <RoutingCard data={data} c={c} action={action} />
+      <IncidentsCard c={c} locale={locale} action={action} fmt={fmt} />
+      <RoutingCard data={data} c={c} locale={locale} action={action} />
 
       <section className="card">
         <div className="card-head"><div><span className="kicker">{c.tabs.monitor}</span><h2>{c.monitor.events}</h2><p>{c.monitor.eventsText}</p></div></div>
@@ -729,9 +729,9 @@ type AlertSettings = {
 type Incident = { id: string; key: string; category: string; severity: string; title: string; description: string | null; openedAt: string; resolvedAt: string | null; acknowledgedAt: string | null; acknowledgedBy: string | null; reminders: number };
 type AlertsData = { settings: AlertSettings; incidents: { open: Incident[]; recent: Incident[] }; mentionAvailable: boolean };
 
-function useAlerts() {
+function useAlerts(locale: Locale) {
   const [alerts, setAlerts] = useState<AlertsData | null>(null);
-  const load = useCallback(() => fetch('/backend/api/super/alerts').then((response) => response.ok ? response.json() : null).then((value) => { if (value) setAlerts(value); }).catch(() => null), []);
+  const load = useCallback(() => fetch(`/backend/api/super/alerts?locale=${locale}`).then((response) => response.ok ? response.json() : null).then((value) => { if (value) setAlerts(value); }).catch(() => null), [locale]);
   useEffect(() => { void load(); }, [load]);
   return { alerts, load };
 }
@@ -767,8 +767,8 @@ function ChannelPicker({ data, c, guildId, channelId, onChange }: { data: Overvi
   );
 }
 
-function IncidentsCard({ c, action, fmt }: { c: Copy; action: Action; fmt: (value: string) => string }) {
-  const { alerts, load } = useAlerts();
+function IncidentsCard({ c, locale, action, fmt }: { c: Copy; locale: Locale; action: Action; fmt: (value: string) => string }) {
+  const { alerts, load } = useAlerts(locale);
   useEffect(() => {
     const timer = window.setInterval(() => void load(), 30_000);
     return () => window.clearInterval(timer);
@@ -805,8 +805,8 @@ function IncidentsCard({ c, action, fmt }: { c: Copy; action: Action; fmt: (valu
   );
 }
 
-function RoutingCard({ data, c, action }: { data: Overview; c: Copy; action: Action }) {
-  const { alerts } = useAlerts();
+function RoutingCard({ data, c, locale, action }: { data: Overview; c: Copy; locale: Locale; action: Action }) {
+  const { alerts } = useAlerts(locale);
   const [draft, setDraft] = useState<AlertSettings | null>(null);
   useEffect(() => { if (alerts && !draft) setDraft(alerts.settings); }, [alerts, draft]);
   if (!draft) return null;

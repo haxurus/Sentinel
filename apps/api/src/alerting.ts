@@ -1,6 +1,22 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '@sentinel/db';
-import { ALERT_CATEGORIES, isAlertCategory, type AlertCategory, type AlertSeverity } from '@sentinel/shared';
+import {
+  ALERT_CATEGORIES,
+  ALERT_UI,
+  alertCategoryLabel,
+  alertFieldLabel,
+  durationText,
+  isAlertCategory,
+  isAlertMessageKey,
+  normalizeAlertLocale,
+  renderAlertMessage,
+  type AlertCategory,
+  type AlertField,
+  type AlertLocale,
+  type AlertMessageKey,
+  type AlertParams,
+  type AlertSeverity
+} from '@sentinel/shared';
 import { requireSuperAdmin } from './auth.js';
 import { config } from './config.js';
 import { deliverAlert, getGuildResources } from './discord.js';
@@ -10,7 +26,6 @@ import { superAdminAudit } from './super-audit.js';
 import {
   SEVERITY_COLOR,
   digestDue,
-  formatDuration,
   groupForDelivery,
   inQuietHours,
   parseAlertSettings,
@@ -31,21 +46,16 @@ import {
 
 type Logger = { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void };
 type Level = 'info' | 'ok' | 'warn' | 'error';
-type Details = { description?: string | null; fields?: Array<{ name: string; value: string }> };
+type Details = {
+  params?: AlertParams;
+  fields?: Array<AlertField | { name: string; value: string }>;
+  /** Older rows: fixed (Italian) text. */
+  description?: string | null;
+};
 
 const ROUTER_INTERVAL_MS = 20_000;
 const DELIVERY_CHECK_MS = 2 * 60_000;
 const PENDING_MAX_AGE_MS = 24 * 60 * 60_000;
-
-export const CATEGORY_LABELS: Record<AlertCategory, string> = {
-  availability: 'Disponibilità',
-  security: 'Sicurezza',
-  errors: 'Errori',
-  delivery: 'Consegna dei log',
-  billing: 'Abbonamenti',
-  installations: 'Installazioni',
-  usage: 'Utilizzo'
-};
 
 const LEVEL_COLOR: Record<Level, number> = { ok: SEVERITY_COLOR.ok, info: SEVERITY_COLOR.info, warn: SEVERITY_COLOR.warning, error: SEVERITY_COLOR.critical };
 const levelFor = (severity: AlertSeverity): Level => severity === 'critical' ? 'error' : severity === 'warning' ? 'warn' : 'info';
@@ -58,20 +68,57 @@ const readDetails = (value: unknown): Details => {
   }
 };
 
+/** Title, description and fields of an alert in one language. */
+export function renderEvent(event: { messageKey: string | null; title: string; details: unknown }, locale: AlertLocale) {
+  const details = readDetails(event.details);
+  const fields = (details.fields ?? []).map((field) => 'key' in field
+    ? { name: alertFieldLabel(field.key, locale), value: field.value }
+    : { name: field.name, value: field.value });
+  if (isAlertMessageKey(event.messageKey)) {
+    const text = renderAlertMessage(event.messageKey, details.params ?? {}, locale);
+    return { title: text.title, description: text.description, fields };
+  }
+  return { title: event.title, description: details.description ?? null, fields };
+}
+
+export function renderIncident(incident: { messageKey: string | null; title: string; description: string | null; params: unknown }, locale: AlertLocale) {
+  if (isAlertMessageKey(incident.messageKey)) {
+    const params = incident.params && typeof incident.params === 'object' ? incident.params as AlertParams : {};
+    const text = renderAlertMessage(incident.messageKey, params, locale);
+    return { title: text.title, description: text.description };
+  }
+  return { title: incident.title, description: incident.description };
+}
+
+/** Language of each target server ("message language" in its dashboard). */
+async function localesOf(guildIds: string[]) {
+  const unique = [...new Set(guildIds)];
+  const rows = unique.length ? await prisma.guildSettings.findMany({ where: { guildId: { in: unique } }, select: { guildId: true, locale: true } }) : [];
+  const map = new Map(rows.map((row) => [row.guildId, normalizeAlertLocale(row.locale)]));
+  return (guildId: string | null | undefined): AlertLocale => (guildId ? map.get(guildId) ?? 'en' : 'en');
+}
+
+export async function statusLocale() {
+  const status = await prisma.statusChannel.findUnique({ where: { id: 1 }, select: { guildId: true } });
+  return (await localesOf(status ? [status.guildId] : []))(status?.guildId);
+}
+
 /* ------------------------------------------------------------- recording */
 
 export async function recordAlert(input: {
-  category: AlertCategory; severity: AlertSeverity; title: string; description?: string | null;
-  fields?: Array<{ name: string; value: string }>; level?: Level; logOnly?: boolean;
+  category: AlertCategory; severity: AlertSeverity; key: AlertMessageKey; params?: AlertParams;
+  fields?: AlertField[]; level?: Level; logOnly?: boolean;
 }) {
+  const params = input.params ?? {};
   await prisma.instanceEvent.create({
     data: {
       source: 'api',
       level: input.level ?? levelFor(input.severity),
       category: input.category,
       severity: input.severity,
-      title: input.title.slice(0, 256),
-      details: protectJson({ description: input.description ?? null, fields: input.fields ?? [] }),
+      messageKey: input.key,
+      title: renderAlertMessage(input.key, params, 'en').title.slice(0, 256),
+      details: protectJson({ params, fields: input.fields ?? [] }),
       deliveryState: input.logOnly ? 'log' : 'pending'
     }
   });
@@ -79,24 +126,28 @@ export async function recordAlert(input: {
 
 /** Opens an incident once per key; repeated calls while it is open do nothing. */
 export async function openIncident(key: string, input: {
-  category: AlertCategory; severity: AlertSeverity; title: string; description: string; logOnly?: boolean;
+  category: AlertCategory; severity: AlertSeverity; message: AlertMessageKey; params?: AlertParams; logOnly?: boolean;
 }) {
   const open = await prisma.incident.findFirst({ where: { key, resolvedAt: null } });
   if (open) return false;
-  await prisma.incident.create({ data: { key, category: input.category, severity: input.severity, title: input.title, description: input.description } });
-  await recordAlert({ category: input.category, severity: input.severity, title: input.title, description: input.description, logOnly: input.logOnly });
+  const params = input.params ?? {};
+  const text = renderAlertMessage(input.message, params, 'en');
+  await prisma.incident.create({
+    data: { key, category: input.category, severity: input.severity, title: text.title, description: text.description, messageKey: input.message, params: params as Record<string, string | number | null> }
+  });
+  await recordAlert({ category: input.category, severity: input.severity, key: input.message, params, logOnly: input.logOnly });
   return true;
 }
 
 /** Resolves the open incident of a key and announces it with its duration. */
-export async function resolveIncident(key: string, message: { title: string; description: (duration: string) => string }) {
+export async function resolveIncident(key: string, message: AlertMessageKey, params: AlertParams = {}) {
   const open = await prisma.incident.findFirst({ where: { key, resolvedAt: null } });
   if (!open) return null;
   const now = new Date();
   await prisma.incident.update({ where: { id: open.id }, data: { resolvedAt: now } });
-  const duration = formatDuration(now.getTime() - open.openedAt.getTime());
-  await recordAlert({ category: isAlertCategory(open.category) ? open.category : 'errors', severity: 'info', level: 'ok', title: message.title, description: message.description(duration) });
-  return duration;
+  const durationMs = now.getTime() - open.openedAt.getTime();
+  await recordAlert({ category: isAlertCategory(open.category) ? open.category : 'errors', severity: 'info', level: 'ok', key: message, params: { ...params, durationMs } });
+  return durationMs;
 }
 
 /* --------------------------------------------------------------- webhook */
@@ -109,14 +160,14 @@ export async function alertWebhookUrl() {
 }
 
 /** Optional fallback for "bot down": a webhook works while the bot is stopped. */
-export async function postAlertWebhook(url: string, level: Level, title: string, description: string) {
+export async function postAlertWebhook(url: string, level: Level, title: string, description: string, locale: AlertLocale = 'en') {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       username: 'Sentinel monitor',
       allowed_mentions: { parse: [] },
-      embeds: [{ title, description, color: WEBHOOK_COLORS[level], timestamp: new Date().toISOString(), footer: { text: 'Sentinel · monitoraggio' } }]
+      embeds: [{ title, description, color: WEBHOOK_COLORS[level], timestamp: new Date().toISOString(), footer: { text: ALERT_UI[locale].monitorFooter } }]
     }),
     signal: AbortSignal.timeout(8_000)
   });
@@ -163,7 +214,7 @@ export async function runAlertRouter(log: Logger) {
       if (!target) { toLog.push(event.id); continue; }
       // Quiet hours: non-critical alerts wait and leave together in the morning.
       if (quiet && event.severity !== 'critical') continue;
-      sendable.push({ key: `${target.guildId}:${target.channelId}:${event.title}`, event, target, mention: mentionFor(route.mention, event.severity), category });
+      sendable.push({ key: `${target.guildId}:${target.channelId}:${event.messageKey ?? event.title}`, event, target, mention: mentionFor(route.mention, event.severity), category });
     }
     await Promise.all([
       toLog.length ? prisma.instanceEvent.updateMany({ where: { id: { in: toLog } }, data: { deliveryState: 'log' } }) : null,
@@ -171,20 +222,23 @@ export async function runAlertRouter(log: Logger) {
       expired.length ? prisma.instanceEvent.updateMany({ where: { id: { in: expired } }, data: { deliveryState: 'failed' } }) : null
     ]);
 
+    const localeOf = await localesOf(sendable.map((item) => item.target.guildId));
     for (const group of groupForDelivery(sendable, lastSent, now.getTime())) {
       const first = group.members[0]!;
       const latest = group.members[group.members.length - 1]!;
-      const details = readDetails(latest.event.details);
+      const locale = localeOf(latest.target.guildId);
+      const ui = ALERT_UI[locale];
+      const text = renderEvent(latest.event, locale);
       const count = group.members.length;
-      const since = first.event.createdAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', timeZone: settings.timezone });
+      const since = first.event.createdAt.toLocaleTimeString(locale === 'it' ? 'it-IT' : 'en-GB', { hour: '2-digit', minute: '2-digit', timeZone: settings.timezone });
       try {
         await deliverAlert({
           ...latest.target,
-          title: count > 1 ? `${latest.event.title} ×${count}` : latest.event.title,
-          description: [details.description, count > 1 ? `${count} avvisi uguali dalle ${since}; qui sopra il più recente.` : null].filter(Boolean).join('\n\n'),
-          fields: details.fields ?? [],
+          title: count > 1 ? `${text.title} ×${count}` : text.title,
+          description: [text.description, count > 1 ? ui.repeated(count, since) : null].filter(Boolean).join('\n\n'),
+          fields: text.fields,
           color: LEVEL_COLOR[(latest.event.level as Level)] ?? LEVEL_COLOR.info,
-          footer: `Sentinel · ${CATEGORY_LABELS[latest.category]}`,
+          footer: ui.footer(alertCategoryLabel(latest.category, locale)),
           mentionUserId: group.members.some((member) => member.mention) ? latest.mention ?? first.mention : null
         });
         lastSent.set(group.key, now.getTime());
@@ -213,25 +267,28 @@ async function sendDigest(settings: AlertSettings, status: AlertTarget | null, n
     return;
   }
 
+  const locale = (await localesOf([target.guildId]))(target.guildId);
+  const ui = ALERT_UI[locale];
   const byCategory = new Map<AlertCategory, Map<string, number>>();
   for (const event of events) {
     const category: AlertCategory = isAlertCategory(event.category) ? event.category : 'errors';
     const titles = byCategory.get(category) ?? new Map<string, number>();
-    titles.set(event.title, (titles.get(event.title) ?? 0) + 1);
+    const title = renderEvent(event, locale).title;
+    titles.set(title, (titles.get(title) ?? 0) + 1);
     byCategory.set(category, titles);
   }
   const fields = ALERT_CATEGORIES.filter((category) => byCategory.has(category)).map((category) => ({
-    name: CATEGORY_LABELS[category],
+    name: alertCategoryLabel(category, locale),
     value: [...byCategory.get(category)!.entries()].sort((a, b) => b[1] - a[1]).map(([title, count]) => `• ${title}: **${count}**`).join('\n').slice(0, 1024)
   }));
   try {
     await deliverAlert({
       ...target,
-      title: 'Riepilogo giornaliero',
-      description: `${events.length} avvisi informativi dall’ultimo riepilogo. I dettagli sono nella super console → Monitoraggio.`,
+      title: ui.digestTitle,
+      description: ui.digestText(events.length),
       fields,
       color: SEVERITY_COLOR.info,
-      footer: 'Sentinel · riepilogo',
+      footer: ui.digestFooter,
       mentionUserId: null
     });
     await prisma.instanceEvent.updateMany({ where: { id: { in: events.map((event) => event.id) } }, data: { deliveryState: 'digested', deliveredAt: now } });
@@ -246,24 +303,30 @@ async function sendReminders(settings: AlertSettings, status: AlertTarget | null
   for (const incident of open) {
     if (!reminderDue(incident, now)) continue;
     if (quiet && incident.severity !== 'critical') continue;
-    const description = `Ancora aperto da ${formatDuration(now.getTime() - incident.openedAt.getTime())}. Segnalo come preso in carico nella super console → Monitoraggio per non ricevere altri promemoria.`;
     try {
       if (incident.key === 'bot.down') {
         // The bot cannot post while it is down: only the webhook can remind.
         const url = await alertWebhookUrl().catch(() => null);
-        if (url) await postAlertWebhook(url, 'error', `Promemoria: ${incident.title}`, description);
+        if (url) {
+          const locale = await statusLocale();
+          const text = renderIncident(incident, locale);
+          await postAlertWebhook(url, 'error', ALERT_UI[locale].reminder(text.title), ALERT_UI[locale].reminderText(durationText(now.getTime() - incident.openedAt.getTime(), locale)), locale);
+        }
       } else {
         const category: AlertCategory = isAlertCategory(incident.category) ? incident.category : 'errors';
         const route = settings.routes[category];
         const target = route.mode === 'status' || route.mode === 'channel' ? routeTarget(route, status) : status;
         if (target) {
+          const locale = (await localesOf([target.guildId]))(target.guildId);
+          const ui = ALERT_UI[locale];
+          const text = renderIncident(incident, locale);
           await deliverAlert({
             ...target,
-            title: `Promemoria: ${incident.title}`,
-            description: [incident.description, description].filter(Boolean).join('\n\n'),
+            title: ui.reminder(text.title),
+            description: [text.description, ui.reminderText(durationText(now.getTime() - incident.openedAt.getTime(), locale))].filter(Boolean).join('\n\n'),
             fields: [],
             color: incident.severity === 'critical' ? SEVERITY_COLOR.critical : SEVERITY_COLOR.warning,
-            footer: `Sentinel · ${CATEGORY_LABELS[category]}`,
+            footer: ui.footer(alertCategoryLabel(category, locale)),
             mentionUserId: mentionFor(route.mention, incident.severity)
           });
         }
@@ -285,14 +348,14 @@ async function checkDelivery() {
     prisma.logEvent.count({ where: { dispatchState: 'FAILED', createdAt: { gt: new Date(now - 15 * 60_000) } } })
   ]);
   if (backlog >= 100) {
-    await openIncident('delivery.backlog', { category: 'delivery', severity: 'warning', title: 'Coda dei log in accumulo', description: `${backlog} log attendono la consegna da più di 10 minuti: il dispatcher del bot è fermo o rallentato.` });
+    await openIncident('delivery.backlog', { category: 'delivery', severity: 'warning', message: 'delivery.backlog', params: { count: backlog } });
   } else if (backlog <= 20) {
-    await resolveIncident('delivery.backlog', { title: 'Coda dei log smaltita', description: (duration) => `La consegna dei log è tornata regolare dopo ${duration}.` });
+    await resolveIncident('delivery.backlog', 'delivery.backlogCleared');
   }
   if (failures >= 25) {
-    await openIncident('delivery.failures', { category: 'delivery', severity: 'warning', title: 'Molti invii dei log falliti', description: `${failures} log rifiutati da Discord negli ultimi 15 minuti.` });
+    await openIncident('delivery.failures', { category: 'delivery', severity: 'warning', message: 'delivery.failures', params: { count: failures } });
   } else if (failures < 5) {
-    await resolveIncident('delivery.failures', { title: 'Invii dei log tornati regolari', description: (duration) => `Gli invii falliti sono rientrati dopo ${duration}.` });
+    await resolveIncident('delivery.failures', 'delivery.failuresCleared');
   }
 }
 
@@ -307,12 +370,14 @@ export async function registerAlertRoutes(app: FastifyInstance) {
   app.get('/api/super/alerts', async (request, reply) => {
     const session = await requireSuperAdmin(request, reply);
     if (!session) return;
+    const locale = normalizeAlertLocale((request.query as { locale?: string }).locale);
     const [{ settings }, open, recent] = await Promise.all([
       loadSettings(),
       prisma.incident.findMany({ where: { resolvedAt: null }, orderBy: { openedAt: 'desc' } }),
       prisma.incident.findMany({ where: { resolvedAt: { not: null } }, orderBy: { openedAt: 'desc' }, take: 30 })
     ]);
-    return { settings, incidents: { open, recent }, mentionAvailable: Boolean(config.superAdminUserId) };
+    const view = (incident: (typeof open)[number]) => ({ ...incident, ...renderIncident(incident, locale) });
+    return { settings, incidents: { open: open.map(view), recent: recent.map(view) }, mentionAvailable: Boolean(config.superAdminUserId) };
   });
 
   app.put('/api/super/alerts/settings', async (request, reply) => {

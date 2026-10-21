@@ -90,20 +90,16 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
     intentionalLeaves.add(guild.id);
     setTimeout(() => intentionalLeaves.delete(guild.id), 120_000).unref();
     await leaveGuild(guild, reason).catch(() => null);
-    const why = {
-      'blocked-guild': 'il server è in blacklist',
-      'blocked-installer': 'chi ha aggiunto il bot è in blacklist'
-    }[reason];
     status.notify({
       level: 'warn',
       category: 'security',
       severity: 'warning',
-      title: 'Installazione rifiutata',
-      description: `Sentinel è uscito da **${guild.name}**: ${why}.`,
+      key: 'install.rejected',
+      params: { guild: guild.name, reason },
       fields: [
-        { name: 'Server', value: `${guild.name}\n\`${guild.id}\`` },
-        { name: 'Membri', value: String(guild.memberCount) },
-        { name: 'Aggiunto da', value: installerId ? `<@${installerId}>\n\`${installerId}\`` : 'sconosciuto' }
+        { key: 'server', value: `${guild.name}\n\`${guild.id}\`` },
+        { key: 'members', value: String(guild.memberCount) },
+        { key: 'addedBy', value: installerId ? `<@${installerId}>\n\`${installerId}\`` : '—' }
       ]
     });
   };
@@ -128,11 +124,11 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
       level: 'ok',
       category: 'installations',
       severity: 'info',
-      title: 'Sentinel aggiunto a un server',
+      key: 'guild.added',
       fields: [
-        { name: 'Server', value: `${guild.name}\n\`${guild.id}\`` },
-        { name: 'Membri', value: String(guild.memberCount) },
-        { name: 'Aggiunto da', value: installerId ? `<@${installerId}>\n\`${installerId}\`` : 'sconosciuto' }
+        { key: 'server', value: `${guild.name}\n\`${guild.id}\`` },
+        { key: 'members', value: String(guild.memberCount) },
+        { key: 'addedBy', value: installerId ? `<@${installerId}>\n\`${installerId}\`` : '—' }
       ]
     });
     await sendWelcome(guild);
@@ -750,8 +746,8 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
         level: 'info',
         category: 'installations',
         severity: 'info',
-        title: 'Sentinel rimosso da un server',
-        fields: [{ name: 'Server', value: `${guild.name ?? 'sconosciuto'}\n\`${guild.id}\`` }]
+        key: 'guild.removed',
+        fields: [{ key: 'server', value: `${guild.name ?? '—'}\n\`${guild.id}\`` }]
       });
     }
     await markGuildRemoved(guild.id);

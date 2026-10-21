@@ -3,7 +3,8 @@ import { prisma } from '@sentinel/db';
 import { sendStatusMessage } from './dispatcher.js';
 import { truncate } from './embed-format.js';
 import { logger } from './logger.js';
-import type { AlertCategory, AlertSeverity } from '@sentinel/shared';
+import { ALERT_UI, alertFieldLabel, normalizeAlertLocale, renderAlertMessage, type AlertCategory, type AlertField, type AlertMessageKey, type AlertParams, type AlertSeverity } from '@sentinel/shared';
+import { getGuildSettings } from './store.js';
 import { protectJson, redactText } from './security.js';
 
 export type StatusLevel = 'info' | 'ok' | 'warn' | 'error';
@@ -14,9 +15,10 @@ export type StatusNotice = {
   category: AlertCategory;
   /** critical: mention and reminders, ignores quiet hours; warning; info. */
   severity: AlertSeverity;
-  title: string;
-  description?: string;
-  fields?: Array<{ name: string; value: string; inline?: boolean }>;
+  /** Text key: rendered in the language of the server it is posted to. */
+  key: AlertMessageKey;
+  params?: AlertParams;
+  fields?: AlertField[];
   /** Notices sharing a key are sent at most once per DEDUPE_MS. */
   dedupeKey?: string;
 };
@@ -82,11 +84,19 @@ export function createStatusNotifier(client: Client): StatusNotifier {
    * status channel is set. createMany: the bot may insert but not read back.
    */
   const record = async (notice: StatusNotice) => {
-    const description = notice.description ? redactText(notice.description).slice(0, 4000) : null;
-    const fields = (notice.fields ?? []).filter((field) => field.value).slice(0, 20)
-      .map((field) => ({ name: field.name.slice(0, 256), value: redactText(field.value).slice(0, 1024) }));
+    const params = Object.fromEntries(Object.entries(notice.params ?? {}).map(([key, value]) => [key, typeof value === 'string' ? redactText(value).slice(0, 2000) : value]));
+    const fields = (notice.fields ?? []).filter((field) => field.value).slice(0, 20).map((field) => ({ key: field.key, value: redactText(field.value).slice(0, 1024) }));
     await prisma.instanceEvent.createMany({
-      data: [{ source: 'bot', level: notice.level, category: notice.category, severity: notice.severity, title: notice.title.slice(0, 256), details: protectJson({ description, fields }) }]
+      data: [{
+        source: 'bot',
+        level: notice.level,
+        category: notice.category,
+        severity: notice.severity,
+        messageKey: notice.key,
+        // Readable in the database; the delivered text is rendered per server.
+        title: renderAlertMessage(notice.key, params, 'en').title.slice(0, 256),
+        details: protectJson({ params, fields })
+      }]
     }).catch((error: unknown) => logger.warn({ error: redactText(String(error)) }, 'Unable to record instance event'));
   };
 
@@ -100,16 +110,18 @@ export function createStatusNotifier(client: Client): StatusNotifier {
     }
     if (!config) return { ok: false, error: 'STATUS_CHANNEL_NOT_SET' };
 
+    const locale = normalizeAlertLocale((await getGuildSettings(config.guildId).catch(() => null))?.locale);
+    const text = renderAlertMessage(notice.key, notice.params ?? {}, locale);
     const embed = new EmbedBuilder()
-      .setTitle(truncate(notice.title, 256))
+      .setTitle(truncate(text.title, 256))
       .setColor(COLORS[notice.level])
-      .setFooter({ text: 'Sentinel · stato del bot' })
+      .setFooter({ text: ALERT_UI[locale].statusFooter })
       .setTimestamp(new Date());
-    if (notice.description) embed.setDescription(truncate(redactText(notice.description), 4000));
+    if (text.description) embed.setDescription(truncate(redactText(text.description), 4000));
     const fields = (notice.fields ?? [])
       .filter((field) => field.value)
       .slice(0, 20)
-      .map((field) => ({ name: truncate(field.name, 256), value: truncate(redactText(field.value), 1024), inline: field.inline ?? true }));
+      .map((field) => ({ name: truncate(alertFieldLabel(field.key, locale), 256), value: truncate(redactText(field.value), 1024), inline: true }));
     if (fields.length) embed.addFields(fields);
 
     try {
