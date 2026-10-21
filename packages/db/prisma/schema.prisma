@@ -291,6 +291,9 @@ model InstanceEvent {
   // Routing: category (where it goes) and severity (how loudly).
   category      String    @default("errors")
   severity      String    @default("info")
+  // Text key and parameters (in details): rendered in the language of the
+  // server the alert is posted to. Older rows only have a fixed title.
+  messageKey    String?
   title         String
   details       Json
   // pending → sent | digest → digested | log | failed
@@ -311,6 +314,8 @@ model Incident {
   severity          String
   title             String
   description       String?
+  messageKey        String?
+  params            Json      @default("{}")
   openedAt          DateTime  @default(now())
   resolvedAt        DateTime?
   acknowledgedAt    DateTime?

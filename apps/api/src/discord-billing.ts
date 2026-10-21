@@ -40,18 +40,13 @@ export async function syncDiscordPlans(log: Logger): Promise<SyncResult> {
     lastSync = { at: new Date().toISOString(), ok: false, entitlements: 0, changed: 0, error: 'ENTITLEMENTS_UNAVAILABLE' };
     consecutiveFailures += 1;
     if (consecutiveFailures >= FAILURES_BEFORE_INCIDENT) {
-      await openIncident('discord.sync', {
-        category: 'billing',
-        severity: 'warning',
-        title: 'Sincronizzazione abbonamenti Discord ferma',
-        description: 'Gli abbonamenti attivi non si possono leggere da Discord: nuovi acquisti, rinnovi e disdette non arrivano ai piani dei server.'
-      }).catch(() => null);
+      await openIncident('discord.sync', { category: 'billing', severity: 'warning', message: 'sync.stopped' }).catch(() => null);
     }
     return lastSync;
   }
 
   consecutiveFailures = 0;
-  await resolveIncident('discord.sync', { title: 'Sincronizzazione abbonamenti ripristinata', description: (duration) => `Gli abbonamenti Discord tornano ad arrivare ai piani dopo ${duration}.` }).catch(() => null);
+  await resolveIncident('discord.sync', 'sync.restored').catch(() => null);
   const now = new Date();
   const discordPlans = plansFromEntitlements(entitlements, skus, now);
   const rows = await prisma.guildSettings.findMany({
@@ -86,9 +81,9 @@ export async function syncDiscordPlans(log: Logger): Promise<SyncResult> {
           });
           await recordAlert({
             category: 'billing', severity: 'info', level: 'ok',
-            title: row.planSource === 'DISCORD' && row.planTier !== plan.tier ? 'Abbonamento Discord cambiato' : 'Nuovo abbonamento Discord',
-            description: `Il server ora ha il piano ${PLANS[plan.tier].name}.`,
-            fields: [{ name: 'Server', value: `\`${row.guildId}\`` }]
+            key: row.planSource === 'DISCORD' && row.planTier !== plan.tier ? 'subscription.changed' : 'subscription.new',
+            params: { plan: PLANS[plan.tier].name },
+            fields: [{ key: 'server', value: `\`${row.guildId}\`` }]
           }).catch(() => null);
         }
       } else {
@@ -100,9 +95,8 @@ export async function syncDiscordPlans(log: Logger): Promise<SyncResult> {
         await systemAudit('plan.discord_ended', 'GUILD', row.guildId, { previousTier: row.planTier, entitlementId: row.planEntitlementId, applied });
         await recordAlert({
           category: 'billing', severity: 'info',
-          title: 'Abbonamento Discord terminato',
-          description: 'Il server è tornato al piano Free.',
-          fields: [{ name: 'Server', value: `\`${row.guildId}\`` }]
+          key: 'subscription.ended',
+          fields: [{ key: 'server', value: `\`${row.guildId}\`` }]
         }).catch(() => null);
       }
       changed += 1;

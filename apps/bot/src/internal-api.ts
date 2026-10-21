@@ -225,8 +225,7 @@ export function startInternalApi(client: Client, secret: string, port = 3002, st
           level: 'info',
           category: 'availability',
           severity: 'info',
-          title: 'Notifiche di stato attive',
-          description: 'Messaggio di prova inviato dalla super console. Qui arriveranno avvio del bot, errori e server aggiunti o rimossi.'
+          key: 'status.test'
         }, { force: true });
         res.end(JSON.stringify(result));
         return;
