@@ -790,14 +790,15 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
     await recordEvent({ guildId: event.guildId, eventKey: 'scheduled.delete', actorId, targetId: event.id, summary: `Eliminato l'evento ${event.name}.`, details: { name: event.name } });
   });
 
+  // An uncached user arrives as a partial: only its ID is known.
   on(Events.GuildScheduledEventUserAdd, async (event, user) => {
     if (!event.guildId) return;
-    await recordEvent({ guildId: event.guildId, eventKey: 'scheduled.user_add', actorId: user.id, targetId: event.id, channelId: event.channelId, summary: `${user.tag} ha mostrato interesse per ${event.name}.`, details: { eventName: event.name, actorBot: user.bot } });
+    await recordEvent({ guildId: event.guildId, eventKey: 'scheduled.user_add', actorId: user.id, targetId: event.id, channelId: event.channelId, summary: `${user.tag ?? user.id} ha mostrato interesse per ${event.name}.`, details: { eventName: event.name, actorBot: user.bot ?? false } });
   });
 
   on(Events.GuildScheduledEventUserRemove, async (event, user) => {
     if (!event.guildId) return;
-    await recordEvent({ guildId: event.guildId, eventKey: 'scheduled.user_remove', actorId: user.id, targetId: event.id, channelId: event.channelId, summary: `${user.tag} ha rimosso l’interesse per ${event.name}.`, details: { eventName: event.name, actorBot: user.bot } });
+    await recordEvent({ guildId: event.guildId, eventKey: 'scheduled.user_remove', actorId: user.id, targetId: event.id, channelId: event.channelId, summary: `${user.tag ?? user.id} ha rimosso l’interesse per ${event.name}.`, details: { eventName: event.name, actorBot: user.bot ?? false } });
   });
 
   on(Events.AutoModerationRuleCreate, async (rule) => {

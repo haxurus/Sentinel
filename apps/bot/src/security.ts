@@ -47,7 +47,9 @@ export function unprotectJson(value: unknown): unknown {
 const SECRET_PATTERNS = [
   /Bot\s+[A-Za-z0-9._-]{20,}/gi,
   /Bearer\s+[A-Za-z0-9._-]{16,}/gi,
-  /[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}/g,
+  // The lookbehind anchors a match to the start of a run: without it a long
+  // unbroken word (a 4000-character message) is rescanned from every offset.
+  /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}/g,
   /(password|secret|token|authorization)=([^&\s]+)/gi
 ];
 

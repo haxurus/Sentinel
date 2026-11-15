@@ -12,9 +12,11 @@ import { redactText } from './security.js';
 const SNOWFLAKE = /^\d{17,20}$/;
 
 function authorized(header: string | undefined, secret: string) {
-  const expected = `Bearer ${secret}`;
-  if (!header || header.length !== expected.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(header), Buffer.from(expected));
+  // Compare byte lengths: a non-ASCII header of the same character length
+  // would make timingSafeEqual throw.
+  const given = Buffer.from(header ?? '');
+  const expected = Buffer.from(`Bearer ${secret}`);
+  return given.length === expected.length && crypto.timingSafeEqual(given, expected);
 }
 
 const MAX_BODY_BYTES = 128 * 1024;
@@ -103,7 +105,8 @@ export function startInternalApi(client: Client, secret: string, port = 3002, st
       if (req.method === 'GET' && url.pathname === '/guilds') {
         const guilds = [...client.guilds.cache.values()].map((guild) => ({
           id: guild.id,
-          name: guild.name,
+          // A server that is unavailable since startup has no name yet.
+          name: guild.name ?? guild.id,
           ownerId: guild.ownerId,
           ownerTag: guild.members.cache.get(guild.ownerId)?.user?.tag ?? null,
           memberCount: guild.memberCount,

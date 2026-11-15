@@ -2,7 +2,7 @@ import { UnrecoverableError, Worker, type Job } from 'bullmq';
 import { Redis } from 'ioredis';
 import { prisma } from '@sentinel/db';
 import { effectiveTier, eventDefinition, requiredTierForEvent, tierAllows } from '@sentinel/shared';
-import { DiscordAPIError, EmbedBuilder, type Client } from 'discord.js';
+import { DiscordAPIError, EmbedBuilder, PermissionFlagsBits, type Client, type GuildMember, type PermissionsBitField } from 'discord.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { decryptText, unprotectJson, redactText } from './security.js';
@@ -26,6 +26,24 @@ export const DISPATCH_ATTEMPTS = 4;
 // Discord answers these permanently for the same request: retrying only burns
 // rate limit and delays the next logs. 429 is handled inside discord.js.
 const PERMANENT_DISCORD_STATUSES = new Set([400, 401, 403, 404]);
+
+/**
+ * False only when the bot is known to lack what a log embed needs. Sending
+ * anyway is answered 403 every time, and Discord restricts clients that keep
+ * making invalid requests.
+ */
+export const canPostEmbeds = (
+  channel: { isThread(): boolean; permissionsFor(member: GuildMember): Readonly<PermissionsBitField> | null },
+  me: GuildMember | null
+) => {
+  if (!me || me.partial) return true;
+  const permissions = channel.permissionsFor(me);
+  return !permissions || permissions.has([
+    PermissionFlagsBits.ViewChannel,
+    PermissionFlagsBits.EmbedLinks,
+    channel.isThread() ? PermissionFlagsBits.SendMessagesInThreads : PermissionFlagsBits.SendMessages
+  ]);
+};
 
 const targetLabel = (eventKey: string, locale: ReturnType<typeof normalizeEmbedLocale>) => {
   switch (targetKindForEvent(eventKey)) {
@@ -75,6 +93,7 @@ export function startDispatcher(client: Client) {
     // A log must never leave the server it was produced in, even if a stale or
     // tampered route points to a channel of another guild the bot can see.
     if (!channel || channel.guildId !== guild.id || !channel.isSendable()) { await mark('CHANNEL_UNAVAILABLE'); return; }
+    if (!canPostEmbeds(channel, guild.members.me)) { await mark('CHANNEL_UNAVAILABLE', 'Missing View Channel, Send Messages or Embed Links'); return; }
 
     const embedLocale = normalizeEmbedLocale(event.guild.locale);
     const summary = decryptText(event.summary) ?? '';
