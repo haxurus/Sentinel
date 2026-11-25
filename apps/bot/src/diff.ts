@@ -150,3 +150,20 @@ export const attachmentIds = (value: unknown): string[] =>
 
 export const sameAttachments = (before: unknown, after: unknown) =>
   JSON.stringify(attachmentIds(before)) === JSON.stringify(attachmentIds(after));
+
+/**
+ * How a member's timeout changed. `oldUntil` is undefined when the previous
+ * state is unknown (uncached member). An expired timeout keeps its past date
+ * on Discord, so only a timeout still running counts as active.
+ */
+export function timeoutChange(
+  oldUntil: number | null | undefined,
+  newUntil: number | null,
+  now: number
+): 'applied' | 'removed' | 'unknown' | null {
+  const newActive = !!newUntil && newUntil > now;
+  if (oldUntil === undefined) return 'unknown';
+  if (oldUntil === newUntil) return null;
+  if (newActive) return 'applied';
+  return oldUntil && oldUntil > now ? 'removed' : null;
+}

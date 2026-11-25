@@ -71,7 +71,7 @@ Privileged intents: Server Members, Message Content (no Presence: online status 
 - **Voice & events:** joins, leaves, moves, mute/deafen/stream, Stage, scheduled events and soundboard
 - **Automation:** AutoMod rules and actions, application command permissions
 
-70 event types in total, each with its own logger.
+74 event types in total, each with its own logger.
 
 ## Why Sentinel
 

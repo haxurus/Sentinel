@@ -2,6 +2,7 @@
 // secret-loading imports so they can be unit tested in isolation.
 import {
   detailLabel,
+  formatDuration,
   fieldLabel,
   overwriteActionLabel,
   permissionLabel,
@@ -38,7 +39,8 @@ export const normalizeColor = (value?: string | null) => {
 
 const USER_TARGET_EVENTS = new Set([
   'member.join', 'member.leave', 'member.update', 'moderation.kick', 'moderation.ban', 'moderation.unban',
-  'voice.join', 'voice.leave', 'voice.move', 'voice.state', 'thread.member_update', 'user.update',
+  'moderation.timeout', 'moderation.timeout_remove', 'voice.join', 'voice.leave', 'voice.move', 'voice.state',
+  'voice.disconnect', 'voice.force_move', 'thread.member_update', 'user.update',
   'message.delete'
 ]);
 
@@ -143,7 +145,7 @@ const PERMISSION_LIST_KEYS = new Set(['addedPermissions', 'removedPermissions'])
 
 const formatPrimitive = (guild: ReferenceGuild, key: string, value: string | number | boolean, locale: EmbedLocale) => {
   if (typeof value === 'boolean') return yesNo(value, locale);
-  if (typeof value === 'number') return String(value);
+  if (typeof value === 'number') return key === 'durationSeconds' ? formatDuration(value, locale) : String(value);
 
   const kind = referenceKindForDetail(key);
   if (kind && looksLikeSnowflake(value)) return formatReference(guild, kind, value);

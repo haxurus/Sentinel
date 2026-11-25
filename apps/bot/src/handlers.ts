@@ -6,6 +6,7 @@ import {
   type ClientEvents,
   type Guild,
   type GuildMember,
+  type PartialGuildMember,
   type Message,
   type PartialMessage
 } from 'discord.js';
@@ -13,7 +14,8 @@ import { prisma } from '@sentinel/db';
 import { ensureGuild, getGuildSettings, isGuildInstallBlocked, isUserInstallBlocked, markGuildRemoved, snapshotMessage } from './store.js';
 import { sendWelcome } from './welcome.js';
 import { recordEvent, shouldCapture } from './recorder.js';
-import { findRecentAuditEntry, jsonSafe } from './utils.js';
+import { claimAggregatedAuditEntry, findRecentAuditEntry, jsonSafe } from './utils.js';
+import { formatDuration } from './embed-i18n.js';
 import { decryptText, redactText, unprotectJson } from './security.js';
 import { leaveGuild } from './discord-actions.js';
 import { logger } from './logger.js';
@@ -25,7 +27,8 @@ import {
   permissionOverwriteChanges,
   roleChanges,
   sameAttachments,
-  threadChanges
+  threadChanges,
+  timeoutChange
 } from './diff.js';
 
 const roleIds = (member: GuildMember | null | undefined | any): string[] => member?.roles?.cache ? [...member.roles.cache.keys()] : [];
@@ -40,6 +43,54 @@ const actorFromAudit = async (eventKey: string, guild: Guild | null | undefined,
   const entry = await findRecentAuditEntry(guild, type, targetId);
   return entry?.executorId ?? null;
 };
+
+const TIMEOUT_AUDIT_KEY = 'communication_disabled_until';
+const isoOrNull = (timestamp: number | null | undefined) => timestamp ? new Date(timestamp).toISOString() : null;
+
+/** Records a timeout applied, extended or removed by a moderator. */
+async function recordTimeoutChange(oldMember: GuildMember | PartialGuildMember, newMember: GuildMember) {
+  const guild = newMember.guild;
+  const now = Date.now();
+  const newUntil = newMember.communicationDisabledUntilTimestamp;
+  // An uncached old member has no previous state: the Audit Log decides.
+  const oldUntil = oldMember.partial ? undefined : oldMember.communicationDisabledUntilTimestamp;
+  let change = timeoutChange(oldUntil, newUntil, now);
+  if (!change) return;
+
+  const keys = change === 'unknown' ? ['moderation.timeout', 'moderation.timeout_remove'] : [change === 'applied' ? 'moderation.timeout' : 'moderation.timeout_remove'];
+  const captured = await Promise.all(keys.map((key) => shouldCapture(guild.id, key)));
+  if (!captured.some(Boolean)) return;
+
+  const entry = await findRecentAuditEntry(guild, AuditLogEvent.MemberUpdate, newMember.id, 12_000,
+    (candidate) => candidate.changes.some((item) => item.key === TIMEOUT_AUDIT_KEY));
+  if (oldUntil === undefined) {
+    const audited = entry?.changes.find((item) => item.key === TIMEOUT_AUDIT_KEY);
+    // Without a matching entry an update of an uncached member in timeout
+    // (a nickname change, for example) cannot be told apart from a timeout.
+    if (!audited) return;
+    change = audited.new ? 'applied' : 'removed';
+  }
+  const eventKey = change === 'applied' ? 'moderation.timeout' : 'moderation.timeout_remove';
+  if (!captured[keys.indexOf(eventKey)]) return;
+
+  const actorId = entry?.executorId ?? null;
+  const details: Record<string, unknown> = {
+    reason: entry?.reason ?? null,
+    previousTimeoutEndsAt: oldUntil && oldUntil > now ? isoOrNull(oldUntil) : null,
+    actorBot: entry?.executor?.bot ?? false,
+    actorRoleIds: actorId ? roleIds(guild.members.cache.get(actorId)) : []
+  };
+  let summary = `Il timeout di ${newMember.user.tag} è stato rimosso.`;
+  if (eventKey === 'moderation.timeout') {
+    // Measured from the audit entry, the moment the moderator acted.
+    const seconds = Math.max(0, Math.round((newUntil! - (entry?.createdTimestamp ?? now)) / 1000));
+    details.durationSeconds = seconds >= 120 ? Math.round(seconds / 60) * 60 : seconds;
+    details.timeoutEndsAt = isoOrNull(newUntil);
+    summary = `${newMember.user.tag} è stato messo in timeout per ${formatDuration(details.durationSeconds as number, 'it')}.`;
+  }
+
+  await recordEvent({ guildId: guild.id, eventKey, actorId, targetId: newMember.id, summary, details });
+}
 
 const attachmentData = (message: Message | PartialMessage) => [...message.attachments.values()].map((a) => ({
   id: a.id,
@@ -174,6 +225,8 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
   });
 
   on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+    await recordTimeoutChange(oldMember, newMember);
+
     const oldRoles = roleIds(oldMember);
     const newRoles = roleIds(newMember);
     const addedRoles = newRoles.filter((id) => !oldRoles.includes(id));
@@ -185,7 +238,6 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
     // can be derived safely from it.
     if (!oldMember.partial) {
       addChangedPair(details, 'oldNickname', 'newNickname', oldMember.nickname, newMember.nickname);
-      addChangedPair(details, 'oldTimeout', 'newTimeout', oldMember.communicationDisabledUntil?.toISOString() ?? null, newMember.communicationDisabledUntil?.toISOString() ?? null);
       addChangedPair(details, 'oldBoostSince', 'newBoostSince', oldMember.premiumSince?.toISOString() ?? null, newMember.premiumSince?.toISOString() ?? null);
       addChangedPair(details, 'oldPending', 'newPending', oldMember.pending, newMember.pending);
     }
@@ -455,6 +507,7 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
     let eventKey = 'voice.state';
     let summary = `Lo stato vocale di ${member.user.tag} è cambiato.`;
     const details: Record<string, unknown> = {};
+    let moderator: { executorId: string | null; executor: { bot?: boolean } | null } | null = null;
 
     if (!oldState.channelId && newState.channelId) {
       eventKey = 'voice.join';
@@ -462,16 +515,31 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
     } else if (oldState.channelId && !newState.channelId) {
       eventKey = 'voice.leave';
       summary = `${member.user.tag} è uscito da ${oldState.channel?.name ?? 'un canale vocale'}.`;
+      // Like kicks: the Audit Log tells a forced disconnect from a leave.
+      if (await shouldCapture(oldState.guild.id, 'voice.disconnect')) {
+        moderator = await claimAggregatedAuditEntry(oldState.guild, AuditLogEvent.MemberDisconnect);
+        if (moderator) {
+          eventKey = 'voice.disconnect';
+          summary = `${member.user.tag} è stato disconnesso da ${oldState.channel?.name ?? 'un canale vocale'}.`;
+        }
+      }
     } else if (oldState.channelId !== newState.channelId) {
       eventKey = 'voice.move';
       summary = `${member.user.tag} è passato da ${oldState.channel?.name ?? 'un canale vocale'} a ${newState.channel?.name ?? 'un canale vocale'}.`;
       details.fromChannelId = oldState.channelId;
       details.toChannelId = newState.channelId;
+      if (await shouldCapture(newState.guild.id, 'voice.force_move')) {
+        moderator = await claimAggregatedAuditEntry(newState.guild, AuditLogEvent.MemberMove, newState.channelId);
+        if (moderator) {
+          eventKey = 'voice.force_move';
+          summary = `${member.user.tag} è stato spostato da ${oldState.channel?.name ?? 'un canale vocale'} a ${newState.channel?.name ?? 'un canale vocale'}.`;
+        }
+      }
     }
 
     // Joins and leaves carry the full state in newState/oldState: diffing it
     // against "null" would report every flag as a change.
-    if (eventKey === 'voice.state' || eventKey === 'voice.move') {
+    if (eventKey === 'voice.state' || eventKey === 'voice.move' || eventKey === 'voice.force_move') {
       const stateChanges: Array<[string, unknown, unknown]> = [
         ['serverMute', oldState.serverMute, newState.serverMute],
         ['serverDeaf', oldState.serverDeaf, newState.serverDeaf],
@@ -492,12 +560,14 @@ export function registerHandlers(client: Client, status: StatusNotifier) {
       summary = voiceStateSummary(member.user.tag, details);
     }
 
-    details.actorBot = member.user.bot;
-    details.actorRoleIds = roleIds(member);
+    const actorId = moderator?.executorId ?? null;
+    details.actorBot = moderator ? moderator.executor?.bot ?? false : member.user.bot;
+    details.actorRoleIds = moderator ? (actorId ? roleIds(newState.guild.members.cache.get(actorId)) : []) : roleIds(member);
 
     await recordEvent({
       guildId: newState.guild.id,
       eventKey,
+      ...(moderator ? { actorId } : {}),
       targetId: member.id,
       channelId: newState.channelId ?? oldState.channelId,
       summary,

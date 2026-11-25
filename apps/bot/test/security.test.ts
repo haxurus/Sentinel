@@ -89,3 +89,19 @@ test('audit lookup is skipped when the bot cannot view the Audit Log', async () 
   await utils.findRecentAuditEntry(allowed.guild, 20);
   assert.equal(allowed.fetched(), 1);
 });
+
+test('aggregated voice audit entries are attributed once per counted action', async () => {
+  const now = Date.now();
+  const entries = [{ id: '900000000000000001', executorId: '7', createdTimestamp: now - 600_000, extra: { count: 3 } }];
+  const { guild } = auditGuild(entries);
+  // An old merged entry seen for the first time is only a baseline.
+  assert.equal(await utils.claimAggregatedAuditEntry(guild, 27), null);
+  entries[0]!.extra.count = 5;
+  assert.equal((await utils.claimAggregatedAuditEntry(guild, 27))?.executorId, '7');
+  assert.equal((await utils.claimAggregatedAuditEntry(guild, 27))?.executorId, '7');
+  assert.equal(await utils.claimAggregatedAuditEntry(guild, 27), null);
+  // A fresh entry counts from zero; moves must match the destination channel.
+  const moves = auditGuild([{ id: '900000000000000002', executorId: '8', createdTimestamp: now, extra: { count: 1, channel: { id: '42' } } }]);
+  assert.equal(await utils.claimAggregatedAuditEntry(moves.guild, 26, '43'), null);
+  assert.equal((await utils.claimAggregatedAuditEntry(moves.guild, 26, '42'))?.executorId, '8');
+});

@@ -3,10 +3,12 @@ export type EmbedLocale = 'en' | 'it';
 const EVENT_EN: Record<string, { label: string; description: string }> = {
   'member.join': { label: 'Member joined', description: 'A member joins the server.' },
   'member.leave': { label: 'Member left', description: 'A member leaves the server.' },
-  'member.update': { label: 'Member updated', description: 'Nickname, roles, timeout or other member data changes.' },
+  'member.update': { label: 'Member updated', description: 'Nickname, roles or other member data changes.' },
   'moderation.kick': { label: 'Kick', description: 'A member is kicked from the server.' },
   'moderation.ban': { label: 'Ban', description: 'A user is banned.' },
   'moderation.unban': { label: 'Unban', description: 'A ban is removed.' },
+  'moderation.timeout': { label: 'Timeout', description: 'A member is timed out, with duration and end time.' },
+  'moderation.timeout_remove': { label: 'Timeout removed', description: 'A moderator removes a member’s timeout.' },
   'message.create': { label: 'Message created', description: 'A new message is sent.' },
   'message.edit': { label: 'Message edited', description: 'Message content or attachments change.' },
   'message.delete': { label: 'Message deleted', description: 'A message is deleted.' },
@@ -20,6 +22,8 @@ const EVENT_EN: Record<string, { label: string; description: string }> = {
   'voice.join': { label: 'Voice joined', description: 'A user joins a voice channel.' },
   'voice.leave': { label: 'Voice left', description: 'A user leaves voice.' },
   'voice.move': { label: 'Voice moved', description: 'A user moves to another voice channel.' },
+  'voice.disconnect': { label: 'Voice disconnect', description: 'A moderator disconnects a user from voice.' },
+  'voice.force_move': { label: 'Forced voice move', description: 'A moderator moves a user to another voice channel.' },
   'voice.state': { label: 'Voice state changed', description: 'Mute, deaf, streaming or video state changes.' },
   'voice.effect': { label: 'Voice effect', description: 'An effect or sound is sent in a voice channel.' },
   'voice.server_update': { label: 'Voice server updated', description: 'Discord updates the voice server endpoint without storing the token.' },
@@ -117,6 +121,7 @@ const DETAIL_LABELS_IT: Record<string, string> = {
   oldPreferredLocale: 'Lingua precedente', newPreferredLocale: 'Nuova lingua',
   oldPremiumProgressBarEnabled: 'Barra boost (prima)', newPremiumProgressBarEnabled: 'Barra boost (ora)',
   oldBoostSince: 'Boost precedente', newBoostSince: 'Boost attuale', accountCreatedAt: 'Account creato il',
+  timeoutEndsAt: 'Scadenza timeout', previousTimeoutEndsAt: 'Scadenza precedente', durationSeconds: 'Durata',
   reason: 'Motivo', name: 'Nome', code: 'Codice', count: 'Numero', emoji: 'Emoji', type: 'Tipo', topic: 'Topic'
 };
 
@@ -148,6 +153,7 @@ const DETAIL_LABELS_EN: Record<string, string> = {
   oldAutoArchiveDuration: 'Previous auto-archive', newAutoArchiveDuration: 'New auto-archive',
   oldInvitable: 'Invitable (before)', newInvitable: 'Invitable (now)', oldAppliedTags: 'Previous tags', newAppliedTags: 'New tags',
   oldOwnerId: 'Previous owner', newOwnerId: 'New owner', oldVanityUrlCode: 'Previous vanity URL', newVanityUrlCode: 'New vanity URL',
+  timeoutEndsAt: 'Timeout ends', previousTimeoutEndsAt: 'Previous end', durationSeconds: 'Duration',
   oldBoostSince: 'Previous boost', newBoostSince: 'Current boost', accountCreatedAt: 'Account created at'
 };
 
@@ -202,6 +208,29 @@ export const detailLabel = (key: string, locale: EmbedLocale) => {
   if (dictionary[key]) return dictionary[key]!;
   const spaced = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim();
   return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : key;
+};
+
+const DURATION_UNITS: Array<[number, Record<EmbedLocale, [string, string]>]> = [
+  [604_800, { it: ['settimana', 'settimane'], en: ['week', 'weeks'] }],
+  [86_400, { it: ['giorno', 'giorni'], en: ['day', 'days'] }],
+  [3_600, { it: ['ora', 'ore'], en: ['hour', 'hours'] }],
+  [60, { it: ['minuto', 'minuti'], en: ['minute', 'minutes'] }],
+  [1, { it: ['secondo', 'secondi'], en: ['second', 'seconds'] }]
+];
+
+/** "1 ora", "2 giorni e 3 ore": the two largest units. */
+export const formatDuration = (seconds: number, locale: EmbedLocale) => {
+  let rest = Math.max(0, Math.round(seconds));
+  const parts: string[] = [];
+  for (const [size, names] of DURATION_UNITS) {
+    const amount = Math.floor(rest / size);
+    if (!amount) continue;
+    rest -= amount * size;
+    parts.push(`${amount} ${names[locale][amount === 1 ? 0 : 1]}`);
+    if (parts.length === 2) break;
+  }
+  if (!parts.length) return `0 ${DURATION_UNITS[4]![1][locale][1]}`;
+  return parts.join(locale === 'it' ? ' e ' : ' and ');
 };
 
 export const fieldLabel = (key: keyof typeof FIELD_LABELS.en, locale: EmbedLocale) => FIELD_LABELS[locale][key];

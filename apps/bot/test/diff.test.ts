@@ -75,3 +75,15 @@ test('sameAttachments compares ids, not signed CDN URLs', () => {
   assert.equal(sameAttachments(before, after), true);
   assert.equal(sameAttachments(before, []), false);
 });
+
+test('timeoutChange tells applied, removed and unknown timeouts apart', async () => {
+  const { timeoutChange } = await import('../src/diff.ts');
+  const now = 1_000_000;
+  assert.equal(timeoutChange(null, now + 60_000, now), 'applied');
+  assert.equal(timeoutChange(now + 60_000, now + 120_000, now), 'applied');
+  assert.equal(timeoutChange(now + 60_000, null, now), 'removed');
+  // Clearing a timeout that already expired is no moderator action.
+  assert.equal(timeoutChange(now - 1, null, now), null);
+  assert.equal(timeoutChange(null, null, now), null);
+  assert.equal(timeoutChange(undefined, null, now), 'unknown');
+});

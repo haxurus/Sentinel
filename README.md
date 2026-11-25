@@ -33,7 +33,7 @@ Sentinel watches what happens on a Discord server — bans, kicks, role and perm
 
 ## Features
 
-**70 event types**, each with its own logger:
+**74 event types**, each with its own logger:
 
 | Area | Events |
 |---|---|

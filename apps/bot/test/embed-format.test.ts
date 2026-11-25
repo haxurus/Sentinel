@@ -100,3 +100,19 @@ test('event catalog keys are unique', () => {
   const keys = EVENT_CATALOG.map((event) => event.key);
   assert.equal(new Set(keys).size, keys.length);
 });
+
+test('durations are written with the two largest units', async () => {
+  const { formatDuration } = await import('../src/embed-i18n.ts');
+  assert.equal(formatDuration(60, 'it'), '1 minuto');
+  assert.equal(formatDuration(3_600, 'it'), '1 ora');
+  assert.equal(formatDuration(604_800, 'en'), '1 week');
+  assert.equal(formatDuration(2 * 86_400 + 3 * 3_600 + 60, 'it'), '2 giorni e 3 ore');
+  assert.equal(formatDuration(0, 'en'), '0 seconds');
+});
+
+test('every catalog event has an English embed copy', async () => {
+  const { eventEmbedCopy } = await import('../src/embed-i18n.ts');
+  for (const event of EVENT_CATALOG) {
+    assert.notEqual(eventEmbedCopy(event.key, 'en', '', '').description, 'Discord event.', event.key);
+  }
+});
