@@ -15,7 +15,7 @@
     "@sentinel/shared": "0.3.0",
     "bullmq": "5.81.5",
     "discord.js": "14.27.0",
-    "ioredis": "5.11.1",
+    "ioredis": "6.0.0",
     "pino": "10.4.0"
   },
   "devDependencies": {
